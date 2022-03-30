@@ -2,14 +2,14 @@ use crate::model::{AlleleFreq, Data, Likelihood, Marginal, Posterior, Prior};
 use anyhow::Result;
 use bio::stats::{bayesian::model::Model, probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
+use derefable::Derefable;
 use derive_builder::Builder;
+use derive_new::new;
 use hdf5;
 use ordered_float::NotNan;
 use rust_htslib::bcf::{self, record::GenotypeAllele::Unphased, Read};
 use std::collections::BTreeMap;
 use std::{path::PathBuf, str};
-use derefable::Derefable;
-use derive_new::new;
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
@@ -42,14 +42,23 @@ impl Caller {
         // Step 3: calculate posteriors.
         //let m = model.compute(universe, &data);
         let m = model.compute_from_marginal(&Marginal::new(haplotypes.len()), &data);
+        let posterior = m.event_posteriors();
 
         //add variant query and probabilities to the outout table for each event
         let variant_matrix: Vec<(BitVec, BitVec)> =
             data.haplotype_variants.values().cloned().collect();
         let variant_calls: Vec<AlleleFreqDist> = data.haplotype_calls.values().cloned().collect();
-        let posterior = m.event_posteriors();
+
+        //for output table, filter for events in the posteriors that contain either 0.0 or 1.0.
+        let filtered_posterior: Vec<_> = posterior
+            .filter(|(fractions, _)| {
+                !fractions.contains(&NotNan::new(0.00).unwrap())
+                    | !fractions.contains(&NotNan::new(1.00).unwrap())
+            })
+            .collect();
+
         let mut event_queries: Vec<BTreeMap<i64, (AlleleFreq, LogProb)>> = Vec::new();
-        posterior.for_each(|(fractions, _)| {
+        filtered_posterior.iter().for_each(|(fractions, _)| {
             let f_num = fractions.len();
             let mut vaf_queries: BTreeMap<i64, (AlleleFreq, LogProb)> = BTreeMap::new();
             let mut variant_num = 0;
@@ -74,7 +83,11 @@ impl Caller {
                     vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
                         / NotNan::new(100.0).unwrap();
                     let answer = afd.vaf_query(&vaf_sum);
-                    if counter > 0 && counter < f_num && vaf_sum > NotNan::new(0.0).unwrap() && vaf_sum < NotNan::new(1.0).unwrap() {
+                    if counter > 0
+                        && counter < f_num
+                        && vaf_sum > NotNan::new(0.0).unwrap()
+                        && vaf_sum < NotNan::new(1.0).unwrap()
+                    {
                         vaf_queries.insert(variant_num, (vaf_sum, answer));
                     }
                     variant_num = variant_num + 1;
@@ -82,12 +95,10 @@ impl Caller {
             );
             event_queries.push(vaf_queries);
         });
-
         // Step 4: print TSV table with results
         // TODO use csv crate
         // Columns: posterior_prob, haplotype_a, haplotype_b, haplotype_c, ...
         // with each column after the first showing the fraction of the respective haplotype
-        let mut posterior = m.event_posteriors();
         let mut wtr = csv::Writer::from_path(self.outcsv.as_ref().unwrap())?;
         let mut headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
         headers.extend(haplotypes);
@@ -100,7 +111,8 @@ impl Caller {
 
         //write best record on top
         let mut records = Vec::new();
-        let (haplotype_frequencies, best_density) = posterior.next().unwrap();
+        let mut filtered_posterior = filtered_posterior.iter();
+        let (haplotype_frequencies, best_density) = filtered_posterior.next().unwrap();
         let best_odds = 1;
         if best_density.exp() <= 0.01 {
             records.push(format!("{:+.2e}", best_density.exp()));
@@ -136,7 +148,7 @@ impl Caller {
         wtr.write_record(records)?;
 
         //write the rest of the records
-        posterior.zip(event_queries.iter()).for_each(
+        filtered_posterior.zip(event_queries.iter()).for_each(
             |((haplotype_frequencies, density), queries)| {
                 let mut records = Vec::new();
                 let odds = (density - best_density).exp();
@@ -175,7 +187,7 @@ impl Caller {
     }
 }
 
-#[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd,Ord)]
+#[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct Haplotype(#[deref] String);
 
 #[derive(Debug, Clone)]
