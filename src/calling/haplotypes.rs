@@ -90,7 +90,7 @@ impl Caller {
                     {
                         vaf_queries.insert(variant_num, (vaf_sum, answer));
                     }
-                    variant_num = variant_num + 1;
+                    variant_num += 1;
                 },
             );
             event_queries.push(vaf_queries);
