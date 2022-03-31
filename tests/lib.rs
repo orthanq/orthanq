@@ -48,7 +48,7 @@ fn check_haplotype_fractions_5050() {
     let mut iter = rdr.records();
     if let Some(result) = iter.next() {
         let record = result.unwrap();
-        assert_eq!(record[2], "0.5".to_string());
-        assert_eq!(record[3], "0.5".to_string());
+        assert_eq!(record[2], "0.50".to_string());
+        assert_eq!(record[3], "0.50".to_string());
     }
 }
