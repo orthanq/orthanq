@@ -83,11 +83,7 @@ impl Caller {
                     vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
                         / NotNan::new(100.0).unwrap();
                     let answer = afd.vaf_query(&vaf_sum);
-                    if counter > 0
-                        && counter < f_num
-                        && vaf_sum > NotNan::new(0.0).unwrap()
-                        && vaf_sum < NotNan::new(1.0).unwrap()
-                    {
+                    if counter > 0 && counter < f_num {
                         vaf_queries.insert(variant_num, (vaf_sum, answer));
                     }
                     variant_num += 1;
