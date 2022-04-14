@@ -111,7 +111,7 @@ impl Caller {
         let (haplotype_frequencies, best_density) = filtered_posterior.next().unwrap();
         let best_odds = 1;
 
-        let format_f64 = |number:f64, records: &mut Vec<String>| {
+        let format_f64 = |number: f64, records: &mut Vec<String>| {
             if number <= 0.01 {
                 records.push(format!("{:+.2e}", number))
             } else {
