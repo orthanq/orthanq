@@ -110,11 +110,15 @@ impl Caller {
         let mut filtered_posterior = filtered_posterior.iter();
         let (haplotype_frequencies, best_density) = filtered_posterior.next().unwrap();
         let best_odds = 1;
-        if best_density.exp() <= 0.01 {
-            records.push(format!("{:+.2e}", best_density.exp()));
-        } else {
-            records.push(format!("{:.2}", best_density.exp()));
-        }
+
+        let format_f64 = |number:f64, records: &mut Vec<String>| {
+            if number <= 0.01 {
+                records.push(format!("{:+.2e}", number))
+            } else {
+                records.push(format!("{:.2}", number))
+            }
+        };
+        format_f64(best_density.exp(), &mut records);
         records.push(best_odds.to_string());
 
         haplotype_frequencies.iter().for_each(|frequency| {
@@ -148,19 +152,8 @@ impl Caller {
             |((haplotype_frequencies, density), queries)| {
                 let mut records = Vec::new();
                 let odds = (density - best_density).exp();
-
-                if density.exp() <= 0.01 {
-                    records.push(format!("{:+.2e}", density.exp()));
-                } else {
-                    records.push(format!("{:.2}", density.exp()));
-                }
-
-                if odds <= 0.01 {
-                    records.push(format!("{:+.2e}", odds));
-                } else {
-                    records.push(format!("{:.2}", odds));
-                }
-
+                format_f64(density.exp(), &mut records);
+                format_f64(odds, &mut records);
                 haplotype_frequencies.iter().for_each(|frequency| {
                     if frequency <= &NotNan::new(0.01).unwrap() {
                         records.push(format!("{:+.2e}", NotNan::into_inner(*frequency)));
