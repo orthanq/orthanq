@@ -35,7 +35,7 @@ pub struct Orthanq {
     )]
     haplotype_calls: PathBuf,
     #[structopt(
-        default_value = "0.01",
+        default_value = "0.8",
         help = "Minimum value for normalized Kallisto counts."
     )]
     min_norm_counts: f64,

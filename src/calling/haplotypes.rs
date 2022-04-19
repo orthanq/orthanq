@@ -110,7 +110,6 @@ impl Caller {
         let mut filtered_posterior = filtered_posterior.iter();
         let (haplotype_frequencies, best_density) = filtered_posterior.next().unwrap();
         let best_odds = 1;
-
         let format_f64 = |number: f64, records: &mut Vec<String>| {
             if number <= 0.01 {
                 records.push(format!("{:+.2e}", number))
@@ -120,14 +119,16 @@ impl Caller {
         };
         format_f64(best_density.exp(), &mut records);
         records.push(best_odds.to_string());
-
-        haplotype_frequencies.iter().for_each(|frequency| {
-            if frequency <= &NotNan::new(0.01).unwrap() {
-                records.push(format!("{:+.2e}", NotNan::into_inner(*frequency)));
+        let format_freqs = |frequency: NotNan<f64>, records: &mut Vec<String>| {
+            if frequency <= NotNan::new(0.01).unwrap() {
+                records.push(format!("{:+.2e}", NotNan::into_inner(frequency)))
             } else {
                 records.push(format!("{:.2}", frequency))
             }
-        });
+        };
+        haplotype_frequencies
+            .iter()
+            .for_each(|frequency| format_freqs(*frequency, &mut records));
 
         //add vaf queries and probabilities for the first event to the output table
         let queries: Vec<(AlleleFreq, LogProb)> = event_queries
@@ -154,13 +155,10 @@ impl Caller {
                 let odds = (density - best_density).exp();
                 format_f64(density.exp(), &mut records);
                 format_f64(odds, &mut records);
-                haplotype_frequencies.iter().for_each(|frequency| {
-                    if frequency <= &NotNan::new(0.01).unwrap() {
-                        records.push(format!("{:+.2e}", NotNan::into_inner(*frequency)));
-                    } else {
-                        records.push(format!("{:.2}", frequency))
-                    }
-                });
+                haplotype_frequencies
+                    .iter()
+                    .for_each(|frequency| format_freqs(*frequency, &mut records));
+
                 queries.iter().for_each(|(_, (query, answer))| {
                     let prob = f64::from(Prob::from(*answer));
                     if prob <= 0.01 {
@@ -199,7 +197,6 @@ impl KallistoEstimates {
         let seq_length = hdf5_reader.dataset("aux/lengths")?.read_1d::<f64>()?;
 
         let mut estimates = BTreeMap::new();
-
         for seqname in seqnames {
             let index = ids.iter().position(|x| x.as_str() == seqname).unwrap();
             let mut bootstraps = Vec::new();
@@ -231,7 +228,6 @@ impl KallistoEstimates {
             let mle_dataset = hdf5_reader.dataset("est_counts")?.read_1d::<f64>()?;
             let mle_norm = mle_dataset / &seq_length; //normalized mle counts by length
             let m = mle_norm[index];
-
             estimates.insert(
                 Haplotype(seqname.clone()),
                 KallistoEstimate {
@@ -240,7 +236,6 @@ impl KallistoEstimates {
                 },
             );
         }
-
         Ok(KallistoEstimates(estimates))
     }
 
