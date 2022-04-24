@@ -118,9 +118,9 @@ impl Likelihood {
             .zip(data.kallisto_estimates.iter())
             .map(|(fraction, estimate)| {
                 neg_binom(
-                    estimate.count,
+                    *estimate.count,
                     NotNan::into_inner(*fraction),
-                    estimate.dispersion,
+                    *estimate.dispersion,
                 )
             })
             .sum()
