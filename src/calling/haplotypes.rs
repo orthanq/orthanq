@@ -9,8 +9,8 @@ use hdf5;
 use ordered_float::NotNan;
 use rust_htslib::bcf::{self, record::GenotypeAllele::Unphased, Read};
 use std::collections::BTreeMap;
-use std::{path::PathBuf, str};
 use std::convert::TryInto;
+use std::{path::PathBuf, str};
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
@@ -26,7 +26,8 @@ pub struct Caller {
 impl Caller {
     pub fn call(&mut self) -> Result<()> {
         // Step 1: obtain kallisto estimates.
-        let kallisto_estimates = KallistoEstimates::new(&self.hdf5_reader, self.min_norm_counts, self.max_haplotypes)?;
+        let kallisto_estimates =
+            KallistoEstimates::new(&self.hdf5_reader, self.min_norm_counts, self.max_haplotypes)?;
         dbg!(&kallisto_estimates);
         let haplotypes: Vec<String> = kallisto_estimates.keys().map(|x| x.to_string()).collect();
         let haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants, &haplotypes)?;
@@ -190,7 +191,11 @@ pub(crate) struct KallistoEstimates(#[deref] BTreeMap<Haplotype, KallistoEstimat
 
 impl KallistoEstimates {
     /// Generate new instance.
-    pub(crate) fn new(hdf5_reader: &hdf5::File, min_norm_counts: f64, max_haplotypes: i64) -> Result<Self> {
+    pub(crate) fn new(
+        hdf5_reader: &hdf5::File,
+        min_norm_counts: f64,
+        max_haplotypes: i64,
+    ) -> Result<Self> {
         let seqnames = Self::filter_seqnames(hdf5_reader, min_norm_counts)?;
         let ids = hdf5_reader
             .dataset("aux/ids")?
@@ -239,9 +244,9 @@ impl KallistoEstimates {
             );
         }
         let kallisto_estimates = KallistoEstimates(estimates);
-        Self::select_haplotypes(kallisto_estimates, max_haplotypes)        
+        Self::select_haplotypes(kallisto_estimates, max_haplotypes)
     }
-    
+
     //Return top N estimates according to --max-haplotypes
     fn select_haplotypes(self, max_haplotypes: i64) -> Result<Self> {
         let mut estimates_vec: Vec<(&Haplotype, &KallistoEstimate)> = self.iter().collect();
@@ -249,15 +254,15 @@ impl KallistoEstimates {
         if estimates_vec.len() >= max_haplotypes.try_into().unwrap() {
             let topn = estimates_vec[0..max_haplotypes as usize].to_vec();
             let mut top_estimates = BTreeMap::new();
-            for (key,value) in topn {
-                top_estimates.insert(key.clone(),*value);
+            for (key, value) in topn {
+                top_estimates.insert(key.clone(), *value);
             }
             dbg!(&top_estimates);
             Ok(KallistoEstimates(top_estimates))
         } else {
             dbg!(&self);
             Ok(self)
-        } 
+        }
     }
     //Return a vector of filtered seqnames according to --min-norm-counts.
     fn filter_seqnames(hdf5_reader: &hdf5::File, min_norm_counts: f64) -> Result<Vec<String>> {
