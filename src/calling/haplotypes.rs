@@ -214,6 +214,10 @@ impl KallistoEstimates {
                 let norm_counts = norm_counts[index];
                 bootstraps.push(norm_counts);
             }
+            //let all = bootstraps.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+            //println!("{:?}", &seqname);
+            //println!("{:?}", all);
+
             //mean
             let sum = bootstraps.iter().sum::<f64>();
             let count = bootstraps.len();
@@ -257,10 +261,10 @@ impl KallistoEstimates {
             for (key, value) in topn {
                 top_estimates.insert(key.clone(), *value);
             }
-            dbg!(&top_estimates);
+            //dbg!(&top_estimates);
             Ok(KallistoEstimates(top_estimates))
         } else {
-            dbg!(&self);
+            //dbg!(&self);
             Ok(self)
         }
     }
