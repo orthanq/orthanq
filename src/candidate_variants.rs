@@ -59,5 +59,4 @@ impl Caller {
         //fs::write("alignment_sorted.sam", stdout).expect("Unable to write file");
         Ok(())
     }
- 
 }

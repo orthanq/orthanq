@@ -3,8 +3,8 @@ use anyhow::Result;
 use bio::stats::{bayesian::model::Model, probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
 use derefable::Derefable;
-use derive_deref::DerefMut;
 use derive_builder::Builder;
+use derive_deref::DerefMut;
 use derive_new::new;
 use hdf5;
 use ordered_float::NotNan;
@@ -31,10 +31,11 @@ impl Caller {
             KallistoEstimates::new(&self.hdf5_reader, self.min_norm_counts, self.max_haplotypes)?;
         dbg!(&kallisto_estimates);
         let haplotypes: Vec<String> = kallisto_estimates.keys().map(|x| x.to_string()).collect();
-        let mut haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants, &haplotypes)?;
+        let mut haplotype_variants =
+            HaplotypeVariants::new(&mut self.haplotype_variants, &haplotypes)?;
         let haplotype_calls = HaplotypeCalls::new(&mut self.haplotype_calls)?;
         let filtered_ids: Vec<VariantID> = haplotype_calls.keys().cloned().collect();
-        haplotype_variants.retain(|k,v|filtered_ids.contains(&k));
+        haplotype_variants.retain(|k, v| filtered_ids.contains(&k));
 
         // Step 2: setup model.
         let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
@@ -55,7 +56,7 @@ impl Caller {
         let variant_matrix: Vec<(BitVec, BitVec)> =
             data.haplotype_variants.values().cloned().collect();
         let variant_calls: Vec<AlleleFreqDist> = data.haplotype_calls.values().cloned().collect();
-      
+
         //for output table, filter for events in the posteriors that contain either 0.0 or 1.0.
         // let filtered_posterior: Vec<_> = posterior
         //     .filter(|(fractions, _)| {
