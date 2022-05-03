@@ -3,6 +3,7 @@ use anyhow::Result;
 use bio::stats::{bayesian::model::Model, probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
 use derefable::Derefable;
+use derive_deref::DerefMut;
 use derive_builder::Builder;
 use derive_new::new;
 use hdf5;
@@ -30,8 +31,11 @@ impl Caller {
             KallistoEstimates::new(&self.hdf5_reader, self.min_norm_counts, self.max_haplotypes)?;
         dbg!(&kallisto_estimates);
         let haplotypes: Vec<String> = kallisto_estimates.keys().map(|x| x.to_string()).collect();
-        let haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants, &haplotypes)?;
+        let mut haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants, &haplotypes)?;
         let haplotype_calls = HaplotypeCalls::new(&mut self.haplotype_calls)?;
+        let filtered_ids: Vec<VariantID> = haplotype_calls.keys().cloned().collect();
+        haplotype_variants.retain(|k,v|filtered_ids.contains(&k));
+
         // Step 2: setup model.
         let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
 
@@ -45,23 +49,23 @@ impl Caller {
         // Step 3: calculate posteriors.
         //let m = model.compute(universe, &data);
         let m = model.compute_from_marginal(&Marginal::new(haplotypes.len()), &data);
-        let posterior = m.event_posteriors();
+        let posterior_output = m.event_posteriors();
 
         //add variant query and probabilities to the outout table for each event
         let variant_matrix: Vec<(BitVec, BitVec)> =
             data.haplotype_variants.values().cloned().collect();
         let variant_calls: Vec<AlleleFreqDist> = data.haplotype_calls.values().cloned().collect();
-
+      
         //for output table, filter for events in the posteriors that contain either 0.0 or 1.0.
-        let filtered_posterior: Vec<_> = posterior
-            .filter(|(fractions, _)| {
-                !fractions.contains(&NotNan::new(0.00).unwrap())
-                    | !fractions.contains(&NotNan::new(1.00).unwrap())
-            })
-            .collect();
+        // let filtered_posterior: Vec<_> = posterior
+        //     .filter(|(fractions, _)| {
+        //         !fractions.contains(&NotNan::new(0.00).unwrap())
+        //             | !fractions.contains(&NotNan::new(1.00).unwrap())
+        //     })
+        //     .collect();
 
         let mut event_queries: Vec<BTreeMap<i64, (AlleleFreq, LogProb)>> = Vec::new();
-        filtered_posterior.iter().for_each(|(fractions, _)| {
+        posterior_output.for_each(|(fractions, _)| {
             let f_num = fractions.len();
             let mut vaf_queries: BTreeMap<i64, (AlleleFreq, LogProb)> = BTreeMap::new();
             let mut variant_num = 0;
@@ -110,8 +114,8 @@ impl Caller {
 
         //write best record on top
         let mut records = Vec::new();
-        let mut filtered_posterior = filtered_posterior.iter();
-        let (haplotype_frequencies, best_density) = filtered_posterior.next().unwrap();
+        let mut posterior = m.event_posteriors();
+        let (haplotype_frequencies, best_density) = posterior.next().unwrap();
         let best_odds = 1;
         let format_f64 = |number: f64, records: &mut Vec<String>| {
             if number <= 0.01 {
@@ -152,7 +156,7 @@ impl Caller {
         wtr.write_record(records)?;
 
         //write the rest of the records
-        filtered_posterior.zip(event_queries.iter()).for_each(
+        posterior.zip(event_queries.iter()).for_each(
             |((haplotype_frequencies, density), queries)| {
                 let mut records = Vec::new();
                 let odds = (density - best_density).exp();
@@ -261,10 +265,8 @@ impl KallistoEstimates {
             for (key, value) in topn {
                 top_estimates.insert(key.clone(), *value);
             }
-            //dbg!(&top_estimates);
             Ok(KallistoEstimates(top_estimates))
         } else {
-            //dbg!(&self);
             Ok(self)
         }
     }
@@ -294,7 +296,7 @@ impl KallistoEstimates {
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, new)]
 pub(crate) struct VariantID(#[deref] i32);
 
-#[derive(Derefable, Debug, Clone, PartialEq, Eq, PartialOrd)]
+#[derive(Derefable, DerefMut, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub(crate) struct HaplotypeVariants(#[deref] BTreeMap<VariantID, (BitVec, BitVec)>);
 
 impl HaplotypeVariants {
@@ -364,9 +366,11 @@ impl HaplotypeCalls {
         for record_result in haplotype_calls.records() {
             let record = record_result?;
             let afd_utf = record.format(b"AFD").string()?;
-            if afd_utf[0] != b".".to_vec() {
+            let afd = std::str::from_utf8(afd_utf[0]).unwrap();
+            let read_depths = record.format(b"DP").integer().unwrap();
+            if read_depths[0] != &[0] && afd != "." {
+                //because some afd strings are just "." and that throws an error while splitting below.
                 let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
-                let afd = std::str::from_utf8(afd_utf[0]).unwrap();
                 let mut vaf_density = BTreeMap::new();
                 for pair in afd.split(',') {
                     let (vaf, density) = pair.split_once("=").unwrap();
