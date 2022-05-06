@@ -22,6 +22,7 @@ pub struct Caller {
     min_norm_counts: f64,
     max_haplotypes: i64,
     outcsv: Option<PathBuf>,
+    use_evidence: String
 }
 
 impl Caller {
@@ -38,7 +39,7 @@ impl Caller {
         haplotype_variants.retain(|k, v| filtered_ids.contains(&k));
 
         // Step 2: setup model.
-        let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
+        let model = Model::new(Likelihood::new(self.use_evidence.clone()), Prior::new(), Posterior::new());
 
         //let universe = HaplotypeFractions::likely(&kallisto_estimates);
         let data = Data::new(

@@ -77,6 +77,11 @@ pub enum Orthanq {
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
         )]
         output: Option<PathBuf>,
+        #[structopt(
+            long,
+            help = "Use only kallisto evidence. (for debugging purposes)"
+        )]
+        use_evidence: String
     },
 }
 
@@ -90,6 +95,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
             min_norm_counts,
             max_haplotypes,
             output,
+            use_evidence
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
                 .hdf5_reader(hdf5::File::open(&haplotype_counts)?)
@@ -98,6 +104,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 .min_norm_counts(min_norm_counts)
                 .max_haplotypes(max_haplotypes)
                 .outcsv(output)
+                .use_evidence(use_evidence)
                 .build()
                 .unwrap();
             caller.call()?;

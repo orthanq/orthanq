@@ -91,15 +91,27 @@ pub(crate) struct Data {
 }
 
 #[derive(Debug, new)]
-pub(crate) struct Likelihood;
+pub(crate) struct Likelihood {
+    use_evidence: String
+}
 
 impl model::Likelihood<Cache> for Likelihood {
     type Event = HaplotypeFractions;
     type Data = Data;
 
     fn compute(&self, event: &Self::Event, data: &Self::Data, payload: &mut Cache) -> LogProb {
-        self.compute_kallisto(event, data, payload)
-            + self.compute_varlociraptor(event, data, payload)
+        if self.use_evidence == "kallisto" {
+            LogProb::ln_one() + self.compute_kallisto(event, data, payload)
+        }
+        else if self.use_evidence == "varlociraptor"{
+            LogProb::ln_one() + self.compute_varlociraptor(event, data, payload)
+        }
+        else if self.use_evidence == "both" {
+            self.compute_kallisto(event, data, payload) + self.compute_varlociraptor(event, data, payload)
+        } else {
+            panic!("please type kallisto, varlociraptor or both.")
+        }
+        
     }
 }
 
