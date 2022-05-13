@@ -35,7 +35,7 @@ impl Caller {
         let filtered_ids: Vec<VariantID> = haplotype_calls.keys().cloned().collect();
         dbg!(&filtered_ids.len());
         //filter the candidate variants and retain only the selected haplotypes.
-        let mut haplotype_variants =
+        let haplotype_variants =
             HaplotypeVariants::new(&mut self.haplotype_variants, &filtered_ids)?;
         dbg!(&haplotype_variants.len());
         //collect the haplotype names for the creation of KallistoEstimates with only the selected haplotypes.
@@ -363,7 +363,7 @@ impl HaplotypeVariants {
                 //let mut all_haplotypes: Vec<String> = Vec::new();
                 for (index, haplotype) in header.samples().iter().enumerate() {
                     let haplotype_name = str::from_utf8(haplotype).unwrap().to_string();
-                    for (gta, locus) in gts.get(index).iter().zip(loci.iter()) {
+                    for gta in gts.get(index).iter() {
                         //dbg!(&gta);
                         //dbg!(&locus);
                         matrices.insert(
@@ -387,7 +387,7 @@ impl HaplotypeVariants {
         let mut filtered_haplotypes: Vec<String> = Vec::new();
         //the loop for discovering haplotype names that bear the filtered variants.
         for (variant, genotypes_loci_map) in haplotype_variants.iter() {
-            for (haplotype, (genotype, locus)) in genotypes_loci_map {
+            for (haplotype, (genotype, _)) in genotypes_loci_map {
                 if filtered_variants.contains(variant) && *genotype {
                     filtered_haplotypes.push(haplotype.to_string());
                 }
@@ -396,9 +396,9 @@ impl HaplotypeVariants {
         //remove the duplicates.
         let filtered_haplotypes: Vec<String> = filtered_haplotypes.into_iter().unique().collect();
         dbg!(&filtered_haplotypes.len());
-        ///collect indices of filtered_haplotypes.
+        //collect indices of filtered_haplotypes.
         let mut haplotype_indices: Vec<usize> = Vec::new();
-        //collect the first record of haplotype_variants.
+        //1) collect the first record of haplotype_variants.
         let mut bmaptree = BTreeMap::new();
         for (_, bmap) in haplotype_variants.iter() {
             for (k, v) in bmap.iter() {
@@ -407,8 +407,8 @@ impl HaplotypeVariants {
             break;
         }
         dbg!(&haplotype_variants.len());
-        //then collect the indices of haplotypes for further filtering in the following.
-        bmaptree.iter().enumerate().for_each(|(i, (haplotype, m))| {
+        //2) then collect the indices of haplotypes for further filtering in the following.
+        bmaptree.iter().enumerate().for_each(|(i, (haplotype, _))| {
             if filtered_haplotypes.contains(haplotype) {
                 haplotype_indices.push(i)
             }

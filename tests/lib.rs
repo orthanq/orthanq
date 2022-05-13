@@ -4,12 +4,13 @@ use rust_htslib::bcf;
 fn check_haplotype_fractions_pure() {
     let mut output = std::path::PathBuf::new();
     output.push("test_output_pure.csv");
-    let _ = &orthanq::calling::haplotypes::CallerBuilder::default()
+    let _ = orthanq::calling::haplotypes::CallerBuilder::default()
         .hdf5_reader(hdf5::File::open("tests/Sample_HLA20547.h5").unwrap())
-        .haplotype_variants(bcf::Reader::from_path("tests/hla-allele-variants_v3.vcf.gz").unwrap())
+        .haplotype_variants(bcf::Reader::from_path("tests/hla-allele-variants_v4.vcf.gz").unwrap())
         .haplotype_calls(bcf::Reader::from_path("tests/Sample_HLA20547.bcf").unwrap())
         .min_norm_counts(0.05)
         .max_haplotypes(2)
+        .use_evidence("both".to_string())
         .outcsv(Some(output))
         .build()
         .unwrap()
@@ -32,12 +33,13 @@ fn check_haplotype_fractions_pure() {
 fn check_haplotype_fractions_5050() {
     let mut output = std::path::PathBuf::new();
     output.push("test_output_5050.csv");
-    let _ = &orthanq::calling::haplotypes::CallerBuilder::default()
+    let _ = orthanq::calling::haplotypes::CallerBuilder::default()
         .hdf5_reader(hdf5::File::open("tests/Sample_HLA20547_HLA24424.h5").unwrap())
-        .haplotype_variants(bcf::Reader::from_path("tests/hla-allele-variants_v3.vcf.gz").unwrap())
+        .haplotype_variants(bcf::Reader::from_path("tests/hla-allele-variants_v4.vcf.gz").unwrap())
         .haplotype_calls(bcf::Reader::from_path("tests/Sample_HLA20547_HLA24424.bcf").unwrap())
         .min_norm_counts(0.05)
         .max_haplotypes(2)
+        .use_evidence("both".to_string())
         .outcsv(Some(output))
         .build()
         .unwrap()

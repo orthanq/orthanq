@@ -1,6 +1,4 @@
-use crate::calling::haplotypes::{
-    AlleleFreqDist, GenotypesLoci, HaplotypeCalls, HaplotypeVariants, KallistoEstimate,
-};
+use crate::calling::haplotypes::{AlleleFreqDist, GenotypesLoci, HaplotypeCalls, KallistoEstimate};
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb};
 use bv::BitVec;
@@ -8,7 +6,6 @@ use derefable::Derefable;
 use derive_new::new;
 use ordered_float::NotNan;
 use statrs::function::beta::ln_beta;
-use std::collections::BTreeMap;
 use std::{collections::HashMap, mem};
 
 pub(crate) type AlleleFreq = NotNan<f64>;

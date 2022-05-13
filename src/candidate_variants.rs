@@ -12,7 +12,7 @@ pub struct Caller {
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
-        self.alignment();
+        //self.alignment();
         //TODO: generation of candidate variants from the alignment.
         Ok(())
     }
@@ -23,7 +23,7 @@ impl Caller {
             self.genome.file_name().unwrap().to_str().unwrap(),
             ".mmi"
         );
-        let alleles_name = format!("{}", self.alleles.file_name().unwrap().to_str().unwrap());
+        let _alleles_name = format!("{}", self.alleles.file_name().unwrap().to_str().unwrap());
         let index = {
             Command::new("minimap2")
                 .arg("-d")
@@ -47,7 +47,7 @@ impl Caller {
         fs::write("alignment.sam", stdout).expect("Unable to write file");
 
         //sort and convert the sam to bam
-        let sort = {
+        let _sort = {
             Command::new("samtools")
                 .arg("sort")
                 .arg("alignment.sam")
