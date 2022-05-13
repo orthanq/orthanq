@@ -1,5 +1,5 @@
 use crate::calling::haplotypes::{
-    AlleleFreqDist, HaplotypeCalls, HaplotypeVariants, KallistoEstimate,
+    AlleleFreqDist, GenotypesLoci, HaplotypeCalls, HaplotypeVariants, KallistoEstimate,
 };
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb};
@@ -8,6 +8,7 @@ use derefable::Derefable;
 use derive_new::new;
 use ordered_float::NotNan;
 use statrs::function::beta::ln_beta;
+use std::collections::BTreeMap;
 use std::{collections::HashMap, mem};
 
 pub(crate) type AlleleFreq = NotNan<f64>;
@@ -86,7 +87,7 @@ impl model::Marginal for Marginal {
 #[derive(Debug, new)]
 pub(crate) struct Data {
     pub kallisto_estimates: Vec<KallistoEstimate>,
-    pub haplotype_variants: HaplotypeVariants,
+    pub variant_matrix: GenotypesLoci,
     pub haplotype_calls: HaplotypeCalls,
 }
 
@@ -145,9 +146,10 @@ impl Likelihood {
     ) -> LogProb {
         // TODO compute likelihood based on Varlociraptor VAFs.
         // Let us postpone this until we have a working version with kallisto only.
-        let variant_matrix: Vec<(BitVec, BitVec)> =
-            data.haplotype_variants.values().cloned().collect();
+        let variant_matrix: Vec<(BitVec, BitVec)> = data.variant_matrix.values().cloned().collect();
+        //let variant_matrix = data.variant_matrix;
         let variant_calls: Vec<AlleleFreqDist> = data.haplotype_calls.values().cloned().collect();
+        dbg!(&variant_matrix.len());
         variant_matrix
             .iter()
             .zip(variant_calls.iter())
