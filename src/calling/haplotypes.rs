@@ -31,6 +31,7 @@ impl Caller {
         // Step 1: obtain kallisto estimates.
         //obtain the varlociraptor calls.
         let haplotype_calls = HaplotypeCalls::new(&mut self.haplotype_calls)?;
+        dbg!(&haplotype_calls.len());
         //extract the filtered variant IDs according to read_depths > 0, afd field is not empty and prob_absent <= 0.1.
         let filtered_ids: Vec<VariantID> = haplotype_calls.keys().cloned().collect();
         dbg!(&filtered_ids.len());
@@ -42,7 +43,6 @@ impl Caller {
         let vals: Vec<BTreeMap<String, (bool, bool)>> =
             haplotype_variants.values().cloned().collect();
         let haplotypes: Vec<String> = vals[0].keys().cloned().collect();
-        dbg!(&haplotypes);
 
         //create the KallistoEstimates struct with pre-filtered haplotypes.
         let kallisto_estimates = KallistoEstimates::new(
@@ -55,56 +55,36 @@ impl Caller {
         //collect the names of final N number of haplotypes according to --max-haplotypes
         let final_haplotypes: Vec<String> =
             kallisto_estimates.keys().map(|x| x.to_string()).collect();
-        dbg!(&final_haplotypes);
-
-        //removing the variants with filtered variant IDs coming from variant call matrix
-        //haplotype_variants.retain(|k, v| filtered_ids.contains(&k));
-        dbg!(&haplotype_variants.len());
 
         //Create the GenotypesLoci struct that contains variants, genotypes and loci information.
         let variant_matrix = GenotypesLoci::new(&haplotype_variants, &final_haplotypes).unwrap();
-        let variant_matrix_tup: Vec<_> = variant_matrix.values().cloned().collect();
-        dbg!(&variant_matrix_tup.len());
-
+        dbg!(&variant_matrix.len());
         // Step 2: setup model.
         let model = Model::new(
             Likelihood::new(self.use_evidence.clone()),
             Prior::new(),
             Posterior::new(),
         );
-        dbg!(&model);
-        //let universe = HaplotypeFractions::likely(&kallisto_estimates);
         let data = Data::new(
             kallisto_estimates.values().cloned().collect(),
             variant_matrix,
             haplotype_calls,
         );
-        dbg!(&data);
         // Step 3: calculate posteriors.
         //let m = model.compute(universe, &data);
         dbg!(&final_haplotypes.len());
         let m = model.compute_from_marginal(&Marginal::new(final_haplotypes.len()), &data);
         let posterior_output = m.event_posteriors();
         //add variant query and probabilities to the outout table for each event
-        let variant_matrix: Vec<(BitVec, BitVec)> = data.variant_matrix.values().cloned().collect();
-        dbg!(&variant_matrix);
+        //let variant_matrix: Vec<(BitVec, BitVec)> = data.variant_matrix.values().cloned().collect();
+        //dbg!(&variant_matrix);
         let variant_calls: Vec<AlleleFreqDist> = data.haplotype_calls.values().cloned().collect();
-
-        //for output table, filter for events in the posteriors that contain either 0.0 or 1.0.
-        // let filtered_posterior: Vec<_> = posterior
-        //     .filter(|(fractions, _)| {
-        //         !fractions.contains(&NotNan::new(0.00).unwrap())
-        //             | !fractions.contains(&NotNan::new(1.00).unwrap())
-        //     })
-        //     .collect();
-
-        let mut event_queries: Vec<BTreeMap<i64, (AlleleFreq, LogProb)>> = Vec::new();
+        let genotype_loci_matrix = data.variant_matrix;
+        let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
         posterior_output.for_each(|(fractions, _)| {
-            let f_num = fractions.len();
-            let mut vaf_queries: BTreeMap<i64, (AlleleFreq, LogProb)> = BTreeMap::new();
-            let mut variant_num = 0;
-            variant_matrix.iter().zip(variant_calls.iter()).for_each(
-                |((genotypes, covered), afd)| {
+            let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
+            genotype_loci_matrix.iter().zip(variant_calls.iter()).for_each(
+                |((variant_id,(genotypes, covered)), afd)| {
                     let mut denom = NotNan::new(1.0).unwrap();
                     let mut vaf_sum = NotNan::new(0.0).unwrap();
                     let mut counter = 0;
@@ -124,10 +104,12 @@ impl Caller {
                     vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
                         / NotNan::new(100.0).unwrap();
                     let answer = afd.vaf_query(&vaf_sum);
-                    if counter > 0 && counter < f_num {
-                        vaf_queries.insert(variant_num, (vaf_sum, answer));
+                    if counter > 0 {
+                        vaf_queries.insert(*variant_id, (vaf_sum, answer));
                     }
-                    variant_num += 1;
+                    dbg!(&variant_id);
+                    dbg!(&vaf_sum);
+                    dbg!(&answer);
                 },
             );
             event_queries.push(vaf_queries);
@@ -141,7 +123,7 @@ impl Caller {
         headers.extend(final_haplotypes);
         let variant_names = event_queries[0]
             .keys()
-            .map(|key| format!("{}{}", "variant", key))
+            .map(|key| format!("{:?}",key))
             .collect::<Vec<String>>();
         headers.extend(variant_names); //add variant names as separate columns
         wtr.write_record(&headers)?;
@@ -170,7 +152,6 @@ impl Caller {
         haplotype_frequencies
             .iter()
             .for_each(|frequency| format_freqs(*frequency, &mut records));
-
         //add vaf queries and probabilities for the first event to the output table
         let queries: Vec<(AlleleFreq, LogProb)> = event_queries
             .iter()
@@ -190,7 +171,7 @@ impl Caller {
         wtr.write_record(records)?;
 
         //write the rest of the records
-        posterior.zip(event_queries.iter()).for_each(
+        posterior.zip(event_queries.iter().skip(1)).for_each(
             |((haplotype_frequencies, density), queries)| {
                 let mut records = Vec::new();
                 let odds = (density - best_density).exp();
@@ -488,7 +469,11 @@ impl HaplotypeCalls {
         for record_result in haplotype_calls.records() {
             let record = record_result?;
             let prob_absent = record.info(b"PROB_ABSENT").float().unwrap().unwrap()[0];
+            let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
+            dbg!(&variant_id);
+            dbg!(&prob_absent);
             let prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
+            dbg!(&prob_absent_prob);
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
             let read_depths = record.format(b"DP").integer().unwrap();
