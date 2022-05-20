@@ -61,6 +61,13 @@ pub enum Orthanq {
         )]
         haplotype_calls: PathBuf,
         #[structopt(
+            parse(from_os_str),
+            long = "observations",
+            required = true,
+            help = "Variant observations by Varlociraptor."
+        )]
+        observations: PathBuf,
+        #[structopt(
             default_value = "0.01",
             long = "min-norm-counts",
             help = "Minimum value for normalized Kallisto counts."
@@ -89,6 +96,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
             haplotype_counts,
             haplotype_variants,
             haplotype_calls,
+            observations,
             min_norm_counts,
             max_haplotypes,
             output,
@@ -100,6 +108,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 .haplotype_calls(bcf::Reader::from_path(&haplotype_calls)?)
                 .min_norm_counts(min_norm_counts)
                 .max_haplotypes(max_haplotypes)
+                .observations(bcf::Reader::from_path(observations)?)
                 .outcsv(output)
                 .use_evidence(use_evidence)
                 .build()

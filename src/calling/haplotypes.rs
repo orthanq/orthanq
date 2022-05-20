@@ -20,6 +20,7 @@ pub struct Caller {
     hdf5_reader: hdf5::File,
     haplotype_variants: bcf::Reader,
     haplotype_calls: bcf::Reader,
+    observations: bcf::Reader,
     min_norm_counts: f64,
     max_haplotypes: i64,
     outcsv: Option<PathBuf>,
@@ -35,6 +36,10 @@ impl Caller {
         //extract the filtered variant IDs according to read_depths > 0, afd field is not empty and prob_absent <= 0.1.
         let filtered_ids: Vec<VariantID> = haplotype_calls.keys().cloned().collect();
         dbg!(&filtered_ids.len());
+
+        //observations
+        let filtered_ids = observe_variants(&mut self.observations, &filtered_ids).unwrap();
+
         //filter the candidate variants and retain only the selected haplotypes.
         let haplotype_variants =
             HaplotypeVariants::new(&mut self.haplotype_variants, &filtered_ids)?;
@@ -83,8 +88,10 @@ impl Caller {
         let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
         posterior_output.for_each(|(fractions, _)| {
             let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
-            genotype_loci_matrix.iter().zip(variant_calls.iter()).for_each(
-                |((variant_id,(genotypes, covered)), afd)| {
+            genotype_loci_matrix
+                .iter()
+                .zip(variant_calls.iter())
+                .for_each(|((variant_id, (genotypes, covered)), afd)| {
                     let mut denom = NotNan::new(1.0).unwrap();
                     let mut vaf_sum = NotNan::new(0.0).unwrap();
                     let mut counter = 0;
@@ -107,11 +114,7 @@ impl Caller {
                     if counter > 0 {
                         vaf_queries.insert(*variant_id, (vaf_sum, answer));
                     }
-                    dbg!(&variant_id);
-                    dbg!(&vaf_sum);
-                    dbg!(&answer);
-                },
-            );
+                });
             event_queries.push(vaf_queries);
         });
         // Step 4: print TSV table with results
@@ -123,7 +126,7 @@ impl Caller {
         headers.extend(final_haplotypes);
         let variant_names = event_queries[0]
             .keys()
-            .map(|key| format!("{:?}",key))
+            .map(|key| format!("{:?}", key))
             .collect::<Vec<String>>();
         headers.extend(variant_names); //add variant names as separate columns
         wtr.write_record(&headers)?;
@@ -250,10 +253,6 @@ impl KallistoEstimates {
                 / count as f64;
             let std = variance.sqrt();
             let t = std / m;
-            dbg!(&seqname);
-            dbg!(&std);
-            dbg!(&m);
-            dbg!(&t);
             //retrieval of mle
             let mle_dataset = hdf5_reader.dataset("est_counts")?.read_1d::<f64>()?;
             let mle_norm = mle_dataset / &seq_length; //normalized mle counts by length
@@ -345,8 +344,6 @@ impl HaplotypeVariants {
                 for (index, haplotype) in header.samples().iter().enumerate() {
                     let haplotype_name = str::from_utf8(haplotype).unwrap().to_string();
                     for gta in gts.get(index).iter() {
-                        //dbg!(&gta);
-                        //dbg!(&locus);
                         matrices.insert(
                             haplotype_name.clone(),
                             ((*gta == Unphased(1)), (loci[index] == &[1])),
@@ -455,7 +452,6 @@ impl GenotypesLoci {
             });
             variant_matrix.insert(*variant_id, (haplotype_variants_gt, haplotype_variants_c));
         });
-        dbg!(&variant_matrix);
         Ok(GenotypesLoci(variant_matrix))
     }
 }
@@ -470,10 +466,7 @@ impl HaplotypeCalls {
             let record = record_result?;
             let prob_absent = record.info(b"PROB_ABSENT").float().unwrap().unwrap()[0];
             let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
-            dbg!(&variant_id);
-            dbg!(&prob_absent);
             let prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
-            dbg!(&prob_absent_prob);
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
             let read_depths = record.format(b"DP").integer().unwrap();
@@ -492,4 +485,47 @@ impl HaplotypeCalls {
         }
         Ok(HaplotypeCalls(calls))
     }
+}
+
+fn observe_variants(observations: &mut bcf::Reader, filtered_ids: &Vec<VariantID>) -> Result<Vec<VariantID>> {
+    let mut fragment_variants: BTreeMap<u64, Vec<VariantID>> = BTreeMap::new();
+    for record_result in observations.records() {
+        let mut record = record_result?;
+        let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
+        if filtered_ids.contains(&VariantID(variant_id)) {
+            dbg!(&variant_id);
+            let read_observations =
+                varlociraptor::calling::variants::preprocessing::read_observations(&mut record)
+                    .unwrap();
+            let read_observation = &read_observations.pileup.read_observations();
+            read_observation.iter().for_each(|read| {
+                if read.prob_alt > read.prob_ref {
+                    let mut value = vec![VariantID(variant_id)];
+                    if fragment_variants.get(&read.fragment_id.unwrap()) == None {
+                        fragment_variants.insert(read.fragment_id.unwrap(), vec![]);
+                    }
+                    let mut existing = fragment_variants
+                        .get(&read.fragment_id.unwrap())
+                        .unwrap()
+                        .clone();
+                    value.append(&mut existing);
+                    let value = value.into_iter().unique().collect();
+                    fragment_variants.insert(read.fragment_id.unwrap(), value);
+                }
+            })
+        }
+    }
+    dbg!(&fragment_variants.len());
+    fragment_variants.retain(|_, v| v.len() >= 2);
+    dbg!(&fragment_variants.len());
+    dbg!(&fragment_variants);
+    //todo: according to k
+
+    let mut selected_variants: Vec<VariantID> = Vec::new();
+    fragment_variants.iter().for_each(|(_,v)| selected_variants.extend(v));
+    dbg!(&selected_variants);
+    let final_variants: Vec<VariantID> = selected_variants.into_iter().unique().collect();
+    dbg!(&final_variants.len());
+    dbg!(&final_variants);
+    Ok(final_variants)
 }

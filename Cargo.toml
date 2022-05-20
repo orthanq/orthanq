@@ -25,7 +25,7 @@ statrs = "0.15"
 anyhow = "1.0"
 derefable = "0.1"
 hdf5 = "0.8"
-varlociraptor = "4.11.3"
+varlociraptor = { git = "https://github.com/varlociraptor/varlociraptor.git", branch = "feat/report-read-ids"}
 bio = { git = "https://github.com/huzuner/rust-bio", rev = "2dd2dce"}
 approx = "0.5.1"
 derive_deref = "1.1.1"
