@@ -29,41 +29,39 @@ pub struct Caller {
 
 impl Caller {
     pub fn call(&mut self) -> Result<()> {
-        // Step 1: obtain kallisto estimates.
-        //obtain the varlociraptor calls.
+        // Step 1: obtain estimates from kallisto and varlociraptor.
+        //1) obtain Kallisto estimates (1st horizontal evidence, 1st shortlist of haplotypes)
+        let kallisto_estimates = KallistoEstimates::new(&self.hdf5_reader, self.min_norm_counts)?;
+        dbg!(&kallisto_estimates);
+
+        //2) obtain varlociraptor calls according to criteria:
+        //read_depths > 0, afd field is not empty and prob_absent <= 0.1.
         let haplotype_calls = HaplotypeCalls::new(&mut self.haplotype_calls)?;
-        dbg!(&haplotype_calls.len());
-        //extract the filtered variant IDs according to read_depths > 0, afd field is not empty and prob_absent <= 0.1.
-        let filtered_ids: Vec<VariantID> = haplotype_calls.keys().cloned().collect();
-        dbg!(&filtered_ids.len());
 
-        //observations
-        let filtered_ids = observe_variants(&mut self.observations, &filtered_ids).unwrap();
+        //collect the variant IDs from the varlociraptor calls.
+        let variant_ids: Vec<VariantID> = haplotype_calls.keys().cloned().collect();
 
-        //filter the candidate variants and retain only the selected haplotypes.
-        let haplotype_variants =
-            HaplotypeVariants::new(&mut self.haplotype_variants, &filtered_ids)?;
-        dbg!(&haplotype_variants.len());
-        //collect the haplotype names for the creation of KallistoEstimates with only the selected haplotypes.
-        let vals: Vec<BTreeMap<String, (bool, bool)>> =
-            haplotype_variants.values().cloned().collect();
-        let haplotypes: Vec<String> = vals[0].keys().cloned().collect();
-
-        //create the KallistoEstimates struct with pre-filtered haplotypes.
-        let kallisto_estimates = KallistoEstimates::new(
-            &self.hdf5_reader,
-            self.min_norm_counts,
-            self.max_haplotypes,
+        //3) collect the candidate variants and haplotypes (2nd horizontal evidence, 2nd shortlist of haplotypes)
+        let haplotypes: Vec<Haplotype> = kallisto_estimates.keys().cloned().collect();
+        let haplotype_variants = HaplotypeVariants::new(
+            &mut self.observations,
+            &mut self.haplotype_variants,
+            &variant_ids,
             &haplotypes,
         )?;
+        //4) collect the 2nd shortlisted haplotype names.
+        let (_, haplotypes_gt_c) = haplotype_variants.iter().next().unwrap();
+        let haplotypes: Vec<Haplotype> = haplotypes_gt_c.keys().cloned().collect();
+        //5) finalize the Kallisto estimates struct to contain only thee shortlisted haplotypes and
+        //select top N haplotypes according to --max-haplotypes N.
+        let kallisto_estimates = kallisto_estimates
+            .select_haplotypes(haplotypes, self.max_haplotypes)
+            .unwrap();
         dbg!(&kallisto_estimates);
-        //collect the names of final N number of haplotypes according to --max-haplotypes
-        let final_haplotypes: Vec<String> =
-            kallisto_estimates.keys().map(|x| x.to_string()).collect();
-
-        //Create the GenotypesLoci struct that contains variants, genotypes and loci information.
-        let variant_matrix = GenotypesLoci::new(&haplotype_variants, &final_haplotypes).unwrap();
-        dbg!(&variant_matrix.len());
+        let top_n_haplotypes: Vec<Haplotype> = kallisto_estimates.keys().cloned().collect();
+        //6) create the GenotypesLoci struct that contains variants, genotypes and loci information,
+        //together with only selected top N haplotypes from the previous step.
+        let variant_matrix = GenotypesLoci::new(&haplotype_variants, &top_n_haplotypes).unwrap();
         // Step 2: setup model.
         let model = Model::new(
             Likelihood::new(self.use_evidence.clone()),
@@ -77,12 +75,10 @@ impl Caller {
         );
         // Step 3: calculate posteriors.
         //let m = model.compute(universe, &data);
-        dbg!(&final_haplotypes.len());
-        let m = model.compute_from_marginal(&Marginal::new(final_haplotypes.len()), &data);
+        let m = model.compute_from_marginal(&Marginal::new(top_n_haplotypes.len()), &data);
         let posterior_output = m.event_posteriors();
+
         //add variant query and probabilities to the outout table for each event
-        //let variant_matrix: Vec<(BitVec, BitVec)> = data.variant_matrix.values().cloned().collect();
-        //dbg!(&variant_matrix);
         let variant_calls: Vec<AlleleFreqDist> = data.haplotype_calls.values().cloned().collect();
         let genotype_loci_matrix = data.variant_matrix;
         let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
@@ -123,7 +119,9 @@ impl Caller {
         // with each column after the first showing the fraction of the respective haplotype
         let mut wtr = csv::Writer::from_path(self.outcsv.as_ref().unwrap())?;
         let mut headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
-        headers.extend(final_haplotypes);
+        let top_n_haplotypes_str: Vec<String> =
+            top_n_haplotypes.iter().map(|h| h.to_string()).collect();
+        headers.extend(top_n_haplotypes_str);
         let variant_names = event_queries[0]
             .keys()
             .map(|key| format!("{:?}", key))
@@ -208,18 +206,13 @@ pub(crate) struct KallistoEstimate {
     pub dispersion: NotNan<f64>,
 }
 
-#[derive(Debug, Clone, Derefable)]
+#[derive(Debug, Clone, Derefable, DerefMut)]
 pub(crate) struct KallistoEstimates(#[deref] BTreeMap<Haplotype, KallistoEstimate>);
 
 impl KallistoEstimates {
     /// Generate new instance.
-    pub(crate) fn new(
-        hdf5_reader: &hdf5::File,
-        min_norm_counts: f64,
-        max_haplotypes: i64,
-        haplotypes: &Vec<String>,
-    ) -> Result<Self> {
-        let seqnames = Self::filter_seqnames(hdf5_reader, min_norm_counts, &haplotypes)?;
+    pub(crate) fn new(hdf5_reader: &hdf5::File, min_norm_counts: f64) -> Result<Self> {
+        let seqnames = Self::filter_seqnames(hdf5_reader, min_norm_counts)?;
         let ids = hdf5_reader
             .dataset("aux/ids")?
             .read_1d::<hdf5::types::FixedAscii<255>>()?;
@@ -265,13 +258,15 @@ impl KallistoEstimates {
                 },
             );
         }
-        let kallisto_estimates = KallistoEstimates(estimates);
-        Self::select_haplotypes(kallisto_estimates, max_haplotypes)
+        Ok(KallistoEstimates(estimates))
     }
 
     //Return top N estimates according to --max-haplotypes
-    fn select_haplotypes(self, max_haplotypes: i64) -> Result<Self> {
-        let mut estimates_vec: Vec<(&Haplotype, &KallistoEstimate)> = self.iter().collect();
+    fn select_haplotypes(self, haplotypes: Vec<Haplotype>, max_haplotypes: i64) -> Result<Self> {
+        let mut kallisto_estimates = self.clone();
+        kallisto_estimates.retain(|k, _| haplotypes.contains(&k));
+        let mut estimates_vec: Vec<(&Haplotype, &KallistoEstimate)> =
+            kallisto_estimates.iter().collect();
         estimates_vec.sort_by(|a, b| b.1.count.cmp(&a.1.count));
         if estimates_vec.len() >= max_haplotypes.try_into().unwrap() {
             let topn = estimates_vec[0..max_haplotypes as usize].to_vec();
@@ -285,36 +280,18 @@ impl KallistoEstimates {
         }
     }
     //Return a vector of filtered seqnames according to --min-norm-counts.
-    fn filter_seqnames(
-        hdf5_reader: &hdf5::File,
-        min_norm_counts: f64,
-        haplotypes: &Vec<String>,
-    ) -> Result<Vec<String>> {
+    fn filter_seqnames(hdf5_reader: &hdf5::File, min_norm_counts: f64) -> Result<Vec<String>> {
         let ids = hdf5_reader
             .dataset("aux/ids")?
-            .read_1d::<hdf5::types::FixedAscii<255>>()?;
-        let mut haplotype_indices = Vec::new();
-        ids.iter().enumerate().for_each(|(index, id)| {
-            if haplotypes.contains(&id.as_str().to_string()) {
-                haplotype_indices.push(index as usize);
-            }
-        });
+            .read_1d::<hdf5::types::FixedAscii<255>>()?;        
         let est_counts = hdf5_reader.dataset("est_counts")?.read_1d::<f64>()?;
         let seq_length = hdf5_reader.dataset("aux/lengths")?.read_1d::<f64>()?; //these two variables arrays have the same length.
         let norm_counts = est_counts / seq_length;
-        let mut norm_counts_filtered = Vec::new();
-        haplotype_indices
-            .iter()
-            .for_each(|i| norm_counts_filtered.push(norm_counts[*i]));
-        let mut filtered_indices = Vec::new();
-        for (num, index) in norm_counts_filtered.iter().zip(haplotype_indices) {
-            if num > &min_norm_counts {
-                filtered_indices.push(index);
-            }
-        }
         let mut filtered_haplotypes: Vec<String> = Vec::new();
-        for i in filtered_indices {
-            filtered_haplotypes.push(ids[i].to_string());
+        for (num, id) in norm_counts.iter().zip(ids.iter()) {
+            if num > &min_norm_counts {
+                filtered_haplotypes.push(id.to_string());
+            }
         }
         Ok(filtered_haplotypes)
     }
@@ -323,75 +300,135 @@ impl KallistoEstimates {
 #[derive(Derefable, Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, new)]
 pub(crate) struct VariantID(#[deref] i32);
 
-#[derive(Derefable, DerefMut, Debug, Clone, PartialEq, Eq, PartialOrd)]
-pub(crate) struct HaplotypeVariants(#[deref] BTreeMap<VariantID, BTreeMap<String, (bool, bool)>>);
+#[derive(Derefable, Debug, Clone, PartialEq, Eq, PartialOrd)]
+pub(crate) struct HaplotypeVariants(
+    #[deref] BTreeMap<VariantID, BTreeMap<Haplotype, (bool, bool)>>,
+);
 
 impl HaplotypeVariants {
     pub(crate) fn new(
+        observations: &mut bcf::Reader,
         haplotype_variants: &mut bcf::Reader,
         filtered_ids: &Vec<VariantID>,
+        haplotypes: &Vec<Haplotype>,
     ) -> Result<Self> {
+        //create two maps: 1) a variantID, fragments map and a variantID, haplotypes map.
+        let mut variants_fragments: BTreeMap<VariantID, Vec<u64>> = BTreeMap::new();
+        let mut variants_haplotypes: BTreeMap<VariantID, Vec<Haplotype>> = BTreeMap::new();
         let mut variant_records = BTreeMap::new();
-        for record_result in haplotype_variants.records() {
-            let record = record_result?;
-            let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
-            if filtered_ids.contains(&VariantID(variant_id)) {
-                let header = record.header();
-                let gts = record.genotypes()?; //genotypes of all samples
-                let loci = record.format(b"C").integer().unwrap();
-                let mut matrices = BTreeMap::new();
-                //let mut all_haplotypes: Vec<String> = Vec::new();
-                for (index, haplotype) in header.samples().iter().enumerate() {
-                    let haplotype_name = str::from_utf8(haplotype).unwrap().to_string();
-                    for gta in gts.get(index).iter() {
-                        matrices.insert(
-                            haplotype_name.clone(),
-                            ((*gta == Unphased(1)), (loci[index] == &[1])),
-                        );
+        for record_result in observations.records() {
+            let mut record = record_result?;
+            let variant_id: VariantID = VariantID(String::from_utf8(record.id())?.parse().unwrap());
+            if filtered_ids.contains(&variant_id) {
+                let read_observations =
+                    varlociraptor::calling::variants::preprocessing::read_observations(&mut record)
+                        .unwrap();
+                let read_observation = &read_observations.pileup.read_observations();
+                read_observation.iter().for_each(|read| {
+                    if read.prob_alt > read.prob_ref {
+                        variants_fragments.entry(variant_id).or_insert(vec![]);
+                        let mut fragments = variants_fragments.get(&variant_id).unwrap().clone();
+                        fragments.push(read.fragment_id.unwrap());
+                        variants_fragments.insert(variant_id, fragments); //overwrite the existing key-value pair with the key-value update.
                     }
-                }
-                variant_records.insert(VariantID(variant_id), matrices);
+                })
             }
         }
-        let mut variant_records = HaplotypeVariants(variant_records);
+        for record_result in haplotype_variants.records() {
+            let record = record_result?;
+            let variant_id: VariantID = VariantID(String::from_utf8(record.id())?.parse().unwrap());
+            if filtered_ids.contains(&variant_id) {
+                let header = record.header();
+                let gts = record.genotypes()?;
+                let loci = record.format(b"C").integer().unwrap();
+                let mut matrices = BTreeMap::new();
+
+                for (index, haplotype) in header.samples().iter().enumerate() {
+                    let haplotype = Haplotype(str::from_utf8(haplotype).unwrap().to_string());
+                    if haplotypes.contains(&haplotype) {
+                        for gta in gts.get(index).iter() {
+                            matrices.insert(
+                                haplotype.clone(),
+                                ((*gta == Unphased(1)), (loci[index] == &[1])),
+                            );
+                            if *gta == Unphased(1) {
+                                variants_haplotypes.entry(variant_id).or_insert(vec![]);
+                                let mut haplotypes =
+                                    variants_haplotypes.get(&variant_id).unwrap().clone();
+                                haplotypes.push(haplotype.clone());
+                                variants_haplotypes.insert(variant_id, haplotypes);
+                            }
+                        }
+                    }
+                }
+                variant_records.insert(variant_id, matrices);
+            }
+        }
+
+        //count the number of variants each fragment bears.
+        let mut fragment_count: BTreeMap<u64, u64> = BTreeMap::new();
+        variants_fragments.iter().for_each(|(_, fragments)| {
+            fragments.iter().for_each(|fragment| {
+                fragment_count.entry(*fragment).or_insert(0);
+                let mut count = fragment_count.get(&fragment).unwrap().clone();
+                count += 1;
+                fragment_count.insert(*fragment, count);
+            });
+        });
+        let k = 50; // should be added to the cli.
+        let mut filtered_haplotypes: Vec<Haplotype> = Vec::new();
+        variants_haplotypes
+            .iter()
+            .for_each(|(variant, haplotypes)| {
+                let fragments = variants_fragments.get(&variant).unwrap();
+                if fragments.len() > k {
+                    fragments.iter().for_each(|fragment| {
+                        if fragment_count.get(&fragment).unwrap() >= &2 {
+                            filtered_haplotypes.extend(haplotypes.clone());
+                        }
+                    })
+                }
+            });
+        let final_haplotypes: Vec<Haplotype> = filtered_haplotypes.into_iter().unique().collect();
         //filter both for the selected haplotypes and the variants.
-        HaplotypeVariants::filter_haplotypes(&mut variant_records, &filtered_ids).unwrap();
-        Ok(variant_records)
+        let mut variant_records = HaplotypeVariants(variant_records);
+        let filtered_variant_records = HaplotypeVariants::filter_haplotypes(
+            &mut variant_records,
+            &filtered_ids,
+            &final_haplotypes,
+        )
+        .unwrap();
+        Ok(filtered_variant_records)
     }
     fn filter_haplotypes(
         haplotype_variants: &mut Self,
         filtered_variants: &Vec<VariantID>,
+        filtered_haps: &Vec<Haplotype>,
     ) -> Result<Self> {
         let mut filtered_haplotypes: Vec<String> = Vec::new();
         //the loop for discovering haplotype names that bear the filtered variants.
         for (variant, genotypes_loci_map) in haplotype_variants.iter() {
             for (haplotype, (genotype, _)) in genotypes_loci_map {
-                if filtered_variants.contains(variant) && *genotype {
+                if filtered_variants.contains(variant)
+                    && *genotype
+                    && filtered_haps.contains(haplotype)
+                {
                     filtered_haplotypes.push(haplotype.to_string());
                 }
             }
         }
         //remove the duplicates.
         let filtered_haplotypes: Vec<String> = filtered_haplotypes.into_iter().unique().collect();
-        dbg!(&filtered_haplotypes.len());
-        //collect indices of filtered_haplotypes.
+        
+        //1) collect the first record of haplotype_variants and collect the indices of haplotypes for further filtering in the following.
         let mut haplotype_indices: Vec<usize> = Vec::new();
-        //1) collect the first record of haplotype_variants.
-        let mut bmaptree = BTreeMap::new();
-        for (_, bmap) in haplotype_variants.iter() {
-            for (k, v) in bmap.iter() {
-                bmaptree.insert(k, v);
-            }
-            break;
-        }
-        dbg!(&haplotype_variants.len());
-        //2) then collect the indices of haplotypes for further filtering in the following.
-        bmaptree.iter().enumerate().for_each(|(i, (haplotype, _))| {
-            if filtered_haplotypes.contains(haplotype) {
-                haplotype_indices.push(i)
-            }
-        });
-        dbg!(&haplotype_indices.len());
+        if let Some((_, bmap)) = haplotype_variants.iter().next() {
+            bmap.iter().enumerate().for_each(|(i, (haplotype, _))| {
+                if filtered_haplotypes.contains(haplotype) {
+                    haplotype_indices.push(i)
+                }
+            });
+        };
         //create the filtered matrix with the indices of filtered haplotypes.
         let mut new_variants = BTreeMap::new();
         haplotype_variants.iter().for_each(|(variant_id, bmap)| {
@@ -409,7 +446,6 @@ impl HaplotypeVariants {
                 new_variants.insert(*variant_id, matrix_map);
             }
         });
-        dbg!(&new_variants.len());
         Ok(HaplotypeVariants(new_variants))
     }
 }
@@ -436,7 +472,7 @@ pub(crate) struct GenotypesLoci(#[deref] BTreeMap<VariantID, (BitVec, BitVec)>);
 impl GenotypesLoci {
     pub(crate) fn new(
         haplotype_variants: &HaplotypeVariants,
-        haplotypes: &Vec<String>,
+        haplotypes: &Vec<Haplotype>,
     ) -> Result<Self> {
         let mut variant_matrix = BTreeMap::new();
         haplotype_variants.iter().for_each(|(variant_id, bmap)| {
@@ -465,7 +501,6 @@ impl HaplotypeCalls {
         for record_result in haplotype_calls.records() {
             let record = record_result?;
             let prob_absent = record.info(b"PROB_ABSENT").float().unwrap().unwrap()[0];
-            let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
             let prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
@@ -485,47 +520,4 @@ impl HaplotypeCalls {
         }
         Ok(HaplotypeCalls(calls))
     }
-}
-
-fn observe_variants(observations: &mut bcf::Reader, filtered_ids: &Vec<VariantID>) -> Result<Vec<VariantID>> {
-    let mut fragment_variants: BTreeMap<u64, Vec<VariantID>> = BTreeMap::new();
-    for record_result in observations.records() {
-        let mut record = record_result?;
-        let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
-        if filtered_ids.contains(&VariantID(variant_id)) {
-            dbg!(&variant_id);
-            let read_observations =
-                varlociraptor::calling::variants::preprocessing::read_observations(&mut record)
-                    .unwrap();
-            let read_observation = &read_observations.pileup.read_observations();
-            read_observation.iter().for_each(|read| {
-                if read.prob_alt > read.prob_ref {
-                    let mut value = vec![VariantID(variant_id)];
-                    if fragment_variants.get(&read.fragment_id.unwrap()) == None {
-                        fragment_variants.insert(read.fragment_id.unwrap(), vec![]);
-                    }
-                    let mut existing = fragment_variants
-                        .get(&read.fragment_id.unwrap())
-                        .unwrap()
-                        .clone();
-                    value.append(&mut existing);
-                    let value = value.into_iter().unique().collect();
-                    fragment_variants.insert(read.fragment_id.unwrap(), value);
-                }
-            })
-        }
-    }
-    dbg!(&fragment_variants.len());
-    fragment_variants.retain(|_, v| v.len() >= 2);
-    dbg!(&fragment_variants.len());
-    dbg!(&fragment_variants);
-    //todo: according to k
-
-    let mut selected_variants: Vec<VariantID> = Vec::new();
-    fragment_variants.iter().for_each(|(_,v)| selected_variants.extend(v));
-    dbg!(&selected_variants);
-    let final_variants: Vec<VariantID> = selected_variants.into_iter().unique().collect();
-    dbg!(&final_variants.len());
-    dbg!(&final_variants);
-    Ok(final_variants)
 }
