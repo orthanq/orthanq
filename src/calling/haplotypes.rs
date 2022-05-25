@@ -283,7 +283,7 @@ impl KallistoEstimates {
     fn filter_seqnames(hdf5_reader: &hdf5::File, min_norm_counts: f64) -> Result<Vec<String>> {
         let ids = hdf5_reader
             .dataset("aux/ids")?
-            .read_1d::<hdf5::types::FixedAscii<255>>()?;        
+            .read_1d::<hdf5::types::FixedAscii<255>>()?;
         let est_counts = hdf5_reader.dataset("est_counts")?.read_1d::<f64>()?;
         let seq_length = hdf5_reader.dataset("aux/lengths")?.read_1d::<f64>()?; //these two variables arrays have the same length.
         let norm_counts = est_counts / seq_length;
@@ -419,7 +419,7 @@ impl HaplotypeVariants {
         }
         //remove the duplicates.
         let filtered_haplotypes: Vec<String> = filtered_haplotypes.into_iter().unique().collect();
-        
+
         //1) collect the first record of haplotype_variants and collect the indices of haplotypes for further filtering in the following.
         let mut haplotype_indices: Vec<usize> = Vec::new();
         if let Some((_, bmap)) = haplotype_variants.iter().next() {
