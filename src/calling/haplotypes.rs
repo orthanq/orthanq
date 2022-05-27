@@ -25,6 +25,7 @@ pub struct Caller {
     max_haplotypes: i64,
     outcsv: Option<PathBuf>,
     use_evidence: String,
+    k_reads: usize,
 }
 
 impl Caller {
@@ -48,6 +49,7 @@ impl Caller {
             &mut self.haplotype_variants,
             &variant_ids,
             &haplotypes,
+            &self.k_reads,
         )?;
         //4) collect the 2nd shortlisted haplotype names.
         let (_, haplotypes_gt_c) = haplotype_variants.iter().next().unwrap();
@@ -311,6 +313,7 @@ impl HaplotypeVariants {
         haplotype_variants: &mut bcf::Reader,
         filtered_ids: &Vec<VariantID>,
         haplotypes: &Vec<Haplotype>,
+        k_reads: &usize,
     ) -> Result<Self> {
         //create two maps: 1) a variantID, fragments map and a variantID, haplotypes map.
         let mut variants_fragments: BTreeMap<VariantID, Vec<u64>> = BTreeMap::new();
@@ -375,13 +378,12 @@ impl HaplotypeVariants {
                 fragment_count.insert(*fragment, count);
             });
         });
-        let k = 50; // should be added to the cli.
         let mut filtered_haplotypes: Vec<Haplotype> = Vec::new();
         variants_haplotypes
             .iter()
             .for_each(|(variant, haplotypes)| {
                 let fragments = variants_fragments.get(&variant).unwrap();
-                if fragments.len() > k {
+                if fragments.len() > *k_reads {
                     fragments.iter().for_each(|fragment| {
                         if fragment_count.get(&fragment).unwrap() >= &2 {
                             filtered_haplotypes.extend(haplotypes.clone());

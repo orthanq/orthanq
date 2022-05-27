@@ -10,7 +10,8 @@ use structopt::StructOpt;
     name = "orthanq",
     about = "A haplotype caller for HLA typing and/or viral strain quantification.",
     usage = "orthanq --haplotype-counts counts.hdf5 --haplotype-variants variants.vcf \
-     --haplotype-calls calls.bcf --min-norm-counts 0.01 --max-haplotypes 3 --output results.tsv",
+     --haplotype-calls calls.bcf --observations observations.bcf --k-reads 20 \
+     --min-norm-counts 0.01 --max-haplotypes 3 --use-evidence both --output results.tsv",
     setting = structopt::clap::AppSettings::ColoredHelp,
 )]
 pub enum Orthanq {
@@ -86,6 +87,12 @@ pub enum Orthanq {
         output: Option<PathBuf>,
         #[structopt(long, help = "Use only kallisto evidence. (for debugging purposes)")]
         use_evidence: String,
+        #[structopt(
+            default_value = "20",
+            long = "k-reads",
+            help = "Plausible haplotypes are only those which are backed by at least k."
+        )]
+        k_reads: usize,
     },
 }
 
@@ -101,6 +108,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
             max_haplotypes,
             output,
             use_evidence,
+            k_reads,
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
                 .hdf5_reader(hdf5::File::open(&haplotype_counts)?)
@@ -111,6 +119,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 .observations(bcf::Reader::from_path(observations)?)
                 .outcsv(output)
                 .use_evidence(use_evidence)
+                .k_reads(k_reads)
                 .build()
                 .unwrap();
             caller.call()?;
