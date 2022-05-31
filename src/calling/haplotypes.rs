@@ -53,7 +53,7 @@ impl Caller {
             &self.k_reads,
         )?;
         //4)keep only the variants secondly filtered in haplotype_variants
-        haplotype_calls.retain(|&k, _|haplotype_variants.contains_key(&k));
+        haplotype_calls.retain(|&k, _| haplotype_variants.contains_key(&k));
 
         //5) collect the 2nd shortlisted haplotype names.
         let (_, haplotypes_gt_c) = haplotype_variants.iter().next().unwrap();
@@ -397,14 +397,11 @@ impl HaplotypeVariants {
             });
         let final_haplotypes: Vec<Haplotype> = filtered_haplotypes.into_iter().unique().collect();
         //keep only the variants of variant_fragments (bc of prob_alt>prob_ref condition)
-        variant_records.retain(|&k, _|variants_fragments.contains_key(&k));
+        variant_records.retain(|&k, _| variants_fragments.contains_key(&k));
         //filter both for the selected haplotypes and the variants.
-        let mut variant_records = HaplotypeVariants(variant_records);        
-        let filtered_variant_records = HaplotypeVariants::filter_haplotypes(
-            &mut variant_records,
-            &final_haplotypes,
-        )
-        .unwrap();
+        let mut variant_records = HaplotypeVariants(variant_records);
+        let filtered_variant_records =
+            HaplotypeVariants::filter_haplotypes(&mut variant_records, &final_haplotypes).unwrap();
         Ok(filtered_variant_records)
     }
     fn filter_haplotypes(
@@ -415,9 +412,7 @@ impl HaplotypeVariants {
         //the loop for discovering haplotype names that bear the filtered variants.
         for (_, genotypes_loci_map) in haplotype_variants.iter() {
             for (haplotype, (genotype, _)) in genotypes_loci_map {
-                if *genotype
-                    && filtered_haps.contains(haplotype)
-                {
+                if *genotype && filtered_haps.contains(haplotype) {
                     filtered_haplotypes.push(haplotype.to_string());
                 }
             }
