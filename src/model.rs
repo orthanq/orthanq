@@ -146,7 +146,6 @@ impl Likelihood {
         let variant_matrix: Vec<(BitVec, BitVec)> = data.variant_matrix.values().cloned().collect();
         //let variant_matrix = data.variant_matrix;
         let variant_calls: Vec<AlleleFreqDist> = data.haplotype_calls.values().cloned().collect();
-        dbg!(&variant_matrix.len());
         variant_matrix
             .iter()
             .zip(variant_calls.iter())
