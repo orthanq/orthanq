@@ -6,45 +6,76 @@ use derefable::Derefable;
 use derive_builder::Builder;
 use derive_deref::DerefMut;
 use derive_new::new;
-use hdf5;
 use itertools::Itertools;
 use ordered_float::NotNan;
 use rust_htslib::bcf::{self, record::GenotypeAllele::Unphased, Read};
 use std::collections::BTreeMap;
-use std::convert::TryInto;
 use std::{path::PathBuf, str};
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
 pub struct Caller {
-    hdf5_reader: hdf5::File,
     haplotype_variants: bcf::Reader,
     haplotype_calls: bcf::Reader,
     observations: bcf::Reader,
-    min_norm_counts: f64,
-    max_haplotypes: i64,
+    max_haplotypes: usize,
     outcsv: Option<PathBuf>,
-    use_evidence: String,
     k_reads: usize,
 }
 
 impl Caller {
     pub fn call(&mut self) -> Result<()> {
-        // Step 1: obtain estimates from kallisto and varlociraptor.
-        //1) obtain Kallisto estimates (1st horizontal evidence, 1st shortlist of haplotypes)
-        let kallisto_estimates = KallistoEstimates::new(&self.hdf5_reader, self.min_norm_counts)?;
-        dbg!(&kallisto_estimates);
-
+        // Step 1: obtain estimates and varlociraptor.
+        //1) loop through the different HLA loci
+        //for testing, DQA1 haplotypes
+        let haplotypes = vec![
+            "HLA:HLA21879",
+            "HLA:HLA06599",
+            "HLA:HLA00604",
+            "HLA:HLA00612",
+            "HLA:HLA00617",
+            "HLA:HLA00610",
+            "HLA:HLA02433",
+            "HLA:HLA01409",
+            "HLA:HLA14846",
+            "HLA:HLA06601",
+            "HLA:HLA06598",
+            "HLA:HLA14797",
+            "HLA:HLA01376",
+            "HLA:HLA00602",
+            "HLA:HLA00611",
+            "HLA:HLA21186",
+            "HLA:HLA06618",
+            "HLA:HLA00606",
+            "HLA:HLA00608",
+            "HLA:HLA00603",
+            "HLA:HLA01694",
+            "HLA:HLA02339",
+            "HLA:HLA00607",
+            "HLA:HLA17309",
+            "HLA:HLA00601",
+            "HLA:HLA01905",
+            "HLA:HLA00605",
+            "HLA:HLA00613",
+            "HLA:HLA00619",
+            "HLA:HLA06614",
+            "HLA:HLA02340",
+            "HLA:HLA09875",
+            "HLA:HLA19774",
+            "HLA:HLA01697",
+            "HLA:HLA06609",
+        ];
+        let haplotypes: Vec<Haplotype> = haplotypes
+            .iter()
+            .map(|haplotype| Haplotype(haplotype.to_string()))
+            .collect();
         //2) obtain varlociraptor calls according to criteria:
         //read_depths > 0, afd field is not empty and prob_absent <= 0.1.
         let mut haplotype_calls = HaplotypeCalls::new(&mut self.haplotype_calls)?;
 
         //collect the variant IDs from the varlociraptor calls.
         let variant_ids: Vec<VariantID> = haplotype_calls.keys().cloned().collect();
-        dbg!(&variant_ids.len());
-        //3) collect the candidate variants and haplotypes (2nd horizontal evidence, 2nd shortlist of haplotypes)
-        let haplotypes: Vec<Haplotype> = kallisto_estimates.keys().cloned().collect();
-        dbg!(&haplotypes);
+        //3) collect the candidate variants and haplotypes (horizontal evidence, shortlist of haplotypes)
         let haplotype_variants = HaplotypeVariants::new(
             &mut self.observations,
             &mut self.haplotype_variants,
@@ -55,30 +86,18 @@ impl Caller {
         //4)keep only the variants secondly filtered in haplotype_variants
         haplotype_calls.retain(|&k, _| haplotype_variants.contains_key(&k));
 
-        //5) collect the 2nd shortlisted haplotype names.
+        //5) finalize haplotype variants struct to contain only thee shortlisted haplotypes and
+        //select top N haplotypes according to --max-haplotypes N.
         let (_, haplotypes_gt_c) = haplotype_variants.iter().next().unwrap();
         let haplotypes: Vec<Haplotype> = haplotypes_gt_c.keys().cloned().collect();
-        //6) finalize the Kallisto estimates struct to contain only thee shortlisted haplotypes and
-        //select top N haplotypes according to --max-haplotypes N.
-        let kallisto_estimates = kallisto_estimates
-            .select_haplotypes(haplotypes, self.max_haplotypes)
-            .unwrap();
-        dbg!(&kallisto_estimates);
-        let top_n_haplotypes: Vec<Haplotype> = kallisto_estimates.keys().cloned().collect();
-        //7) create the GenotypesLoci struct that contains variants, genotypes and loci information,
+        let top_n_haplotypes = (&haplotypes[0..self.max_haplotypes]).to_vec();
+
+        //6) create the GenotypesLoci struct that contains variants, genotypes and loci information,
         //together with only selected top N haplotypes from the previous step.
         let variant_matrix = GenotypesLoci::new(&haplotype_variants, &top_n_haplotypes).unwrap();
         // Step 2: setup model.
-        let model = Model::new(
-            Likelihood::new(self.use_evidence.clone()),
-            Prior::new(),
-            Posterior::new(),
-        );
-        let data = Data::new(
-            kallisto_estimates.values().cloned().collect(),
-            variant_matrix,
-            haplotype_calls,
-        );
+        let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
+        let data = Data::new(variant_matrix, haplotype_calls);
         // Step 3: calculate posteriors.
         //let m = model.compute(universe, &data);
         let m = model.compute_from_marginal(&Marginal::new(top_n_haplotypes.len()), &data);
@@ -205,103 +224,6 @@ impl Caller {
 
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct Haplotype(#[deref] String);
-
-#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
-pub(crate) struct KallistoEstimate {
-    pub count: NotNan<f64>,
-    pub dispersion: NotNan<f64>,
-}
-
-#[derive(Debug, Clone, Derefable, DerefMut)]
-pub(crate) struct KallistoEstimates(#[deref] BTreeMap<Haplotype, KallistoEstimate>);
-
-impl KallistoEstimates {
-    /// Generate new instance.
-    pub(crate) fn new(hdf5_reader: &hdf5::File, min_norm_counts: f64) -> Result<Self> {
-        let seqnames = Self::filter_seqnames(hdf5_reader, min_norm_counts)?;
-        let ids = hdf5_reader
-            .dataset("aux/ids")?
-            .read_1d::<hdf5::types::FixedAscii<255>>()?;
-        let num_bootstraps = hdf5_reader.dataset("aux/num_bootstrap")?.read_1d::<i32>()?;
-        let seq_length = hdf5_reader.dataset("aux/lengths")?.read_1d::<f64>()?;
-        let mut estimates = BTreeMap::new();
-        for seqname in seqnames {
-            let index = ids.iter().position(|x| x.as_str() == seqname).unwrap();
-            let mut bootstraps = Vec::new();
-            for i in 0..num_bootstraps[0] {
-                let dataset = hdf5_reader.dataset(&format!("bootstrap/bs{i}", i = i))?;
-                let est_counts = dataset.read_1d::<f64>()?;
-                let norm_counts = est_counts / &seq_length;
-                let norm_counts = norm_counts[index];
-                bootstraps.push(norm_counts);
-            }
-
-            //mean
-            let sum = bootstraps.iter().sum::<f64>();
-            let count = bootstraps.len();
-            let m = sum / count as f64;
-
-            //std dev
-            let variance = bootstraps
-                .iter()
-                .map(|value| {
-                    let diff = m - (*value as f64);
-                    diff * diff
-                })
-                .sum::<f64>()
-                / count as f64;
-            let std = variance.sqrt();
-            let t = std / m;
-            //retrieval of mle
-            let mle_dataset = hdf5_reader.dataset("est_counts")?.read_1d::<f64>()?;
-            let mle_norm = mle_dataset / &seq_length; //normalized mle counts by length
-            let m = mle_norm[index];
-            estimates.insert(
-                Haplotype(seqname.clone()),
-                KallistoEstimate {
-                    dispersion: NotNan::new(t).unwrap(),
-                    count: NotNan::new(m).unwrap(),
-                },
-            );
-        }
-        Ok(KallistoEstimates(estimates))
-    }
-
-    //Return top N estimates according to --max-haplotypes
-    fn select_haplotypes(self, haplotypes: Vec<Haplotype>, max_haplotypes: i64) -> Result<Self> {
-        let mut kallisto_estimates = self.clone();
-        kallisto_estimates.retain(|k, _| haplotypes.contains(&k));
-        let mut estimates_vec: Vec<(&Haplotype, &KallistoEstimate)> =
-            kallisto_estimates.iter().collect();
-        estimates_vec.sort_by(|a, b| b.1.count.cmp(&a.1.count));
-        if estimates_vec.len() >= max_haplotypes.try_into().unwrap() {
-            let topn = estimates_vec[0..max_haplotypes as usize].to_vec();
-            let mut top_estimates = BTreeMap::new();
-            for (key, value) in topn {
-                top_estimates.insert(key.clone(), *value);
-            }
-            Ok(KallistoEstimates(top_estimates))
-        } else {
-            Ok(self)
-        }
-    }
-    //Return a vector of filtered seqnames according to --min-norm-counts.
-    fn filter_seqnames(hdf5_reader: &hdf5::File, min_norm_counts: f64) -> Result<Vec<String>> {
-        let ids = hdf5_reader
-            .dataset("aux/ids")?
-            .read_1d::<hdf5::types::FixedAscii<255>>()?;
-        let est_counts = hdf5_reader.dataset("est_counts")?.read_1d::<f64>()?;
-        let seq_length = hdf5_reader.dataset("aux/lengths")?.read_1d::<f64>()?; //these two variables arrays have the same length.
-        let norm_counts = est_counts / seq_length;
-        let mut filtered_haplotypes: Vec<String> = Vec::new();
-        for (num, id) in norm_counts.iter().zip(ids.iter()) {
-            if num > &min_norm_counts {
-                filtered_haplotypes.push(id.to_string());
-            }
-        }
-        Ok(filtered_haplotypes)
-    }
-}
 
 #[derive(Derefable, Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, new)]
 pub(crate) struct VariantID(#[deref] i32);
