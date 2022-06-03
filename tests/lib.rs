@@ -1,5 +1,5 @@
-use rust_htslib::bcf;
 use assert_approx_eq::assert_approx_eq;
+use rust_htslib::bcf;
 
 #[test]
 fn check_haplotype_fractions_pure() {
