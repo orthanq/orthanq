@@ -91,7 +91,7 @@ impl Caller {
         let (_, haplotypes_gt_c) = haplotype_variants.iter().next().unwrap();
         let haplotypes: Vec<Haplotype> = haplotypes_gt_c.keys().cloned().collect();
         let top_n_haplotypes = (&haplotypes[0..self.max_haplotypes]).to_vec();
-        
+
         //6) create the GenotypesLoci struct that contains variants, genotypes and loci information,
         //together with only selected top N haplotypes from the previous step.
         let variant_matrix = GenotypesLoci::new(&haplotype_variants, &top_n_haplotypes).unwrap();
@@ -309,9 +309,10 @@ impl HaplotypeVariants {
             .for_each(|(variant, haplotypes)| {
                 if let Some(fragments) = variants_fragments.get(&variant) {
                     if fragments.len() > *k_reads {
-                        if fragments.iter().all(|fragment| {
-                            fragment_count.get(&fragment).unwrap() >= &2
-                        }) {
+                        if fragments
+                            .iter()
+                            .all(|fragment| fragment_count.get(&fragment).unwrap() >= &2)
+                        {
                             filtered_haplotypes.extend(haplotypes.clone());
                         }
                     }
