@@ -10,6 +10,7 @@ use itertools::Itertools;
 use ordered_float::NotNan;
 use rust_htslib::bcf::{self, record::GenotypeAllele::Unphased, Read};
 use std::collections::BTreeMap;
+use std::iter::FromIterator;
 use std::{path::PathBuf, str};
 
 #[derive(Builder)]
@@ -82,6 +83,7 @@ impl Caller {
             &variant_ids,
             &haplotypes,
             &self.k_reads,
+            &self.max_haplotypes,
         )?;
         //4)keep only the variants secondly filtered in haplotype_variants
         haplotype_calls.retain(|&k, _| haplotype_variants.contains_key(&k));
@@ -90,17 +92,16 @@ impl Caller {
         //select top N haplotypes according to --max-haplotypes N.
         let (_, haplotypes_gt_c) = haplotype_variants.iter().next().unwrap();
         let haplotypes: Vec<Haplotype> = haplotypes_gt_c.keys().cloned().collect();
-        let top_n_haplotypes = (&haplotypes[0..self.max_haplotypes]).to_vec();
-
+        dbg!(&haplotypes);
         //6) create the GenotypesLoci struct that contains variants, genotypes and loci information,
         //together with only selected top N haplotypes from the previous step.
-        let variant_matrix = GenotypesLoci::new(&haplotype_variants, &top_n_haplotypes).unwrap();
+        let variant_matrix = GenotypesLoci::new(&haplotype_variants, &haplotypes).unwrap();
         // Step 2: setup model.
         let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
         let data = Data::new(variant_matrix, haplotype_calls);
         // Step 3: calculate posteriors.
         //let m = model.compute(universe, &data);
-        let m = model.compute_from_marginal(&Marginal::new(top_n_haplotypes.len()), &data);
+        let m = model.compute_from_marginal(&Marginal::new(haplotypes.len()), &data);
         let posterior_output = m.event_posteriors();
 
         //add variant query and probabilities to the outout table for each event
@@ -144,9 +145,8 @@ impl Caller {
         // with each column after the first showing the fraction of the respective haplotype
         let mut wtr = csv::Writer::from_path(self.outcsv.as_ref().unwrap())?;
         let mut headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
-        let top_n_haplotypes_str: Vec<String> =
-            top_n_haplotypes.iter().map(|h| h.to_string()).collect();
-        headers.extend(top_n_haplotypes_str);
+        let haplotypes_str: Vec<String> = haplotypes.iter().map(|h| h.to_string()).collect();
+        headers.extend(haplotypes_str);
         let variant_names = event_queries[0]
             .keys()
             .map(|key| format!("{:?}", key))
@@ -240,6 +240,7 @@ impl HaplotypeVariants {
         filtered_ids: &Vec<VariantID>,
         haplotypes: &Vec<Haplotype>,
         k_reads: &usize,
+        max_haplotypes: &usize,
     ) -> Result<Self> {
         //create two maps: 1) a variantID, fragments map and a variantID, haplotypes map.
         let mut variants_fragments: BTreeMap<VariantID, Vec<u64>> = BTreeMap::new();
@@ -319,12 +320,37 @@ impl HaplotypeVariants {
                 }
             });
         let final_haplotypes: Vec<Haplotype> = filtered_haplotypes.into_iter().unique().collect();
+        
+        //count the number of variants each haplotype bears.
+        let mut haplotype_count: BTreeMap<Haplotype, u64> = BTreeMap::new();
+        variants_haplotypes.iter().for_each(|(_, haplotypes)| {
+            haplotypes.iter().for_each(|haplotype| {
+                haplotype_count.entry(haplotype.clone()).or_insert(0);
+                let mut count = haplotype_count.get(&haplotype).unwrap().clone();
+                count += 1;
+                haplotype_count.insert(haplotype.clone(), count);
+            });
+        });
+        //subset only the haplotypes that are contained in final_haplotypes
+        let filtered_haplotype_count: BTreeMap<Haplotype, u64> = haplotype_count
+            .iter()
+            .filter(|(haplotype, _)| final_haplotypes.contains(&haplotype.clone()))
+            .map(|(haplotype,count)|(haplotype.clone(), *count))
+            .collect();
+        //sort the map and get --max-n-haplotypes
+        let mut v = Vec::from_iter(filtered_haplotype_count);
+        v.sort_by(|(_, a), (_, b)| b.cmp(&a));
+        let max_n_haplotypes: Vec<Haplotype> = v[0..*max_haplotypes]
+            .iter()
+            .map(|(haplotype, _)| haplotype.clone())
+            .collect();
+
         //keep only the variants of variant_fragments (bc of prob_alt>prob_ref condition)
         variant_records.retain(|&k, _| variants_fragments.contains_key(&k));
         //filter both for the selected haplotypes and the variants.
         let mut variant_records = HaplotypeVariants(variant_records);
         let filtered_variant_records =
-            HaplotypeVariants::filter_haplotypes(&mut variant_records, &final_haplotypes).unwrap();
+            HaplotypeVariants::filter_haplotypes(&mut variant_records, &max_n_haplotypes).unwrap();
         Ok(filtered_variant_records)
     }
     fn filter_haplotypes(
