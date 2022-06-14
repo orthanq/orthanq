@@ -29,59 +29,58 @@ impl Caller {
         // Step 1: obtain estimates and varlociraptor.
         //1) loop through the different HLA loci
         //for testing, DQA1 haplotypes
-        let haplotypes = vec![
-            "HLA:HLA21879",
-            "HLA:HLA06599",
-            "HLA:HLA00604",
-            "HLA:HLA00612",
-            "HLA:HLA00617",
-            "HLA:HLA00610",
-            "HLA:HLA02433",
-            "HLA:HLA01409",
-            "HLA:HLA14846",
-            "HLA:HLA06601",
-            "HLA:HLA06598",
-            "HLA:HLA14797",
-            "HLA:HLA01376",
-            "HLA:HLA00602",
-            "HLA:HLA00611",
-            "HLA:HLA21186",
-            "HLA:HLA06618",
-            "HLA:HLA00606",
-            "HLA:HLA00608",
-            "HLA:HLA00603",
-            "HLA:HLA01694",
-            "HLA:HLA02339",
-            "HLA:HLA00607",
-            "HLA:HLA17309",
-            "HLA:HLA00601",
-            "HLA:HLA01905",
-            "HLA:HLA00605",
-            "HLA:HLA00613",
-            "HLA:HLA00619",
-            "HLA:HLA06614",
-            "HLA:HLA02340",
-            "HLA:HLA09875",
-            "HLA:HLA19774",
-            "HLA:HLA01697",
-            "HLA:HLA06609",
-        ];
-        let haplotypes: Vec<Haplotype> = haplotypes
-            .iter()
-            .map(|haplotype| Haplotype(haplotype.to_string()))
-            .collect();
-        //2) obtain varlociraptor calls according to criteria:
+        // let haplotypes = vec![
+        //     "HLA:HLA21879",
+        //     "HLA:HLA06599",
+        //     "HLA:HLA00604",
+        //     "HLA:HLA00612",
+        //     "HLA:HLA00617",
+        //     "HLA:HLA00610",
+        //     "HLA:HLA02433",
+        //     "HLA:HLA01409",
+        //     "HLA:HLA14846",
+        //     "HLA:HLA06601",
+        //     "HLA:HLA06598",
+        //     "HLA:HLA14797",
+        //     "HLA:HLA01376",
+        //     "HLA:HLA00602",
+        //     "HLA:HLA00611",
+        //     "HLA:HLA21186",
+        //     "HLA:HLA06618",
+        //     "HLA:HLA00606",
+        //     "HLA:HLA00608",
+        //     "HLA:HLA00603",
+        //     "HLA:HLA01694",
+        //     "HLA:HLA02339",
+        //     "HLA:HLA00607",
+        //     "HLA:HLA17309",
+        //     "HLA:HLA00601",
+        //     "HLA:HLA01905",
+        //     "HLA:HLA00605",
+        //     "HLA:HLA00613",
+        //     "HLA:HLA00619",
+        //     "HLA:HLA06614",
+        //     "HLA:HLA02340",
+        //     "HLA:HLA09875",
+        //     "HLA:HLA19774",
+        //     "HLA:HLA01697",
+        //     "HLA:HLA06609",
+        // ];
+        // let haplotypes: Vec<Haplotype> = haplotypes
+        //     .iter()
+        //     .map(|haplotype| Haplotype(haplotype.to_string()))
+        //     .collect();
+        //1) obtain varlociraptor calls according to criteria:
         //read_depths > 0, afd field is not empty and prob_absent <= 0.1.
         let mut haplotype_calls = HaplotypeCalls::new(&mut self.haplotype_calls)?;
 
         //collect the variant IDs from the varlociraptor calls.
         let variant_ids: Vec<VariantID> = haplotype_calls.keys().cloned().collect();
-        //3) collect the candidate variants and haplotypes (horizontal evidence, shortlist of haplotypes)
+        //2) collect the candidate variants and haplotypes (horizontal evidence, shortlist of haplotypes)
         let haplotype_variants = HaplotypeVariants::new(
             &mut self.observations,
             &mut self.haplotype_variants,
             &variant_ids,
-            &haplotypes,
             &self.k_reads,
             &self.max_haplotypes,
         )?;
@@ -92,7 +91,6 @@ impl Caller {
         //select top N haplotypes according to --max-haplotypes N.
         let (_, haplotypes_gt_c) = haplotype_variants.iter().next().unwrap();
         let haplotypes: Vec<Haplotype> = haplotypes_gt_c.keys().cloned().collect();
-        dbg!(&haplotypes);
         //6) create the GenotypesLoci struct that contains variants, genotypes and loci information,
         //together with only selected top N haplotypes from the previous step.
         let variant_matrix = GenotypesLoci::new(&haplotype_variants, &haplotypes).unwrap();
@@ -222,7 +220,7 @@ impl Caller {
     }
 }
 
-#[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, new)]
 pub(crate) struct Haplotype(#[deref] String);
 
 #[derive(Derefable, Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, new)]
@@ -238,14 +236,12 @@ impl HaplotypeVariants {
         observations: &mut bcf::Reader,
         haplotype_variants: &mut bcf::Reader,
         filtered_ids: &Vec<VariantID>,
-        haplotypes: &Vec<Haplotype>,
         k_reads: &usize,
         max_haplotypes: &usize,
     ) -> Result<Self> {
-        //create two maps: 1) a variantID, fragments map and a variantID, haplotypes map.
-        let mut variants_fragments: BTreeMap<VariantID, Vec<u64>> = BTreeMap::new();
-        let mut variants_haplotypes: BTreeMap<VariantID, Vec<Haplotype>> = BTreeMap::new();
-        let mut variant_records = BTreeMap::new();
+        let mut variant_fragment_map: BTreeMap<bool, Vec<u64>> = BTreeMap::new();
+        let mut variant_records = BTreeMap::new(); //these two maps have the same variants in the same order so only variant_records keeps their name to prevent redundant disk usage.
+                                                   //collection of fragments
         for record_result in observations.records() {
             let mut record = record_result?;
             let variant_id: VariantID = VariantID(String::from_utf8(record.id())?.parse().unwrap());
@@ -255,15 +251,17 @@ impl HaplotypeVariants {
                         .unwrap();
                 let read_observation = &read_observations.pileup.read_observations();
                 read_observation.iter().for_each(|read| {
-                    if read.prob_alt > read.prob_ref {
-                        variants_fragments.entry(variant_id).or_insert(vec![]);
-                        let mut fragments = variants_fragments.get(&variant_id).unwrap().clone();
-                        fragments.push(read.fragment_id.unwrap());
-                        variants_fragments.insert(variant_id, fragments); //overwrite the existing key-value pair with the key-value update.
-                    }
+                    let fragment_id = read.fragment_id.unwrap();
+                    let alt_evidence = read.prob_alt > read.prob_ref;
+                    variant_fragment_map.entry(alt_evidence).or_insert(vec![]);
+                    let mut fragments = variant_fragment_map.get(&alt_evidence).unwrap().clone();
+                    fragments.push(fragment_id);
+                    variant_fragment_map.insert(alt_evidence, fragments);
                 })
             }
         }
+        dbg!(&variant_fragment_map);
+        //collection of variant matrices
         for record_result in haplotype_variants.records() {
             let record = record_result?;
             let variant_id: VariantID = VariantID(String::from_utf8(record.id())?.parse().unwrap());
@@ -272,81 +270,176 @@ impl HaplotypeVariants {
                 let gts = record.genotypes()?;
                 let loci = record.format(b"C").integer().unwrap();
                 let mut matrices = BTreeMap::new();
-
                 for (index, haplotype) in header.samples().iter().enumerate() {
                     let haplotype = Haplotype(str::from_utf8(haplotype).unwrap().to_string());
-                    if haplotypes.contains(&haplotype) {
-                        for gta in gts.get(index).iter() {
-                            matrices.insert(
-                                haplotype.clone(),
-                                ((*gta == Unphased(1)), (loci[index] == &[1])),
-                            );
-                            if *gta == Unphased(1) {
-                                variants_haplotypes.entry(variant_id).or_insert(vec![]);
-                                let mut haplotypes =
-                                    variants_haplotypes.get(&variant_id).unwrap().clone();
-                                haplotypes.push(haplotype.clone());
-                                variants_haplotypes.insert(variant_id, haplotypes);
-                            }
-                        }
+                    for gta in gts.get(index).iter() {
+                        matrices.insert(
+                            haplotype.clone(),
+                            ((*gta == Unphased(1)), (loci[index] == &[1])),
+                        );
                     }
                 }
                 variant_records.insert(variant_id, matrices);
             }
         }
-        //count the number of variants each fragment bears.
-        let mut fragment_count: BTreeMap<u64, u64> = BTreeMap::new();
-        variants_fragments.iter().for_each(|(_, fragments)| {
-            fragments.iter().for_each(|fragment| {
-                fragment_count.entry(*fragment).or_insert(0);
-                let mut count = fragment_count.get(&fragment).unwrap().clone();
-                count += 1;
-                fragment_count.insert(*fragment, count);
-            });
-        });
-        let mut filtered_haplotypes: Vec<Haplotype> = Vec::new();
-        variants_haplotypes
+        dbg!(&variant_records);
+        //loop over variant fragment map and variant records at the same time.
+        let mut allele_count: BTreeMap<Haplotype, u64> = BTreeMap::new();
+        variant_fragment_map
             .iter()
-            .for_each(|(variant, haplotypes)| {
-                if let Some(fragments) = variants_fragments.get(&variant) {
-                    if fragments.len() > *k_reads {
-                        if fragments
-                            .iter()
-                            .all(|fragment| fragment_count.get(&fragment).unwrap() >= &2)
-                        {
-                            filtered_haplotypes.extend(haplotypes.clone());
+            .zip(variant_records.iter())
+            .for_each(|((alt_evidence, fragments), (variant, matrices))| {
+                dbg!(&variant);
+                fragments.iter().for_each(|fragment| {
+                    let mut variant_in_haplotype = false;
+                    let mut last_visited_haplotype = String::from("");
+                    for (haplotype, (genotype, locus)) in matrices {
+                        if *genotype {
+                            let chk2 = 1;
+                            dbg!(&chk2);
+                            dbg!(&variant);
+                            allele_count.entry(haplotype.clone()).or_insert(0);
+                            let mut count = allele_count.get(&haplotype).unwrap().clone();
+                            count += 1;
+                            if variant_in_haplotype {
+                                let mut previous_haplotype_count = allele_count
+                                    .get(&Haplotype(last_visited_haplotype.clone()))
+                                    .unwrap()
+                                    .clone();
+                                previous_haplotype_count -= 1;
+                                allele_count.insert(
+                                    Haplotype(last_visited_haplotype),
+                                    previous_haplotype_count,
+                                );
+                                break;
+                            } else {
+                                allele_count.insert(haplotype.clone(), count);
+                                last_visited_haplotype.push_str(&haplotype.to_string()); //push the name to the memory as the last visited haplotype
+                                variant_in_haplotype = true;
+                            }
                         }
                     }
-                }
+                });
             });
-        let final_haplotypes: Vec<Haplotype> = filtered_haplotypes.into_iter().unique().collect();
-        
-        //count the number of variants each haplotype bears.
-        let mut haplotype_count: BTreeMap<Haplotype, u64> = BTreeMap::new();
-        variants_haplotypes.iter().for_each(|(_, haplotypes)| {
-            haplotypes.iter().for_each(|haplotype| {
-                haplotype_count.entry(haplotype.clone()).or_insert(0);
-                let mut count = haplotype_count.get(&haplotype).unwrap().clone();
-                count += 1;
-                haplotype_count.insert(haplotype.clone(), count);
-            });
-        });
-        //subset only the haplotypes that are contained in final_haplotypes
-        let filtered_haplotype_count: BTreeMap<Haplotype, u64> = haplotype_count
-            .iter()
-            .filter(|(haplotype, _)| final_haplotypes.contains(&haplotype.clone()))
-            .map(|(haplotype,count)|(haplotype.clone(), *count))
-            .collect();
+        dbg!(&allele_count);
         //sort the map and get --max-n-haplotypes
-        let mut v = Vec::from_iter(filtered_haplotype_count);
+        let mut v = Vec::from_iter(allele_count);
         v.sort_by(|(_, a), (_, b)| b.cmp(&a));
+        dbg!(&v);
         let max_n_haplotypes: Vec<Haplotype> = v[0..*max_haplotypes]
             .iter()
             .map(|(haplotype, _)| haplotype.clone())
             .collect();
 
+        // //create two maps: 1) a variantID, fragments map and a variantID, haplotypes map.
+        // let mut variants_fragments: BTreeMap<VariantID, Vec<u64>> = BTreeMap::new();
+        // let mut variants_haplotypes: BTreeMap<VariantID, Vec<Haplotype>> = BTreeMap::new();
+        // let mut variant_records = BTreeMap::new();
+        // for record_result in observations.records() {
+        //     let mut record = record_result?;
+        //     let variant_id: VariantID = VariantID(String::from_utf8(record.id())?.parse().unwrap());
+        //     if filtered_ids.contains(&variant_id) {
+        //         let read_observations =
+        //             varlociraptor::calling::variants::preprocessing::read_observations(&mut record)
+        //                 .unwrap();
+        //         let read_observation = &read_observations.pileup.read_observations();
+        //         read_observation.iter().for_each(|read| {
+        //             if read.prob_ref > read.prob_alt {
+        //                 //read.prob_alt > read.prob_ref
+        //                 variants_fragments.entry(variant_id).or_insert(vec![]);
+        //                 let mut fragments = variants_fragments.get(&variant_id).unwrap().clone();
+        //                 fragments.push(read.fragment_id.unwrap());
+        //                 variants_fragments.insert(variant_id, fragments); //overwrite the existing key-value pair with the key-value update.
+        //             }
+        //         })
+        //     }
+        // }
+        // for record_result in haplotype_variants.records() {
+        //     let record = record_result?;
+        //     let variant_id: VariantID = VariantID(String::from_utf8(record.id())?.parse().unwrap());
+        //     if filtered_ids.contains(&variant_id) {
+        //         let header = record.header();
+        //         let gts = record.genotypes()?;
+        //         let loci = record.format(b"C").integer().unwrap();
+        //         let mut matrices = BTreeMap::new();
+
+        //         for (index, haplotype) in header.samples().iter().enumerate() {
+        //             let haplotype = Haplotype(str::from_utf8(haplotype).unwrap().to_string());
+        //             if haplotypes.contains(&haplotype) {
+        //                 for gta in gts.get(index).iter() {
+        //                     matrices.insert(
+        //                         haplotype.clone(),
+        //                         ((*gta == Unphased(1)), (loci[index] == &[1])),
+        //                     );
+        //                     if loci[index] == &[1] {
+        //                         //*gta == Unphased(1)
+        //                         variants_haplotypes.entry(variant_id).or_insert(vec![]);
+        //                         let mut haplotypes =
+        //                             variants_haplotypes.get(&variant_id).unwrap().clone();
+        //                         haplotypes.push(haplotype.clone());
+        //                         variants_haplotypes.insert(variant_id, haplotypes);
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //         variant_records.insert(variant_id, matrices);
+        //     }
+        // }
+        // //count the number of variants each fragment bears.
+        // let mut fragment_count: BTreeMap<u64, u64> = BTreeMap::new();
+        // variants_fragments.iter().for_each(|(_, fragments)| {
+        //     fragments.iter().for_each(|fragment| {
+        //         fragment_count.entry(*fragment).or_insert(0);
+        //         let mut count = fragment_count.get(&fragment).unwrap().clone();
+        //         count += 1;
+        //         fragment_count.insert(*fragment, count);
+        //     });
+        // });
+        // let mut filtered_haplotypes: Vec<Haplotype> = Vec::new();
+        // variants_haplotypes
+        //     .iter()
+        //     .for_each(|(variant, haplotypes)| {
+        //         if let Some(fragments) = variants_fragments.get(&variant) {
+        //             if fragments.len() > *k_reads {
+        //                 if fragments
+        //                     .iter()
+        //                     .all(|fragment| fragment_count.get(&fragment).unwrap() >= &2)
+        //                 {
+        //                     filtered_haplotypes.extend(haplotypes.clone());
+        //                 }
+        //             }
+        //         }
+        //     });
+        // let final_haplotypes: Vec<Haplotype> = filtered_haplotypes.into_iter().unique().collect();
+        // //count the number of variants each haplotype bears.
+        // let mut haplotype_count: BTreeMap<Haplotype, u64> = BTreeMap::new();
+        // variants_haplotypes
+        //     .iter()
+        //     .for_each(|(variant, haplotypes)| {
+        //         haplotypes.iter().for_each(|haplotype| {
+        //             haplotype_count.entry(haplotype.clone()).or_insert(0);
+        //             let mut count = haplotype_count.get(&haplotype).unwrap().clone();
+        //             count += 1;
+        //             haplotype_count.insert(haplotype.clone(), count);
+        //         });
+        //     });
+        // //subset only the haplotypes that are contained in final_haplotypes
+        // let filtered_haplotype_count: BTreeMap<Haplotype, u64> = haplotype_count
+        //     .iter()
+        //     .filter(|(haplotype, _)| final_haplotypes.contains(&haplotype.clone()))
+        //     .map(|(haplotype, count)| (haplotype.clone(), *count))
+        //     .collect();
+        //sort the map and get --max-n-haplotypes
+        // let mut v = Vec::from_iter(filtered_haplotype_count);
+        // v.sort_by(|(_, a), (_, b)| b.cmp(&a));
+        // //dbg!(&v);
+        // let max_n_haplotypes: Vec<Haplotype> = v[0..*max_haplotypes]
+        //     .iter()
+        //     .map(|(haplotype, _)| haplotype.clone())
+        //     .collect();
+
         //keep only the variants of variant_fragments (bc of prob_alt>prob_ref condition)
-        variant_records.retain(|&k, _| variants_fragments.contains_key(&k));
+        //variant_records.retain(|&k, _| variants_fragments.contains_key(&k));
         //filter both for the selected haplotypes and the variants.
         let mut variant_records = HaplotypeVariants(variant_records);
         let filtered_variant_records =
@@ -451,7 +544,10 @@ impl HaplotypeCalls {
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
             let read_depths = record.format(b"DP").integer().unwrap();
-            if read_depths[0] != &[0] && afd != "." && &prob_absent_prob <= &Prob(0.1) {
+            let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
+            if read_depths[0] != &[0] && afd != "." && &prob_absent_prob <= &Prob(0.1)
+                || &prob_absent_prob >= &Prob(0.9)
+            {
                 //because some afd strings are just "." and that throws an error while splitting below.
                 let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
                 let mut vaf_density = BTreeMap::new();
