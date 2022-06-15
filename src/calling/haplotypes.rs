@@ -239,7 +239,7 @@ impl HaplotypeVariants {
         k_reads: &usize,
         max_haplotypes: &usize,
     ) -> Result<Self> {
-        let mut variant_fragment_map: BTreeMap<bool, Vec<u64>> = BTreeMap::new();
+        let mut variant_fragment_map: BTreeMap<(VariantID,bool), Vec<u64>> = BTreeMap::new();
         let mut variant_records = BTreeMap::new(); //these two maps have the same variants in the same order so only variant_records keeps their name to prevent redundant disk usage.
                                                    //collection of fragments
         for record_result in observations.records() {
@@ -253,10 +253,10 @@ impl HaplotypeVariants {
                 read_observation.iter().for_each(|read| {
                     let fragment_id = read.fragment_id.unwrap();
                     let alt_evidence = read.prob_alt > read.prob_ref;
-                    variant_fragment_map.entry(alt_evidence).or_insert(vec![]);
-                    let mut fragments = variant_fragment_map.get(&alt_evidence).unwrap().clone();
+                    variant_fragment_map.entry((variant_id,alt_evidence)).or_insert(vec![]);
+                    let mut fragments = variant_fragment_map.get(&(variant_id, alt_evidence)).unwrap().clone();
                     fragments.push(fragment_id);
-                    variant_fragment_map.insert(alt_evidence, fragments);
+                    variant_fragment_map.insert((variant_id,alt_evidence), fragments);
                 })
             }
         }
@@ -288,7 +288,7 @@ impl HaplotypeVariants {
         variant_fragment_map
             .iter()
             .zip(variant_records.iter())
-            .for_each(|((alt_evidence, fragments), (variant, matrices))| {
+            .for_each(|((variant_with_evidence, fragments), (variant, matrices))| {
                 dbg!(&variant);
                 fragments.iter().for_each(|fragment| {
                     let mut variant_in_haplotype = false;

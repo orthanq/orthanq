@@ -40,7 +40,7 @@ impl Caller {
                 )); //store haplotype locations on the aligned genome
                 let rcount: i64 = 0; //count for reference position
                 let scount: i64 = 0; //count for mapped sequence position
-                for cigar_view in seq.cigar() {
+                for cigar_view in &seq.cigar() {
                     //store the detected variants for each record.
                     todo!();
                 }
