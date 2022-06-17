@@ -239,7 +239,7 @@ impl HaplotypeVariants {
         k_reads: &usize,
         max_haplotypes: &usize,
     ) -> Result<Self> {
-        let mut variant_fragment_map: BTreeMap<(VariantID,bool), Vec<u64>> = BTreeMap::new();
+        let mut variant_fragment_map: BTreeMap<(VariantID, bool), Vec<u64>> = BTreeMap::new();
         let mut variant_records = BTreeMap::new(); //these two maps have the same variants in the same order so only variant_records keeps their name to prevent redundant disk usage.
                                                    //collection of fragments
         for record_result in observations.records() {
@@ -253,10 +253,15 @@ impl HaplotypeVariants {
                 read_observation.iter().for_each(|read| {
                     let fragment_id = read.fragment_id.unwrap();
                     let alt_evidence = read.prob_alt > read.prob_ref;
-                    variant_fragment_map.entry((variant_id,alt_evidence)).or_insert(vec![]);
-                    let mut fragments = variant_fragment_map.get(&(variant_id, alt_evidence)).unwrap().clone();
+                    variant_fragment_map
+                        .entry((variant_id, alt_evidence))
+                        .or_insert(vec![]);
+                    let mut fragments = variant_fragment_map
+                        .get(&(variant_id, alt_evidence))
+                        .unwrap()
+                        .clone();
                     fragments.push(fragment_id);
-                    variant_fragment_map.insert((variant_id,alt_evidence), fragments);
+                    variant_fragment_map.insert((variant_id, alt_evidence), fragments);
                 })
             }
         }
@@ -321,8 +326,7 @@ impl HaplotypeVariants {
                                 last_visited_haplotype.push_str(&haplotype.to_string()); //push the name to the memory as the last visited haplotype
                                 variant_in_previous_haplotype = true;
                             }
-                        }
-                        else if locus && !alt_evidence {
+                        } else if locus && !alt_evidence {
                             // dbg!(&variant);
                             // dbg!(&alt_evidence);
                             // dbg!(&haplotype);
@@ -346,10 +350,11 @@ impl HaplotypeVariants {
                                 allele_count.insert(haplotype.clone(), count);
                                 last_visited_haplotype.push_str(&haplotype.to_string()); //push the name to the memory as the last visited haplotype
                                 variant_in_previous_haplotype = true;
-                            }                        }
+                            }
+                        }
                     }
                 });
-                //dbg!(&allele_count);
+                // dbg!(&allele_count);
             });
         //dbg!(&allele_count);
         //sort the map and get --max-n-haplotypes

@@ -1,9 +1,18 @@
 use anyhow::Result;
 use bio_types::genome::AbstractInterval;
+use bio_types::sequence::SequenceRead;
 use derive_builder::Builder;
-use rust_htslib::{bam, bam::ext::BamRecordExtensions, bam::Read, faidx};
+use rust_htslib::{
+    bam,
+    bam::ext::BamRecordExtensions,
+    bam::record::{Cigar, CigarString},
+    bam::Read,
+    faidx,
+};
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::fs;
+use std::iter::FromIterator;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -19,13 +28,16 @@ impl Caller {
         //TODO: generation of candidate variants from the alignment.
 
         //1) first read the hla alleles for the locus and the reference genome.
-        let mut sam = bam::Reader::from_path(&"alignment_sorted.sam").unwrap(); //separate alignments for each locus.
-        let mut reference_genome = faidx::Reader::from_path(&"DQA1_filtered.fasta"); //normally hs_genome.fasta
+        let mut sam = bam::Reader::from_path(&"alignment_sorted.sam").unwrap();
+        let mut reference_genome = faidx::Reader::from_path(&self.genome).unwrap();
 
         //2) loop over the alignment file to record the snv and small indels.
-        let mut candidate_variants: HashMap<(), Vec<usize>> = HashMap::new();
+        let mut candidate_variants: HashMap<
+            (String, usize, String, String, &str, &str, &str, &str),
+            Vec<i64>,
+        > = HashMap::new();
         let mut seq_names: Vec<String> = Vec::new();
-        let mut locations: Vec<(&i64, String, i64, i64)> = Vec::new();
+        let mut locations: Vec<(i64, String, i64, i64)> = Vec::new();
         let mut j: i64 = 0; //the iterator that stores the index of name of the allele
 
         for seq in sam.records() {
@@ -33,23 +45,188 @@ impl Caller {
             if !seq.is_secondary() {
                 seq_names.push(String::from_utf8(seq.qname().to_vec()).unwrap());
                 locations.push((
-                    &j,
+                    j,
                     seq.contig().to_string(),
                     seq.reference_start() + 1,
                     seq.reference_end() + 1,
-                )); //store haplotype locations on the aligned genome
-                let rcount: i64 = 0; //count for reference position
-                let scount: i64 = 0; //count for mapped sequence position
+                ));
+                //store haplotype locations on the aligned genome
+                let mut rcount: i64 = 0; //count for reference position
+                let mut scount: i64 = 0; //count for mapped sequence position
+
                 for cigar_view in &seq.cigar() {
                     //store the detected variants for each record.
-                    todo!();
+                    match cigar_view {
+                        Cigar::Equal(num) => {
+                            let num = i64::from(*num);
+                            rcount += num;
+                            scount += num;
+                        }
+                        Cigar::Diff(num) => {
+                            let num = i64::from(*num);
+                            for i in 0..num {
+                                let rpos = (rcount + seq.reference_start() + 1 + i) as usize;
+                                let spos = scount + i;
+
+                                let chrom = seq.contig().to_string();
+                                let pos = rpos;
+                                let ref_base = reference_genome
+                                    .fetch_seq_string(&seq.contig().to_string(), rpos - 1, rpos)
+                                    .unwrap();
+                                dbg!(&ref_base);
+                                dbg!(&spos);
+                                let alt_base = (seq.seq()[spos as usize] as char).to_string();
+                                dbg!(&alt_base);
+                                candidate_variants
+                                    .entry((
+                                        chrom.clone(),
+                                        pos,
+                                        ref_base.clone(),
+                                        alt_base.clone(),
+                                        ".",
+                                        ".",
+                                        ".",
+                                        "GT:C",
+                                    ))
+                                    .or_insert(vec![]);
+                                let mut haplotypes = candidate_variants
+                                    .get(&(
+                                        chrom.clone(),
+                                        pos,
+                                        ref_base.clone(),
+                                        alt_base.clone(),
+                                        ".",
+                                        ".",
+                                        ".",
+                                        "GT:C",
+                                    ))
+                                    .unwrap()
+                                    .clone();
+                                haplotypes.push(j); //appending j informs the dict about the allele names eventually
+                                candidate_variants.insert(
+                                    (chrom, pos, ref_base, alt_base, ".", ".", ".", "GT:C"),
+                                    haplotypes,
+                                );
+                            }
+                            rcount += num; //to add mismatch length to the count
+                            scount += num;
+                        }
+                        Cigar::Ins(num) => {
+                            let num = i64::from(*num);
+
+                            let rpos = (rcount + seq.reference_start()) as usize; //the last matching or mismatch position
+                            let spos = scount - 1; //the last matching or mismatch position
+
+                            let chrom = seq.contig().to_string();
+                            let pos = rpos;
+                            let ref_base = reference_genome
+                                .fetch_seq_string(&seq.contig().to_string(), rpos - 1, rpos)
+                                .unwrap();
+                            dbg!(&ref_base);
+                            let alt_sequence = Vec::from_iter(spos..spos + num + 1)
+                                .iter()
+                                .map(|pos| seq.seq()[*pos as usize] as char)
+                                .collect::<String>();
+                            dbg!(&alt_sequence);
+                            candidate_variants
+                                .entry((
+                                    chrom.clone(),
+                                    pos,
+                                    ref_base.clone(),
+                                    alt_sequence.clone(),
+                                    ".",
+                                    ".",
+                                    ".",
+                                    "GT:C",
+                                ))
+                                .or_insert(vec![]);
+                            let mut haplotypes = candidate_variants
+                                .get(&(
+                                    chrom.clone(),
+                                    pos,
+                                    ref_base.clone(),
+                                    alt_sequence.clone(),
+                                    ".",
+                                    ".",
+                                    ".",
+                                    "GT:C",
+                                ))
+                                .unwrap()
+                                .clone();
+                            haplotypes.push(j); //appending j informs the dict about the allele names eventually
+                            candidate_variants.insert(
+                                (chrom, pos, ref_base, alt_sequence, ".", ".", ".", "GT:C"),
+                                haplotypes,
+                            );
+                            rcount; // no change
+                            scount += num;
+                        }
+                        Cigar::Del(num) => {
+                            let num = i64::from(*num);
+
+                            let rpos = (rcount + seq.reference_start()) as usize; //the last matching or mismatch position
+                            let spos = scount - 1; //the last matching or mismatch position
+
+                            let chrom = seq.contig().to_string();
+                            let pos = rpos;
+                            dbg!(&pos);
+                            let ref_sequence = reference_genome
+                                .fetch_seq_string(
+                                    &seq.contig().to_string(),
+                                    rpos - 1,
+                                    rpos + (num as usize),
+                                )
+                                .unwrap();
+                            dbg!(&ref_sequence);
+                            let alt_base = (seq.seq()[spos as usize] as char).to_string();
+                            dbg!(&alt_base);
+                            candidate_variants
+                                .entry((
+                                    chrom.clone(),
+                                    pos,
+                                    ref_sequence.clone(),
+                                    alt_base.clone(),
+                                    ".",
+                                    ".",
+                                    ".",
+                                    "GT:C",
+                                ))
+                                .or_insert(vec![]);
+                            let mut haplotypes = candidate_variants
+                                .get(&(
+                                    chrom.clone(),
+                                    pos,
+                                    ref_sequence.clone(),
+                                    alt_base.clone(),
+                                    ".",
+                                    ".",
+                                    ".",
+                                    "GT:C",
+                                ))
+                                .unwrap()
+                                .clone();
+                            haplotypes.push(j); //appending j informs the dict about the allele names eventually
+                            candidate_variants.insert(
+                                (chrom, pos, ref_sequence, alt_base, ".", ".", ".", "GT:C"),
+                                haplotypes,
+                            );
+
+                            rcount += num;
+                            scount;
+                        }
+                        Cigar::SoftClip(num) => {
+                            let num = i64::from(*num);
+                            scount -= num;
+                        }
+                        _ => (),
+                    }
+                    j += 1;
                 }
             }
         }
-        // dbg!(&seq_names);
-        // dbg!(&locations);
         Ok(())
     }
+
     #[allow(dead_code)]
     fn alignment(&self) -> Result<()> {
         let genome_name = format!(
