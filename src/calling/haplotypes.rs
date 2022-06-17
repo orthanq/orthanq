@@ -27,49 +27,6 @@ pub struct Caller {
 impl Caller {
     pub fn call(&mut self) -> Result<()> {
         // Step 1: obtain estimates and varlociraptor.
-        //1) loop through the different HLA loci
-        //for testing, DQA1 haplotypes
-        // let haplotypes = vec![
-        //     "HLA:HLA21879",
-        //     "HLA:HLA06599",
-        //     "HLA:HLA00604",
-        //     "HLA:HLA00612",
-        //     "HLA:HLA00617",
-        //     "HLA:HLA00610",
-        //     "HLA:HLA02433",
-        //     "HLA:HLA01409",
-        //     "HLA:HLA14846",
-        //     "HLA:HLA06601",
-        //     "HLA:HLA06598",
-        //     "HLA:HLA14797",
-        //     "HLA:HLA01376",
-        //     "HLA:HLA00602",
-        //     "HLA:HLA00611",
-        //     "HLA:HLA21186",
-        //     "HLA:HLA06618",
-        //     "HLA:HLA00606",
-        //     "HLA:HLA00608",
-        //     "HLA:HLA00603",
-        //     "HLA:HLA01694",
-        //     "HLA:HLA02339",
-        //     "HLA:HLA00607",
-        //     "HLA:HLA17309",
-        //     "HLA:HLA00601",
-        //     "HLA:HLA01905",
-        //     "HLA:HLA00605",
-        //     "HLA:HLA00613",
-        //     "HLA:HLA00619",
-        //     "HLA:HLA06614",
-        //     "HLA:HLA02340",
-        //     "HLA:HLA09875",
-        //     "HLA:HLA19774",
-        //     "HLA:HLA01697",
-        //     "HLA:HLA06609",
-        // ];
-        // let haplotypes: Vec<Haplotype> = haplotypes
-        //     .iter()
-        //     .map(|haplotype| Haplotype(haplotype.to_string()))
-        //     .collect();
         //1) obtain varlociraptor calls according to criteria:
         //read_depths > 0, afd field is not empty and prob_absent <= 0.1.
         let mut haplotype_calls = HaplotypeCalls::new(&mut self.haplotype_calls)?;
