@@ -24,11 +24,12 @@ pub struct Caller {
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
-        self.alignment();
+        //self.alignment();
         //TODO: generation of candidate variants from the alignment.
 
         //1) first read the hla alleles for the locus and the reference genome.
-        let mut sam = bam::Reader::from_path(&"alignment_sorted.sam").unwrap();
+        //let mut sam = bam::Reader::from_path(&"alignment_sorted.sam").unwrap();
+        let mut sam = bam::Reader::from_path(&"first10.bam").unwrap();
         let mut reference_genome = faidx::Reader::from_path(&self.genome).unwrap();
 
         //2) loop over the alignment file to record the snv and small indels.
@@ -39,7 +40,6 @@ impl Caller {
         let mut seq_names: Vec<String> = Vec::new();
         let mut locations: Vec<(i64, String, i64, i64)> = Vec::new();
         let mut j: i64 = 0; //the iterator that stores the index of name of the allele
-
         for seq in sam.records() {
             let seq = seq?;
             if !seq.is_secondary() {
@@ -53,7 +53,7 @@ impl Caller {
                 //store haplotype locations on the aligned genome
                 let mut rcount: i64 = 0; //count for reference position
                 let mut scount: i64 = 0; //count for mapped sequence position
-
+                let mut query_alignment_start = 0;
                 for cigar_view in &seq.cigar() {
                     //store the detected variants for each record.
                     match cigar_view {
@@ -66,17 +66,14 @@ impl Caller {
                             let num = i64::from(*num);
                             for i in 0..num {
                                 let rpos = (rcount + seq.reference_start() + 1 + i) as usize;
-                                let spos = scount + i;
+                                let spos = scount + query_alignment_start + i;
 
                                 let chrom = seq.contig().to_string();
                                 let pos = rpos;
                                 let ref_base = reference_genome
-                                    .fetch_seq_string(&seq.contig().to_string(), rpos - 1, rpos)
+                                    .fetch_seq_string(&seq.contig().to_string(), rpos - 1, rpos - 1)
                                     .unwrap();
-                                dbg!(&ref_base);
-                                dbg!(&spos);
                                 let alt_base = (seq.seq()[spos as usize] as char).to_string();
-                                dbg!(&alt_base);
                                 candidate_variants
                                     .entry((
                                         chrom.clone(),
@@ -115,19 +112,17 @@ impl Caller {
                             let num = i64::from(*num);
 
                             let rpos = (rcount + seq.reference_start()) as usize; //the last matching or mismatch position
-                            let spos = scount - 1; //the last matching or mismatch position
+                            let spos = scount + query_alignment_start - 1; //the last matching or mismatch position
 
                             let chrom = seq.contig().to_string();
                             let pos = rpos;
                             let ref_base = reference_genome
-                                .fetch_seq_string(&seq.contig().to_string(), rpos - 1, rpos)
+                                .fetch_seq_string(&seq.contig().to_string(), rpos - 1, rpos - 1)
                                 .unwrap();
-                            dbg!(&ref_base);
                             let alt_sequence = Vec::from_iter(spos..spos + num + 1)
                                 .iter()
                                 .map(|pos| seq.seq()[*pos as usize] as char)
                                 .collect::<String>();
-                            dbg!(&alt_sequence);
                             candidate_variants
                                 .entry((
                                     chrom.clone(),
@@ -165,21 +160,18 @@ impl Caller {
                             let num = i64::from(*num);
 
                             let rpos = (rcount + seq.reference_start()) as usize; //the last matching or mismatch position
-                            let spos = scount - 1; //the last matching or mismatch position
+                            let spos = scount + query_alignment_start - 1; //the last matching or mismatch position
 
                             let chrom = seq.contig().to_string();
                             let pos = rpos;
-                            dbg!(&pos);
                             let ref_sequence = reference_genome
                                 .fetch_seq_string(
                                     &seq.contig().to_string(),
                                     rpos - 1,
-                                    rpos + (num as usize),
+                                    rpos + (num as usize) - 1,
                                 )
                                 .unwrap();
-                            dbg!(&ref_sequence);
                             let alt_base = (seq.seq()[spos as usize] as char).to_string();
-                            dbg!(&alt_base);
                             candidate_variants
                                 .entry((
                                     chrom.clone(),
@@ -216,14 +208,16 @@ impl Caller {
                         }
                         Cigar::SoftClip(num) => {
                             let num = i64::from(*num);
+                            query_alignment_start += num;
                             scount -= num;
                         }
                         _ => (),
                     }
-                    j += 1;
                 }
+                j += 1;
             }
         }
+        //println!("{:?}", candidate_variants);
         Ok(())
     }
 
