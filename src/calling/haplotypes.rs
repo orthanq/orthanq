@@ -253,7 +253,7 @@ impl HaplotypeVariants {
             //.for_each(|((variant_with_evidence, fragments), (variant, matrices))| {
             .for_each(|((variant, alt_evidence), fragments)| {
                 dbg!(&variant);
-                fragments.iter().for_each(|fragment| {
+                fragments.iter().for_each(|_| {
                     let matrices = variant_records.get(&variant).unwrap().clone(); //query by variantID
                     let mut variant_in_previous_haplotype = false;
                     let mut last_visited_haplotype = String::from("");
@@ -427,7 +427,6 @@ impl HaplotypeCalls {
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
             let read_depths = record.format(b"DP").integer().unwrap();
-            let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
             if read_depths[0] != &[0] && afd != "." && &prob_absent_prob <= &Prob(0.1)
                 || &prob_absent_prob >= &Prob(0.9)
             {

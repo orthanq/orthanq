@@ -29,3 +29,5 @@ varlociraptor = { git = "https://github.com/varlociraptor/varlociraptor.git", br
 bio = { git = "https://github.com/huzuner/rust-bio", rev = "2dd2dce"}
 derive_deref = "1.1.1"
 assert_approx_eq = "1.1.0"
+ndarray = "0.15.4"
+polars = "0.22.8"
