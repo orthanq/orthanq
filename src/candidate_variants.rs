@@ -292,8 +292,6 @@ impl Caller {
                 ))?,
             };
         }
-        //todo: concatenate the genotype and loci dfs, sort, arrange columns, and write to vcf.
-
         //concatenate the genotype and loci dataframes.
         let mut final_df: DataFrame = genotype_df.select(["Index"])?; //this column contains the variant info.
         for (index, column_name) in genotype_df.get_column_names().iter().enumerate().skip(1) {
@@ -342,8 +340,8 @@ impl Caller {
             Series::new("ID", Vec::from_iter(0..final_df.shape().0 as i64)),
         )?;
         let column_names = final_df.get_column_names_owned();
-        let mut vcf_columns = column_names[column_names.len()-9..].to_vec();
-        let mut sample_columns = column_names[..column_names.len()-9].to_vec();
+        let mut vcf_columns = column_names[column_names.len() - 9..].to_vec();
+        let mut sample_columns = column_names[..column_names.len() - 9].to_vec();
         vcf_columns.extend(sample_columns);
         let mut final_df = final_df.select(vcf_columns).unwrap();
 
@@ -363,6 +361,8 @@ impl Caller {
             .has_header(true)
             .finish(&mut final_df)
             .unwrap();
+
+        //todo: write to vcf using htslib crate.
 
         // // Create minimal VCF header with a single sample
         // let mut header = Header::new();
