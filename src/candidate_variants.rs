@@ -2,9 +2,11 @@ use anyhow::Result;
 use bio_types::genome::AbstractInterval;
 use derive_builder::Builder;
 use ndarray::Array2;
+use polars::datatypes::Utf8Chunked;
 use polars::df;
 use polars::frame::DataFrame;
 use polars::prelude::CsvWriter;
+use polars::prelude::IntoSeries;
 use polars::prelude::NamedFrom;
 use polars::prelude::SerWriter;
 use polars::series::Series;
@@ -231,7 +233,7 @@ impl Caller {
                     .iter()
                     .for_each(|haplotype| genotypes_array[[i, *haplotype]] = 1)
             });
-        dbg!(&genotypes_array.shape());
+        //dbg!(&genotypes_array.shape());
         //construct the second array and locate the loci information of variants for each haplotype
         let mut loci_array = Array2::<i64>::zeros((candidate_variants.len(), j));
         candidate_variants.iter().enumerate().for_each(
@@ -292,11 +294,75 @@ impl Caller {
         }
         //todo: concatenate the genotype and loci dfs, sort, arrange columns, and write to vcf.
 
-        // let mut output_file: File = File::create("out.csv").unwrap();
-        // CsvWriter::new(&mut output_file)
-        //     .has_header(false)
-        //     .finish(&mut dnm)
-        //     .unwrap();
+        //concatenate the genotype and loci dataframes.
+        let mut final_df: DataFrame = genotype_df.select(["Index"])?; //this column contains the variant info.
+        for (index, column_name) in genotype_df.get_column_names().iter().enumerate().skip(1) {
+            let mut concatenated_series = genotype_df[index]
+                .i64()
+                .unwrap()
+                .into_iter()
+                .zip(loci_df[index].i64().unwrap().into_iter())
+                .map(|(genotype, locus)| {
+                    format!(
+                        "{}:{}",
+                        genotype.unwrap().to_string(),
+                        locus.unwrap().to_string()
+                    )
+                })
+                .collect::<Utf8Chunked>()
+                .into_series();
+            concatenated_series.rename(column_name);
+            final_df.with_column(concatenated_series)?;
+        }
+
+        // there is no need to sort the map as we used BTreeMap to store the variants.
+
+        //splitting the index column into chrom, pos ..etc.
+        vec![
+            "#CHROM", "POS", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+        ]
+        .iter()
+        .enumerate()
+        .for_each(|(index, column_name)| {
+            let out = final_df["Index"]
+                .utf8()
+                .unwrap()
+                .into_iter()
+                .map(|all_columns| all_columns.unwrap().split(",").collect::<Vec<&str>>()[index])
+                .collect::<Utf8Chunked>()
+                .into_series();
+            final_df.replace_or_add(column_name, out).unwrap();
+        });
+        dbg!(&final_df);
+        //remove the unnecessary Index column
+        final_df.drop_in_place("Index")?;
+        //insert an ID column as many as the number of rows, right after POS column
+        final_df.insert_at_idx(
+            final_df.find_idx_by_name("POS").unwrap() + 1,
+            Series::new("ID", Vec::from_iter(0..final_df.shape().0 as i64)),
+        )?;
+        let column_names = final_df.get_column_names_owned();
+        let mut vcf_columns = column_names[column_names.len()-9..].to_vec();
+        let mut sample_columns = column_names[..column_names.len()-9].to_vec();
+        vcf_columns.extend(sample_columns);
+        let mut final_df = final_df.select(vcf_columns).unwrap();
+
+        //create a VCF header and write to a VCF
+        let header = vec!["##fileformat=VCFv4.2
+        ##FILTER=<ID=PASS,Description='All filters passed'> /
+        ##fileDate=20210430 /
+        ##source=myImputationProgramV3.1 /
+        ##reference=file:///hs_genome.fasta /
+        ##FORMAT=<ID=GT,Number=1,Type=String,Description='Variant is present in the haplotype (1) or not (0).'> /
+        ##FORMAT=<ID=C,Number=1,Type=Integer,Description='Locus is covered by the haplotype (1) or not (0).'> "];
+        let mut wtr = csv::Writer::from_path(PathBuf::from("out.csv"))?;
+        wtr.write_record(header)?;
+
+        let mut output_file: File = File::create("out.csv").unwrap();
+        CsvWriter::new(&mut output_file)
+            .has_header(true)
+            .finish(&mut final_df)
+            .unwrap();
 
         // // Create minimal VCF header with a single sample
         // let mut header = Header::new();
