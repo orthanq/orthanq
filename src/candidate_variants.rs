@@ -39,10 +39,8 @@ impl Caller {
         let reference_genome = faidx::Reader::from_path(&self.genome).unwrap();
 
         //2) loop over the alignment file to record the snv and small indels.
-        let mut candidate_variants: BTreeMap<
-            (String, usize, String, String, &str, &str, &str, &str),
-            Vec<usize>,
-        > = BTreeMap::new();
+        let mut candidate_variants: BTreeMap<(String, usize, String, String), Vec<usize>> =
+            BTreeMap::new();
         let mut seq_names: Vec<String> = Vec::new();
         let mut locations: Vec<(usize, String, usize, usize)> = Vec::new();
         let mut j: usize = 0; //the iterator that stores the index of name of the allele
@@ -81,35 +79,15 @@ impl Caller {
                                     .unwrap();
                                 let alt_base = (seq.seq()[spos as usize] as char).to_string();
                                 candidate_variants
-                                    .entry((
-                                        chrom.clone(),
-                                        pos,
-                                        ref_base.clone(),
-                                        alt_base.clone(),
-                                        ".",
-                                        ".",
-                                        ".",
-                                        "GT:C",
-                                    ))
+                                    .entry((chrom.clone(), pos, ref_base.clone(), alt_base.clone()))
                                     .or_insert(vec![]);
                                 let mut haplotypes = candidate_variants
-                                    .get(&(
-                                        chrom.clone(),
-                                        pos,
-                                        ref_base.clone(),
-                                        alt_base.clone(),
-                                        ".",
-                                        ".",
-                                        ".",
-                                        "GT:C",
-                                    ))
+                                    .get(&(chrom.clone(), pos, ref_base.clone(), alt_base.clone()))
                                     .unwrap()
                                     .clone();
                                 haplotypes.push(j); //appending j informs the dict about the allele names eventually
-                                candidate_variants.insert(
-                                    (chrom, pos, ref_base, alt_base, ".", ".", ".", "GT:C"),
-                                    haplotypes,
-                                );
+                                candidate_variants
+                                    .insert((chrom, pos, ref_base, alt_base), haplotypes);
                             }
                             rcount += num; //to add mismatch length to the count
                             scount += num;
@@ -130,35 +108,15 @@ impl Caller {
                                 .map(|pos| seq.seq()[*pos as usize] as char)
                                 .collect::<String>();
                             candidate_variants
-                                .entry((
-                                    chrom.clone(),
-                                    pos,
-                                    ref_base.clone(),
-                                    alt_sequence.clone(),
-                                    ".",
-                                    ".",
-                                    ".",
-                                    "GT:C",
-                                ))
+                                .entry((chrom.clone(), pos, ref_base.clone(), alt_sequence.clone()))
                                 .or_insert(vec![]);
                             let mut haplotypes = candidate_variants
-                                .get(&(
-                                    chrom.clone(),
-                                    pos,
-                                    ref_base.clone(),
-                                    alt_sequence.clone(),
-                                    ".",
-                                    ".",
-                                    ".",
-                                    "GT:C",
-                                ))
+                                .get(&(chrom.clone(), pos, ref_base.clone(), alt_sequence.clone()))
                                 .unwrap()
                                 .clone();
                             haplotypes.push(j); //appending j informs the dict about the allele names eventually
-                            candidate_variants.insert(
-                                (chrom, pos, ref_base, alt_sequence, ".", ".", ".", "GT:C"),
-                                haplotypes,
-                            );
+                            candidate_variants
+                                .insert((chrom, pos, ref_base, alt_sequence), haplotypes);
                             rcount; // no change
                             scount += num;
                         }
@@ -179,35 +137,15 @@ impl Caller {
                                 .unwrap();
                             let alt_base = (seq.seq()[spos as usize] as char).to_string();
                             candidate_variants
-                                .entry((
-                                    chrom.clone(),
-                                    pos,
-                                    ref_sequence.clone(),
-                                    alt_base.clone(),
-                                    ".",
-                                    ".",
-                                    ".",
-                                    "GT:C",
-                                ))
+                                .entry((chrom.clone(), pos, ref_sequence.clone(), alt_base.clone()))
                                 .or_insert(vec![]);
                             let mut haplotypes = candidate_variants
-                                .get(&(
-                                    chrom.clone(),
-                                    pos,
-                                    ref_sequence.clone(),
-                                    alt_base.clone(),
-                                    ".",
-                                    ".",
-                                    ".",
-                                    "GT:C",
-                                ))
+                                .get(&(chrom.clone(), pos, ref_sequence.clone(), alt_base.clone()))
                                 .unwrap()
                                 .clone();
                             haplotypes.push(j); //appending j informs the dict about the allele names eventually
-                            candidate_variants.insert(
-                                (chrom, pos, ref_sequence, alt_base, ".", ".", ".", "GT:C"),
-                                haplotypes,
-                            );
+                            candidate_variants
+                                .insert((chrom, pos, ref_sequence, alt_base), haplotypes);
 
                             rcount += num;
                             scount;
@@ -238,7 +176,7 @@ impl Caller {
         //construct the second array and locate the loci information of variants for each haplotype
         let mut loci_array = Array2::<i64>::zeros((candidate_variants.len(), j));
         candidate_variants.iter().enumerate().for_each(
-            |(i, ((chrom_candidates, pos, _, _, _, _, _, _), _))| {
+            |(i, ((chrom_candidates, pos, _, _), _))| {
                 locations
                     .iter()
                     .for_each(|(haplotype_index, chrom_locations, start, end)| {
@@ -253,10 +191,10 @@ impl Caller {
         //first initialize the dataframes with index columns which contain variant information.
         let mut genotype_df: DataFrame = df!("Index" => candidate_variants
         .iter()
-        .map(|((chrom, pos, ref_base, alt_base, n1, n2, n3, gt_c), _)| {
+        .map(|((chrom, pos, ref_base, alt_base), _)| {
             format!(
-                "{},{},{},{},{},{},{},{}",
-                chrom, pos, ref_base, alt_base, n1, n2, n3, gt_c
+                "{},{},{},{}",
+                chrom, pos, ref_base, alt_base
             )
         })
         .collect::<Series>())?;
