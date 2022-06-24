@@ -11,6 +11,7 @@ use polars::prelude::NamedFrom;
 use polars::prelude::SerWriter;
 use polars::series::Series;
 use rust_htslib::bcf::header::Header;
+use rust_htslib::bcf::record::GenotypeAllele;
 use rust_htslib::bcf::{Format, Writer};
 use rust_htslib::{bam, bam::ext::BamRecordExtensions, bam::record::Cigar, bam::Read, faidx};
 use std::collections::BTreeMap;
@@ -254,7 +255,7 @@ impl Caller {
         .iter()
         .map(|((chrom, pos, ref_base, alt_base, n1, n2, n3, gt_c), _)| {
             format!(
-                "{}, {}, {}, {}, {}, {}, {}, {}",
+                "{},{},{},{},{},{},{},{}",
                 chrom, pos, ref_base, alt_base, n1, n2, n3, gt_c
             )
         })
@@ -292,120 +293,95 @@ impl Caller {
                 ))?,
             };
         }
-        //concatenate the genotype and loci dataframes.
-        let mut final_df: DataFrame = genotype_df.select(["Index"])?; //this column contains the variant info.
-        for (index, column_name) in genotype_df.get_column_names().iter().enumerate().skip(1) {
-            let mut concatenated_series = genotype_df[index]
-                .i64()
-                .unwrap()
-                .into_iter()
-                .zip(loci_df[index].i64().unwrap().into_iter())
-                .map(|(genotype, locus)| {
-                    format!(
-                        "{}:{}",
-                        genotype.unwrap().to_string(),
-                        locus.unwrap().to_string()
-                    )
-                })
-                .collect::<Utf8Chunked>()
-                .into_series();
-            concatenated_series.rename(column_name);
-            final_df.with_column(concatenated_series)?;
-        }
-
         // there is no need to sort the map as we used BTreeMap to store the variants.
 
-        //splitting the index column into chrom, pos ..etc.
-        vec![
-            "#CHROM", "POS", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
-        ]
-        .iter()
-        .enumerate()
-        .for_each(|(index, column_name)| {
-            let out = final_df["Index"]
-                .utf8()
-                .unwrap()
-                .into_iter()
-                .map(|all_columns| all_columns.unwrap().split(",").collect::<Vec<&str>>()[index])
-                .collect::<Utf8Chunked>()
-                .into_series();
-            final_df.replace_or_add(column_name, out).unwrap();
-        });
-        dbg!(&final_df);
-        //remove the unnecessary Index column
-        final_df.drop_in_place("Index")?;
-        //insert an ID column as many as the number of rows, right after POS column
-        final_df.insert_at_idx(
-            final_df.find_idx_by_name("POS").unwrap() + 1,
-            Series::new("ID", Vec::from_iter(0..final_df.shape().0 as i64)),
+        //insert an ID column as many as the number of rows, right after the Index column
+        genotype_df.insert_at_idx(
+            1,
+            Series::new("ID", Vec::from_iter(0..genotype_df.shape().0 as i64)),
         )?;
-        let column_names = final_df.get_column_names_owned();
-        let mut vcf_columns = column_names[column_names.len() - 9..].to_vec();
-        let mut sample_columns = column_names[..column_names.len() - 9].to_vec();
-        vcf_columns.extend(sample_columns);
-        let mut final_df = final_df.select(vcf_columns).unwrap();
+        dbg!(&genotype_df);
 
-        //create a VCF header and write to a VCF
-        let header = vec!["##fileformat=VCFv4.2
-        ##FILTER=<ID=PASS,Description='All filters passed'> /
-        ##fileDate=20210430 /
-        ##source=myImputationProgramV3.1 /
-        ##reference=file:///hs_genome.fasta /
-        ##FORMAT=<ID=GT,Number=1,Type=String,Description='Variant is present in the haplotype (1) or not (0).'> /
-        ##FORMAT=<ID=C,Number=1,Type=Integer,Description='Locus is covered by the haplotype (1) or not (0).'> "];
-        let mut wtr = csv::Writer::from_path(PathBuf::from("out.csv"))?;
-        wtr.write_record(header)?;
+        //Create VCF header
+        let mut header = Header::new();
+        //push contig names to the header.
+        header.push_record(br#"##contig=<ID=1>"#);
+        header.push_record(br#"##contig=<ID=6>"#);
+        header.push_record(br#"##contig=<ID=8>"#);
+        header.push_record(br#"##contig=<ID=9>"#);
+        header.push_record(br#"##contig=<ID=11>"#);
+        header.push_record(br#"##contig=<ID=16>"#);
+        header.push_record(br#"##contig=<ID=X>"#);
 
-        let mut output_file: File = File::create("out.csv").unwrap();
-        CsvWriter::new(&mut output_file)
-            .has_header(true)
-            .finish(&mut final_df)
-            .unwrap();
+        //push field names to the header.
+        let header_gt_line = r#"##FORMAT=<ID=GT,Number=1,Type=String,Description="Variant is present in the haplotype (1) or not (0).">"#;
+        header.push_record(header_gt_line.as_bytes());
+        let header_locus_line = r#"##FORMAT=<ID=C,Number=1,Type=Integer,Description="Locus is covered by the haplotype (1) or not (0).">"#;
+        header.push_record(header_locus_line.as_bytes());
 
-        //todo: write to vcf using htslib crate.
+        //push sample names into the header
+        for sample_name in genotype_df.get_column_names().iter().skip(2) {
+            header.push_sample(sample_name.as_bytes());
+        }
 
-        // // Create minimal VCF header with a single sample
-        // let mut header = Header::new();
-        // header.push_sample("sample".as_bytes());
+        let mut vcf = Writer::from_path("out.vcf", &header, true, Format::Vcf).unwrap();
 
-        // // Write uncompressed VCF to stdout with above header and get an empty record
-        // let mut header = Header::new();
-        // let header_contig_line = r#"##contig=<ID=1>"#;
-        // header.push_record(header_contig_line.as_bytes());
-        // let header_contig_line = r#"##contig=<ID=6>"#;
-        // header.push_record(header_contig_line.as_bytes());
-        // let header_contig_line = r#"##contig=<ID=8>"#;
-        // header.push_record(header_contig_line.as_bytes());
-        // let header_contig_line = r#"##contig=<ID=9>"#;
-        // header.push_record(header_contig_line.as_bytes());
-        // let header_contig_line = r#"##contig=<ID=11>"#;
-        // header.push_record(header_contig_line.as_bytes());
-        // let header_contig_line = r#"##contig=<ID=16>"#;
-        // header.push_record(header_contig_line.as_bytes());
-        // let header_contig_line = r#"##contig=<ID=X>"#;
-        // header.push_record(header_contig_line.as_bytes());
+        //genotype_df.as_single_chunk_par();
+        let mut id_iter = genotype_df["ID"].i64().unwrap().into_iter();
+        for row_index in 0..genotype_df.height() {
+            let mut record = vcf.empty_record();
+            let mut variant_iter = genotype_df["Index"].utf8().unwrap().into_iter();
+            let mut id_iter = genotype_df["ID"].i64().unwrap().into_iter();
+            let splitted = variant_iter
+                .nth(row_index)
+                .unwrap()
+                .unwrap()
+                .split(",")
+                .collect::<Vec<&str>>();
+            let chrom = splitted[0];
+            let pos = splitted[1];
+            let id = id_iter.nth(row_index).unwrap().unwrap();
+            let ref_base = splitted[2];
+            let alt_base = splitted[3];
+            let alleles: &[&[u8]] = &[ref_base.as_bytes(), alt_base.as_bytes()];
+            let rid = vcf.header().name2rid(chrom.as_bytes()).unwrap();
 
-        // let header_gt_line = r#"##FORMAT=<ID=GT,Number=1,Type=String,Description="Variant is present in the haplotype (1) or not (0).">"#;
-        // header.push_record(header_gt_line.as_bytes());
-        // genotypes_df.get_column_names().iter().for_each(|sample_name| header.push_sample(sample_name.as_bytes()));
-        // let mut vcf = Writer::from_stdout(&header, true, Format::Vcf).unwrap();
+            record.set_rid(Some(rid));
+            record.set_pos(pos.parse::<i64>().unwrap() - 1);
+            record.set_id(id.to_string().as_bytes()).unwrap();
+            record.set_alleles(alleles).expect("Failed to set alleles");
 
-        // //let mut record = vcf.empty_record();
-        // for row in genotype_df.rows() {
-        //     let mut record = vcf.empty_record();
-        //     // Set chrom and pos to 1 and 7, respectively - note the 0-based positions
-        //     let rid = vcf.header().name2rid(row).unwrap();
-        //     record.set_rid(Some(rid));
-        //     record.set_pos(6);
+            //push genotypes
+            let mut all_gt = Vec::new();
+            for column_index in 2..genotype_df.width() {
+                let gt = genotype_df[column_index]
+                    .i64()
+                    .unwrap()
+                    .into_iter()
+                    .nth(row_index)
+                    .unwrap()
+                    .unwrap();
+                let gt = GenotypeAllele::Unphased(gt.try_into().unwrap());
+                all_gt.push(gt);
+            }
+            record.push_genotypes(&all_gt).unwrap();
 
-        //     // Set record genotype to 0|1 - note first allele is always unphased
-        //     let alleles = &[GenotypeAllele::Unphased(0), GenotypeAllele::Phased(1)];
-        //     record.push_genotypes(alleles).unwrap();
-
-        //     // Write record
-        //     vcf.write(&record).unwrap()
-        // }
-        // Writer::write(&mut vcf, &record);
+            //push loci
+            let mut all_c = Vec::new();
+            for column_index in 1..loci_df.width() {
+                //it doesnt have the ID column so that it starts from 1
+                let c = loci_df[column_index]
+                    .i64()
+                    .unwrap()
+                    .into_iter()
+                    .nth(row_index)
+                    .unwrap()
+                    .unwrap();
+                all_c.push(c as i32);
+            }
+            record.push_format_integer(b"C", &all_c)?;
+            vcf.write(&record).unwrap();
+        }
         Ok(())
     }
 
