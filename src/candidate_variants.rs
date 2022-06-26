@@ -1,26 +1,23 @@
 use anyhow::Result;
+use bio::io::fasta::Reader;
 use bio_types::genome::AbstractInterval;
 use derive_builder::Builder;
 use ndarray::Array2;
-use polars::datatypes::Utf8Chunked;
-use polars::df;
-use polars::frame::DataFrame;
-use polars::prelude::CsvWriter;
-use polars::prelude::IntoSeries;
-use polars::prelude::NamedFrom;
-use polars::prelude::SerWriter;
-use polars::series::Series;
-use rust_htslib::bcf::header::Header;
-use rust_htslib::bcf::record::GenotypeAllele;
-use rust_htslib::bcf::{Format, Writer};
+use polars::{
+    datatypes::Utf8Chunked,
+    df,
+    frame::DataFrame,
+    prelude::{CsvWriter, IntoSeries, NamedFrom, SerWriter},
+    series::Series,
+};
+use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 use rust_htslib::{bam, bam::ext::BamRecordExtensions, bam::record::Cigar, bam::Read, faidx};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
-use std::fs;
-use std::fs::File;
 use std::iter::FromIterator;
 use std::path::PathBuf;
 use std::process::Command;
+use std::{fs, fs::File};
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]
@@ -238,7 +235,36 @@ impl Caller {
             1,
             Series::new("ID", Vec::from_iter(0..genotype_df.shape().0 as i64)),
         )?;
+        loci_df.insert_at_idx(
+            1,
+            Series::new("ID", Vec::from_iter(0..loci_df.shape().0 as i64)),
+        )?;
         dbg!(&genotype_df);
+
+        //todo: Split up the variants per locus and depending on --wes samples, restrict the columns to protein level.
+        let genotype_df = self.split_haplotypes(&mut genotype_df)?;
+        let loci_df = self.split_haplotypes(&mut loci_df)?;
+        dbg!(&genotype_df);
+        dbg!(&genotype_df.get_column_names());
+        //print locus-wise vcf files.
+        let names = genotype_df
+            .get_column_names()
+            .iter()
+            .cloned()
+            .collect::<Vec<&str>>();
+        let mut dqa1_columns = vec!["Index", "ID"];
+        for column_name in names.iter() {
+            let splitted = column_name.split("*").collect::<Vec<&str>>();
+            if splitted[0] == "DQA1" {
+                // just as an example locus for the start.
+                dqa1_columns.push(column_name.clone());
+            }
+            //TODO: add more if blocks for the other loci that we're interested.
+        }
+        let genotype_df = genotype_df.select(&dqa1_columns)?;
+        let loci_df = loci_df.select(&dqa1_columns)?;
+        dbg!(&genotype_df);
+        dbg!(&loci_df);
 
         //Create VCF header
         let mut header = Header::new();
@@ -265,7 +291,7 @@ impl Caller {
         let mut vcf = Writer::from_path("out.vcf", &header, true, Format::Vcf).unwrap();
 
         //genotype_df.as_single_chunk_par();
-        let mut id_iter = genotype_df["ID"].i64().unwrap().into_iter();
+        let id_iter = genotype_df["ID"].i64().unwrap().into_iter();
         for row_index in 0..genotype_df.height() {
             let mut record = vcf.empty_record();
             let mut variant_iter = genotype_df["Index"].utf8().unwrap().into_iter();
@@ -306,7 +332,7 @@ impl Caller {
 
             //push loci
             let mut all_c = Vec::new();
-            for column_index in 1..loci_df.width() {
+            for column_index in 2..loci_df.width() {
                 //it doesnt have the ID column so that it starts from 1
                 let c = loci_df[column_index]
                     .i64()
@@ -321,6 +347,57 @@ impl Caller {
             vcf.write(&record).unwrap();
         }
         Ok(())
+    }
+
+    fn split_haplotypes(&self, variant_table: &mut DataFrame) -> Result<DataFrame> {
+        let hla_alleles_rdr = bio::io::fasta::Reader::from_file(&self.alleles)?;
+        let mut allele_digit_table = HashMap::new();
+        for record in hla_alleles_rdr.records() {
+            let record = record.unwrap();
+            let id = record.id();
+            let desc = record.desc().unwrap();
+
+            let six_digit = desc.split_whitespace().collect::<Vec<&str>>()[0];
+            let splitted = six_digit.split(":").collect::<Vec<&str>>();
+            if splitted.len() < 2 {
+                //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
+                allele_digit_table.insert(id.to_string(), splitted[0].to_string());
+            } else {
+                allele_digit_table
+                    .insert(id.to_string(), format!("{}:{}", splitted[0], splitted[1]));
+                //first two
+            }
+        }
+
+        let mut new_df = DataFrame::new(vec![
+            variant_table["Index"].clone(),
+            variant_table["ID"].clone(),
+        ])?;
+        for (column_index, column_name) in
+            variant_table.get_column_names().iter().skip(2).enumerate()
+        {
+            let protein_level = &allele_digit_table[&column_name.to_string()];
+            if new_df.get_column_names().contains(&protein_level.as_str()) {
+                let existing_column = &new_df[protein_level.as_str()];
+                let updated_column = existing_column + &variant_table[*column_name];
+                new_df.with_column(updated_column)?;
+            } else {
+                new_df.replace_or_add(&protein_level, variant_table[*column_name].clone())?;
+            }
+        }
+        dbg!(&new_df);
+        let names: Vec<String> = new_df.get_column_names_owned().iter().cloned().collect();
+        for (column_index, column_name) in names.iter().enumerate().skip(2) {
+            let corrected_column = new_df[column_index]
+                .i64()
+                .unwrap()
+                .into_iter()
+                .map(|num| if num > Some(1) { Some(1) } else { num })
+                .collect::<Series>();
+            new_df.replace_or_add(column_name, corrected_column)?;
+        }
+        dbg!(&new_df);
+        Ok(new_df)
     }
 
     #[allow(dead_code)]
