@@ -26,6 +26,7 @@ pub struct Caller {
     genome: PathBuf,
     wes: bool,
     wgs: bool,
+    output: Option<PathBuf>
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
@@ -247,7 +248,7 @@ impl Caller {
             let loci_df = self.split_haplotypes(&mut loci_df)?;
         }
         //write locus-wise vcf files.
-        Caller::write_loci_to_vcf(&genotype_df, &loci_df);
+        self.write_loci_to_vcf(&genotype_df, &loci_df)?;
         Ok(())
     }
 
@@ -344,7 +345,7 @@ impl Caller {
         Ok(())
     }
 
-    fn write_loci_to_vcf(variant_table: &DataFrame, loci_table: &DataFrame) -> Result<()> {
+    fn write_loci_to_vcf(&self, variant_table: &DataFrame, loci_table: &DataFrame) -> Result<()> {
         let names = variant_table
             .get_column_names()
             .iter()
@@ -391,7 +392,7 @@ impl Caller {
             }
 
             let mut vcf =
-                Writer::from_path(format!("{}.vcf", locus), &header, true, Format::Vcf).unwrap();
+                Writer::from_path(format!("{}/{}.vcf", self.output.as_ref().unwrap().display(), locus), &header, true, Format::Vcf).unwrap();
 
             let id_iter = variant_table["ID"].i64().unwrap().into_iter();
             for row_index in 0..variant_table.height() {

@@ -37,6 +37,11 @@ pub enum Orthanq {
         wes: bool,
         #[structopt(long = "wgs", help = "Specify the sample type (default).")]
         wgs: bool,
+        #[structopt(
+            long,
+            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
+        )]
+        output: Option<PathBuf>,
     },
     #[structopt(
         name = "call",
@@ -105,12 +110,14 @@ pub fn run(opt: Orthanq) -> Result<()> {
             genome,
             wes,
             wgs,
+            output
         } => {
             let caller = candidate_variants::CallerBuilder::default()
                 .alleles(alleles)
                 .genome(genome)
                 .wes(wes)
                 .wgs(wgs)
+                .output(output)
                 .build()
                 .unwrap();
             caller.call()?;
