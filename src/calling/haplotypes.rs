@@ -250,8 +250,6 @@ impl HaplotypeVariants {
         dbg!(&variant_fragment_map);
         variant_fragment_map
             .iter()
-            //.zip(variant_records.iter())
-            //.for_each(|((variant_with_evidence, fragments), (variant, matrices))| {
             .for_each(|((variant, alt_evidence), fragments)| {
                 fragments.iter().for_each(|fragment| {
                     let matrices = variant_records.get(&variant).unwrap().clone(); //query by variantID
@@ -260,23 +258,11 @@ impl HaplotypeVariants {
                     for (haplotype, (genotype, locus)) in matrices {
                         if genotype && *alt_evidence {
                             if &haplotype == &Haplotype("DQA1*01:02".to_string()) {
-                                dbg!(&variant);
-                                dbg!(&alt_evidence);
-                                dbg!(&haplotype);
-                                dbg!(&fragment);
-                                dbg!(&variant_in_previous_haplotype);
-                                dbg!(&last_visited_haplotype);
                             }
                             allele_count.entry(haplotype.clone()).or_insert(0);
                             let mut count = allele_count.get(&haplotype).unwrap().clone();
                             count += 1;
                             if variant_in_previous_haplotype {
-                                dbg!(&variant);
-                                dbg!(&alt_evidence);
-                                dbg!(&haplotype);
-                                dbg!(&fragment);
-                                dbg!(&variant_in_previous_haplotype);
-                                dbg!(&last_visited_haplotype);
                                 let mut previous_haplotype_count = allele_count
                                     .get(&Haplotype(last_visited_haplotype.clone()))
                                     .unwrap()
@@ -293,15 +279,10 @@ impl HaplotypeVariants {
                                 variant_in_previous_haplotype = true;
                             }
                         } else if locus && !alt_evidence {
-                            // dbg!(&variant);
-                            // dbg!(&alt_evidence);
-                            // dbg!(&haplotype);
                             allele_count.entry(haplotype.clone()).or_insert(0);
                             let mut count = allele_count.get(&haplotype).unwrap().clone();
                             count += 1;
                             if variant_in_previous_haplotype {
-                                // dbg!(&haplotype);
-                                // dbg!(&last_visited_haplotype);
                                 let mut previous_haplotype_count = allele_count
                                     .get(&Haplotype(last_visited_haplotype.clone()))
                                     .unwrap()
@@ -320,13 +301,10 @@ impl HaplotypeVariants {
                         }
                     }
                 });
-                // dbg!(&allele_count);
             });
-        //dbg!(&allele_count);
         //sort the map and get --max-n-haplotypes
         let mut v = Vec::from_iter(allele_count);
         v.sort_by(|(_, a), (_, b)| b.cmp(&a));
-        dbg!(&v);
         let max_n_haplotypes: Vec<Haplotype> = v[0..*max_haplotypes]
             .iter()
             .map(|(haplotype, _)| haplotype.clone())
