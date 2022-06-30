@@ -390,9 +390,8 @@ impl Caller {
             for sample_name in variant_table.get_column_names().iter().skip(2) {
                 header.push_sample(sample_name.as_bytes());
             }
-
             let mut vcf =
-                Writer::from_path(format!("{}/{}.vcf", self.output.as_ref().unwrap().display(), locus), &header, true, Format::Vcf).unwrap();
+                Writer::from_path(format!("{}.vcf", self.output.as_ref().unwrap().join(locus).display()), &header, true, Format::Vcf).unwrap();
 
             let id_iter = variant_table["ID"].i64().unwrap().into_iter();
             for row_index in 0..variant_table.height() {
