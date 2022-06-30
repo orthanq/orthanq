@@ -33,6 +33,10 @@ pub enum Orthanq {
             help = "All the alleles that exist for the gene of interest (e.g. HLA00001, HLA00002 .. for HLAs)"
         )]
         alleles: PathBuf,
+        #[structopt(long = "wes", help = "Specify the sample type.")]
+        wes: bool,
+        #[structopt(long = "wgs", help = "Specify the sample type (default).")]
+        wgs: bool,
     },
     #[structopt(
         name = "call",
@@ -104,10 +108,17 @@ pub fn run(opt: Orthanq) -> Result<()> {
             caller.call()?;
             Ok(())
         }
-        Orthanq::Candidates { alleles, genome } => {
+        Orthanq::Candidates {
+            alleles,
+            genome,
+            wes,
+            wgs,
+        } => {
             let caller = candidate_variants::CallerBuilder::default()
                 .alleles(alleles)
                 .genome(genome)
+                .wes(wes)
+                .wgs(wgs)
                 .build()
                 .unwrap();
             caller.call()?;

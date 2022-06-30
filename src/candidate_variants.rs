@@ -24,15 +24,16 @@ use std::{fs, fs::File};
 pub struct Caller {
     alleles: PathBuf,
     genome: PathBuf,
+    wes: bool,
+    wgs: bool,
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
-        //self.alignment();
-        //TODO: generation of candidate variants from the alignment.
+        self.alignment();
 
         //1) first read the hla alleles for the locus and the reference genome.
-        //let mut sam = bam::Reader::from_path(&"alignment_sorted.sam").unwrap();
-        let mut sam = bam::Reader::from_path(&"first10.bam").unwrap();
+        //let mut sam = bam::Reader::from_path(&"first10.bam").unwrap(); //test sample
+        let mut sam = bam::Reader::from_path(&"alignment_sorted.sam").unwrap();
         let reference_genome = faidx::Reader::from_path(&self.genome).unwrap();
 
         //2) loop over the alignment file to record the snv and small indels.
@@ -169,7 +170,7 @@ impl Caller {
                     .iter()
                     .for_each(|haplotype| genotypes_array[[i, *haplotype]] = 1)
             });
-        //dbg!(&genotypes_array.shape());
+
         //construct the second array and locate the loci information of variants for each haplotype
         let mut loci_array = Array2::<i64>::zeros((candidate_variants.len(), j));
         candidate_variants.iter().enumerate().for_each(
@@ -239,113 +240,14 @@ impl Caller {
             1,
             Series::new("ID", Vec::from_iter(0..loci_df.shape().0 as i64)),
         )?;
-        dbg!(&genotype_df);
 
-        //todo: Split up the variants per locus and depending on --wes samples, restrict the columns to protein level.
-        let genotype_df = self.split_haplotypes(&mut genotype_df)?;
-        let loci_df = self.split_haplotypes(&mut loci_df)?;
-        dbg!(&genotype_df);
-        dbg!(&genotype_df.get_column_names());
-        //print locus-wise vcf files.
-        let names = genotype_df
-            .get_column_names()
-            .iter()
-            .cloned()
-            .collect::<Vec<&str>>();
-        let mut dqa1_columns = vec!["Index", "ID"];
-        for column_name in names.iter() {
-            let splitted = column_name.split("*").collect::<Vec<&str>>();
-            if splitted[0] == "DQA1" {
-                // just as an example locus for the start.
-                dqa1_columns.push(column_name.clone());
-            }
-            //TODO: add more if blocks for the other loci that we're interested.
+        //Split up the variants per locus and depending on --wes samples, restrict the columns to protein level.
+        if self.wes {
+            let genotype_df = self.split_haplotypes(&mut genotype_df)?;
+            let loci_df = self.split_haplotypes(&mut loci_df)?;
         }
-        let genotype_df = genotype_df.select(&dqa1_columns)?;
-        let loci_df = loci_df.select(&dqa1_columns)?;
-        dbg!(&genotype_df);
-        dbg!(&loci_df);
-
-        //Create VCF header
-        let mut header = Header::new();
-        //push contig names to the header.
-        header.push_record(br#"##contig=<ID=1>"#);
-        header.push_record(br#"##contig=<ID=6>"#);
-        header.push_record(br#"##contig=<ID=8>"#);
-        header.push_record(br#"##contig=<ID=9>"#);
-        header.push_record(br#"##contig=<ID=11>"#);
-        header.push_record(br#"##contig=<ID=16>"#);
-        header.push_record(br#"##contig=<ID=X>"#);
-
-        //push field names to the header.
-        let header_gt_line = r#"##FORMAT=<ID=GT,Number=1,Type=String,Description="Variant is present in the haplotype (1) or not (0).">"#;
-        header.push_record(header_gt_line.as_bytes());
-        let header_locus_line = r#"##FORMAT=<ID=C,Number=1,Type=Integer,Description="Locus is covered by the haplotype (1) or not (0).">"#;
-        header.push_record(header_locus_line.as_bytes());
-
-        //push sample names into the header
-        for sample_name in genotype_df.get_column_names().iter().skip(2) {
-            header.push_sample(sample_name.as_bytes());
-        }
-
-        let mut vcf = Writer::from_path("out.vcf", &header, true, Format::Vcf).unwrap();
-
-        //genotype_df.as_single_chunk_par();
-        let id_iter = genotype_df["ID"].i64().unwrap().into_iter();
-        for row_index in 0..genotype_df.height() {
-            let mut record = vcf.empty_record();
-            let mut variant_iter = genotype_df["Index"].utf8().unwrap().into_iter();
-            let mut id_iter = genotype_df["ID"].i64().unwrap().into_iter();
-            let splitted = variant_iter
-                .nth(row_index)
-                .unwrap()
-                .unwrap()
-                .split(",")
-                .collect::<Vec<&str>>();
-            let chrom = splitted[0];
-            let pos = splitted[1];
-            let id = id_iter.nth(row_index).unwrap().unwrap();
-            let ref_base = splitted[2];
-            let alt_base = splitted[3];
-            let alleles: &[&[u8]] = &[ref_base.as_bytes(), alt_base.as_bytes()];
-            let rid = vcf.header().name2rid(chrom.as_bytes()).unwrap();
-
-            record.set_rid(Some(rid));
-            record.set_pos(pos.parse::<i64>().unwrap() - 1);
-            record.set_id(id.to_string().as_bytes()).unwrap();
-            record.set_alleles(alleles).expect("Failed to set alleles");
-
-            //push genotypes
-            let mut all_gt = Vec::new();
-            for column_index in 2..genotype_df.width() {
-                let gt = genotype_df[column_index]
-                    .i64()
-                    .unwrap()
-                    .into_iter()
-                    .nth(row_index)
-                    .unwrap()
-                    .unwrap();
-                let gt = GenotypeAllele::Unphased(gt.try_into().unwrap());
-                all_gt.push(gt);
-            }
-            record.push_genotypes(&all_gt).unwrap();
-
-            //push loci
-            let mut all_c = Vec::new();
-            for column_index in 2..loci_df.width() {
-                //it doesnt have the ID column so that it starts from 1
-                let c = loci_df[column_index]
-                    .i64()
-                    .unwrap()
-                    .into_iter()
-                    .nth(row_index)
-                    .unwrap()
-                    .unwrap();
-                all_c.push(c as i32);
-            }
-            record.push_format_integer(b"C", &all_c)?;
-            vcf.write(&record).unwrap();
-        }
+        //write locus-wise vcf files.
+        Caller::write_loci_to_vcf(&genotype_df, &loci_df);
         Ok(())
     }
 
@@ -385,7 +287,6 @@ impl Caller {
                 new_df.replace_or_add(&protein_level, variant_table[*column_name].clone())?;
             }
         }
-        dbg!(&new_df);
         let names: Vec<String> = new_df.get_column_names_owned().iter().cloned().collect();
         for (column_index, column_name) in names.iter().enumerate().skip(2) {
             let corrected_column = new_df[column_index]
@@ -396,7 +297,6 @@ impl Caller {
                 .collect::<Series>();
             new_df.replace_or_add(column_name, corrected_column)?;
         }
-        dbg!(&new_df);
         Ok(new_df)
     }
 
@@ -441,6 +341,114 @@ impl Caller {
         let stdout = sort.stdout;
         println!("sorting process finished!");
         fs::write("alignment_sorted.sam", stdout).expect("Unable to write file");
+        Ok(())
+    }
+
+    fn write_loci_to_vcf(variant_table: &DataFrame, loci_table: &DataFrame) -> Result<()> {
+        let names = variant_table
+            .get_column_names()
+            .iter()
+            .cloned()
+            .collect::<Vec<&str>>();
+
+        let mut locus_columns = vec!["Index", "ID"];
+        // for locus in vec![
+        //     "A", "DPA1", "DRB4", "V", "B", "DPB1", "DRB5", "W", "C", "DQA1", "E", "DQA2", "F", "S",
+        //     "DMA", "DQB1", "G", "TAP1", "DMB", "DRA", "HFE", "TAP2", "DOA", "DRB1", "T", "DOB",
+        //     "DRB3", "MICA", "U", //all the non-pseudogenes
+        // ]
+        for locus in vec!["DQA1"] {
+            for column_name in names.iter() {
+                let splitted = column_name.split("*").collect::<Vec<&str>>();
+                if splitted[0] == locus {
+                    // just as an example locus for the start.
+                    locus_columns.push(column_name.clone());
+                }
+            }
+            let variant_table = variant_table.select(&locus_columns)?;
+            let loci_table = loci_table.select(&locus_columns)?;
+
+            //Create VCF header
+            let mut header = Header::new();
+            //push contig names to the header.
+            header.push_record(br#"##contig=<ID=1>"#);
+            header.push_record(br#"##contig=<ID=6>"#);
+            header.push_record(br#"##contig=<ID=8>"#);
+            header.push_record(br#"##contig=<ID=9>"#);
+            header.push_record(br#"##contig=<ID=11>"#);
+            header.push_record(br#"##contig=<ID=16>"#);
+            header.push_record(br#"##contig=<ID=X>"#);
+
+            //push field names to the header.
+            let header_gt_line = r#"##FORMAT=<ID=GT,Number=1,Type=String,Description="Variant is present in the haplotype (1) or not (0).">"#;
+            header.push_record(header_gt_line.as_bytes());
+            let header_locus_line = r#"##FORMAT=<ID=C,Number=1,Type=Integer,Description="Locus is covered by the haplotype (1) or not (0).">"#;
+            header.push_record(header_locus_line.as_bytes());
+
+            //push sample names into the header
+            for sample_name in variant_table.get_column_names().iter().skip(2) {
+                header.push_sample(sample_name.as_bytes());
+            }
+
+            let mut vcf =
+                Writer::from_path(format!("{}.vcf", locus), &header, true, Format::Vcf).unwrap();
+
+            let id_iter = variant_table["ID"].i64().unwrap().into_iter();
+            for row_index in 0..variant_table.height() {
+                let mut record = vcf.empty_record();
+                let mut variant_iter = variant_table["Index"].utf8().unwrap().into_iter();
+                let mut id_iter = variant_table["ID"].i64().unwrap().into_iter();
+                let splitted = variant_iter
+                    .nth(row_index)
+                    .unwrap()
+                    .unwrap()
+                    .split(",")
+                    .collect::<Vec<&str>>();
+                let chrom = splitted[0];
+                let pos = splitted[1];
+                let id = id_iter.nth(row_index).unwrap().unwrap();
+                let ref_base = splitted[2];
+                let alt_base = splitted[3];
+                let alleles: &[&[u8]] = &[ref_base.as_bytes(), alt_base.as_bytes()];
+                let rid = vcf.header().name2rid(chrom.as_bytes()).unwrap();
+
+                record.set_rid(Some(rid));
+                record.set_pos(pos.parse::<i64>().unwrap() - 1);
+                record.set_id(id.to_string().as_bytes()).unwrap();
+                record.set_alleles(alleles).expect("Failed to set alleles");
+
+                //push genotypes
+                let mut all_gt = Vec::new();
+                for column_index in 2..variant_table.width() {
+                    let gt = variant_table[column_index]
+                        .i64()
+                        .unwrap()
+                        .into_iter()
+                        .nth(row_index)
+                        .unwrap()
+                        .unwrap();
+                    let gt = GenotypeAllele::Unphased(gt.try_into().unwrap());
+                    all_gt.push(gt);
+                }
+                record.push_genotypes(&all_gt).unwrap();
+
+                //push loci
+                let mut all_c = Vec::new();
+                for column_index in 2..loci_table.width() {
+                    //it doesnt have the ID column so that it starts from 1
+                    let c = loci_table[column_index]
+                        .i64()
+                        .unwrap()
+                        .into_iter()
+                        .nth(row_index)
+                        .unwrap()
+                        .unwrap();
+                    all_c.push(c as i32);
+                }
+                record.push_format_integer(b"C", &all_c)?;
+                vcf.write(&record).unwrap();
+            }
+        }
         Ok(())
     }
 }

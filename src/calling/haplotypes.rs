@@ -247,27 +247,36 @@ impl HaplotypeVariants {
         //dbg!(&variant_records);
         //loop over variant fragment map and variant records at the same time.
         let mut allele_count: BTreeMap<Haplotype, u64> = BTreeMap::new();
+        dbg!(&variant_fragment_map);
         variant_fragment_map
             .iter()
             //.zip(variant_records.iter())
             //.for_each(|((variant_with_evidence, fragments), (variant, matrices))| {
             .for_each(|((variant, alt_evidence), fragments)| {
-                dbg!(&variant);
-                fragments.iter().for_each(|_| {
+                fragments.iter().for_each(|fragment| {
                     let matrices = variant_records.get(&variant).unwrap().clone(); //query by variantID
                     let mut variant_in_previous_haplotype = false;
                     let mut last_visited_haplotype = String::from("");
                     for (haplotype, (genotype, locus)) in matrices {
                         if genotype && *alt_evidence {
-                            // dbg!(&variant);
-                            // dbg!(&alt_evidence);
-                            // dbg!(&haplotype);
+                            if &haplotype == &Haplotype("DQA1*01:02".to_string()) {
+                                dbg!(&variant);
+                                dbg!(&alt_evidence);
+                                dbg!(&haplotype);
+                                dbg!(&fragment);
+                                dbg!(&variant_in_previous_haplotype);
+                                dbg!(&last_visited_haplotype);
+                            }
                             allele_count.entry(haplotype.clone()).or_insert(0);
                             let mut count = allele_count.get(&haplotype).unwrap().clone();
                             count += 1;
                             if variant_in_previous_haplotype {
-                                // dbg!(&haplotype);
-                                // dbg!(&last_visited_haplotype);
+                                dbg!(&variant);
+                                dbg!(&alt_evidence);
+                                dbg!(&haplotype);
+                                dbg!(&fragment);
+                                dbg!(&variant_in_previous_haplotype);
+                                dbg!(&last_visited_haplotype);
                                 let mut previous_haplotype_count = allele_count
                                     .get(&Haplotype(last_visited_haplotype.clone()))
                                     .unwrap()
@@ -427,8 +436,8 @@ impl HaplotypeCalls {
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
             let read_depths = record.format(b"DP").integer().unwrap();
-            if read_depths[0] != &[0] && afd != "." && &prob_absent_prob <= &Prob(0.1)
-                || &prob_absent_prob >= &Prob(0.9)
+            if read_depths[0] != &[0] && afd != "."
+            //&& &prob_absent_prob <= &Prob(0.1) || &prob_absent_prob >= &Prob(0.9)
             {
                 //because some afd strings are just "." and that throws an error while splitting below.
                 let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
