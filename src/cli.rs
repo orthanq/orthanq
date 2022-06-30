@@ -76,12 +76,6 @@ pub enum Orthanq {
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
         )]
         output: Option<PathBuf>,
-        #[structopt(
-            default_value = "20",
-            long = "k-reads",
-            help = "Plausible haplotypes are only those which are backed by at least k."
-        )]
-        k_reads: usize,
     },
 }
 
@@ -94,7 +88,6 @@ pub fn run(opt: Orthanq) -> Result<()> {
             observations,
             max_haplotypes,
             output,
-            k_reads,
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
                 .haplotype_variants(bcf::Reader::from_path(&haplotype_variants)?)
@@ -102,7 +95,6 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 .max_haplotypes(max_haplotypes)
                 .observations(bcf::Reader::from_path(observations)?)
                 .outcsv(output)
-                .k_reads(k_reads)
                 .build()
                 .unwrap();
             caller.call()?;

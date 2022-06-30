@@ -21,7 +21,6 @@ pub struct Caller {
     observations: bcf::Reader,
     max_haplotypes: usize,
     outcsv: Option<PathBuf>,
-    k_reads: usize,
 }
 
 impl Caller {
@@ -38,7 +37,6 @@ impl Caller {
             &mut self.observations,
             &mut self.haplotype_variants,
             &variant_ids,
-            &self.k_reads,
             &self.max_haplotypes,
         )?;
         //4)keep only the variants secondly filtered in haplotype_variants
@@ -193,7 +191,6 @@ impl HaplotypeVariants {
         observations: &mut bcf::Reader,
         haplotype_variants: &mut bcf::Reader,
         filtered_ids: &Vec<VariantID>,
-        k_reads: &usize,
         max_haplotypes: &usize,
     ) -> Result<Self> {
         let mut variant_fragment_map: BTreeMap<(VariantID, bool), Vec<u64>> = BTreeMap::new();
@@ -257,8 +254,7 @@ impl HaplotypeVariants {
                     let mut last_visited_haplotype = String::from("");
                     for (haplotype, (genotype, locus)) in matrices {
                         if genotype && *alt_evidence {
-                            if &haplotype == &Haplotype("DQA1*01:02".to_string()) {
-                            }
+                            if &haplotype == &Haplotype("DQA1*01:02".to_string()) {}
                             allele_count.entry(haplotype.clone()).or_insert(0);
                             let mut count = allele_count.get(&haplotype).unwrap().clone();
                             count += 1;
