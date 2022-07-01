@@ -254,7 +254,6 @@ impl HaplotypeVariants {
                     let mut last_visited_haplotype = String::from("");
                     for (haplotype, (genotype, locus)) in matrices {
                         if genotype && *alt_evidence {
-                            if &haplotype == &Haplotype("DQA1*01:02".to_string()) {}
                             allele_count.entry(haplotype.clone()).or_insert(0);
                             let mut count = allele_count.get(&haplotype).unwrap().clone();
                             count += 1;

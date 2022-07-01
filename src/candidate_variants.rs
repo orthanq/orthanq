@@ -160,7 +160,7 @@ impl Caller {
                 j += 1;
             }
         }
-
+        //dbg!(&candidate_variants);
         //construct the first array having the same number of rows and columns as candidate variants map and locate the genotypes for each haplotype.
         let mut genotypes_array = Array2::<i64>::zeros((candidate_variants.len(), j));
         candidate_variants
@@ -243,12 +243,13 @@ impl Caller {
         )?;
 
         //Split up the variants per locus and depending on --wes samples, restrict the columns to protein level.
+        //TODO: enable writing for wgs samples.
         if self.wes {
             let genotype_df = self.split_haplotypes(&mut genotype_df)?;
             let loci_df = self.split_haplotypes(&mut loci_df)?;
+            //write locus-wise vcf files.
+            self.write_loci_to_vcf(&genotype_df, &loci_df)?;
         }
-        //write locus-wise vcf files.
-        self.write_loci_to_vcf(&genotype_df, &loci_df)?;
         Ok(())
     }
 
@@ -366,6 +367,7 @@ impl Caller {
                     locus_columns.push(column_name.clone());
                 }
             }
+
             let variant_table = variant_table.select(&locus_columns)?;
             let loci_table = loci_table.select(&locus_columns)?;
 
@@ -390,9 +392,10 @@ impl Caller {
             for sample_name in variant_table.get_column_names().iter().skip(2) {
                 header.push_sample(sample_name.as_bytes());
             }
+            fs::create_dir_all(self.output.as_ref().unwrap())?;
             let mut vcf =
                 Writer::from_path(format!("{}.vcf", self.output.as_ref().unwrap().join(locus).display()), &header, true, Format::Vcf).unwrap();
-
+            
             let id_iter = variant_table["ID"].i64().unwrap().into_iter();
             for row_index in 0..variant_table.height() {
                 let mut record = vcf.empty_record();
