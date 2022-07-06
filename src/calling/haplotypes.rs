@@ -59,7 +59,11 @@ impl Caller {
         let posterior_output = m.event_posteriors();
 
         //add variant query and probabilities to the outout table for each event
-        let variant_calls: Vec<AlleleFreqDist> = data.haplotype_calls.iter().map(|(_, (_,afd))| afd.clone()).collect();
+        let variant_calls: Vec<AlleleFreqDist> = data
+            .haplotype_calls
+            .iter()
+            .map(|(_, (_, afd))| afd.clone())
+            .collect();
         let genotype_loci_matrix = data.variant_matrix;
         let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
         posterior_output.for_each(|(fractions, _)| {
@@ -222,55 +226,55 @@ impl HaplotypeVariants {
     // of its variants with GT:C=0:1 have an AF of < 1.0
     fn find_plausible_haplotypes(&mut self, haplotype_calls: &HaplotypeCalls) -> Result<Self> {
         let (_, haplotypes_gt_c) = self.iter().next().unwrap();
-        let mut haplotype_content: BTreeMap<Haplotype, BTreeMap<VariantID, bool>> = haplotypes_gt_c.keys().map(|key| {
-            let variants_init = BTreeMap::new();
-            return (key.clone(), variants_init);
-        }).collect(); //initialize the keys of haplotype_content beforehand to prevent many api requests in the following operation.
-            
+        let mut haplotype_content: BTreeMap<Haplotype, BTreeMap<VariantID, bool>> = haplotypes_gt_c
+            .keys()
+            .map(|key| {
+                let variants_init = BTreeMap::new();
+                return (key.clone(), variants_init);
+            })
+            .collect(); //initialize the keys of haplotype_content beforehand to prevent many api requests in the following operation.
+
         self.iter().for_each(|(variant, matrices)| {
             let mut variants = BTreeMap::new();
-            matrices.iter().for_each(|(haplotype, (genotype,locus))| {
+            matrices.iter().for_each(|(haplotype, (genotype, locus))| {
                 if (*genotype && *locus) || *locus {
                     variants.insert(variant, genotype); //false for 0:1, true for 1:1
 
-                    let mut collected_variants = haplotype_content
-                        .get(&haplotype)
-                        .unwrap()
-                        .clone();
+                    let mut collected_variants = haplotype_content.get(&haplotype).unwrap().clone();
                     collected_variants.extend(variants.clone());
                     haplotype_content.insert(haplotype.clone(), collected_variants);
-                }  
+                }
             });
         });
         dbg!(&haplotype_content.len());
         dbg!(&haplotype_content);
-        let plausible_haplotypes = haplotype_content.into_iter().filter_map(|(haplotype, variants)| {
-            //TODO: find plausible haplotypes to be present if at least half of its variants
-            //(including the non-exclusive) with GT:C=1:1 have an AF of >0.0, and at least half
-            // of its variants with GT:C=0:1 have an AF of < 1.0
-            let mut counter_1 = 0;
-            let mut counter_2 = 0;
-            let n_variants = variants.len();
-            let threshold = n_variants/2; // half of the whole number of variants per haplotype, the number can be modified.
-            for (variant, genotype) in variants {
-                let (af,_) = haplotype_calls
-                .get(&(variant))
-                .unwrap()
-                .clone();
-                if af > 0.0 && genotype {
-                    counter_1 += 1;
-                } else if af < 1.0 && !genotype {
-                    counter_2 += 1;
+        let plausible_haplotypes = haplotype_content
+            .into_iter()
+            .filter_map(|(haplotype, variants)| {
+                //TODO: find plausible haplotypes to be present if at least half of its variants
+                //(including the non-exclusive) with GT:C=1:1 have an AF of >0.0, and at least half
+                // of its variants with GT:C=0:1 have an AF of < 1.0
+                let mut counter_1 = 0;
+                let mut counter_2 = 0;
+                let n_variants = variants.len();
+                let threshold = n_variants / 2; // half of the whole number of variants per haplotype, the number can be modified.
+                for (variant, genotype) in variants {
+                    let (af, _) = haplotype_calls.get(&(variant)).unwrap().clone();
+                    if af > 0.0 && genotype {
+                        counter_1 += 1;
+                    } else if af < 1.0 && !genotype {
+                        counter_2 += 1;
+                    }
                 }
-            }
 
-            //compare the rate of variants satisfy above two conditions with the threshold
-            if counter_1/n_variants > threshold && counter_2/n_variants > threshold{
-                Some(haplotype)
-            } else {
-                None
-            }
-        }).collect::<Vec<Haplotype>>();
+                //compare the rate of variants satisfy above two conditions with the threshold
+                if counter_1 / n_variants > threshold && counter_2 / n_variants > threshold {
+                    Some(haplotype)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<Haplotype>>();
         dbg!(&plausible_haplotypes);
 
         //filter both for the selected haplotypes and the variants.

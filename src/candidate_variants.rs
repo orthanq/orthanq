@@ -26,7 +26,7 @@ pub struct Caller {
     genome: PathBuf,
     wes: bool,
     wgs: bool,
-    output: Option<PathBuf>
+    output: Option<PathBuf>,
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
@@ -393,9 +393,17 @@ impl Caller {
                 header.push_sample(sample_name.as_bytes());
             }
             fs::create_dir_all(self.output.as_ref().unwrap())?;
-            let mut vcf =
-                Writer::from_path(format!("{}.vcf", self.output.as_ref().unwrap().join(locus).display()), &header, true, Format::Vcf).unwrap();
-            
+            let mut vcf = Writer::from_path(
+                format!(
+                    "{}.vcf",
+                    self.output.as_ref().unwrap().join(locus).display()
+                ),
+                &header,
+                true,
+                Format::Vcf,
+            )
+            .unwrap();
+
             let id_iter = variant_table["ID"].i64().unwrap().into_iter();
             for row_index in 0..variant_table.height() {
                 let mut record = vcf.empty_record();

@@ -110,7 +110,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
             genome,
             wes,
             wgs,
-            output
+            output,
         } => {
             let caller = candidate_variants::CallerBuilder::default()
                 .alleles(alleles)
