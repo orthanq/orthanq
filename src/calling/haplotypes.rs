@@ -32,7 +32,6 @@ impl Caller {
 
         //collect the variant IDs from the varlociraptor calls.
         let variant_ids: Vec<VariantID> = haplotype_calls.keys().cloned().collect();
-        dbg!(&variant_ids);
         //2) collect the candidate variants and haplotypes (horizontal evidence, shortlist of haplotypes)
         let mut haplotype_variants = HaplotypeVariants::new(
             //&mut self.observations,
@@ -237,7 +236,7 @@ impl HaplotypeVariants {
         self.iter().for_each(|(variant, matrices)| {
             let mut variants = BTreeMap::new();
             matrices.iter().for_each(|(haplotype, (genotype, locus))| {
-                if (*genotype && *locus) || *locus {
+                if *genotype || *locus {
                     variants.insert(variant, genotype); //false for 0:1, true for 1:1
 
                     let mut collected_variants = haplotype_content.get(&haplotype).unwrap().clone();
@@ -257,16 +256,19 @@ impl HaplotypeVariants {
                 let mut counter_1 = 0;
                 let mut counter_2 = 0;
                 let n_variants = variants.len();
+                dbg!(&n_variants);
                 let threshold = n_variants / 2; // half of the whole number of variants per haplotype, the number can be modified.
                 for (variant, genotype) in variants {
                     let (af, _) = haplotype_calls.get(&(variant)).unwrap().clone();
+                    dbg!(&af);
                     if af > 0.0 && genotype {
                         counter_1 += 1;
                     } else if af < 1.0 && !genotype {
                         counter_2 += 1;
                     }
                 }
-
+                dbg!(&counter_1);
+                dbg!(&counter_2);
                 //compare the rate of variants satisfy above two conditions with the threshold
                 if counter_1 / n_variants > threshold && counter_2 / n_variants > threshold {
                     Some(haplotype)
@@ -375,7 +377,8 @@ impl HaplotypeCalls {
     pub(crate) fn new(haplotype_calls: &mut bcf::Reader) -> Result<Self> {
         let mut calls = BTreeMap::new();
         for record_result in haplotype_calls.records() {
-            let record = record_result?;
+            let mut record = record_result?;
+            record.unpack();
             let prob_absent = record.info(b"PROB_ABSENT").float().unwrap().unwrap()[0];
             let prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
             let afd_utf = record.format(b"AFD").string()?;
@@ -386,7 +389,8 @@ impl HaplotypeCalls {
             {
                 //because some afd strings are just "." and that throws an error while splitting below.
                 let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
-                let af = record.format(b"AF").float().unwrap()[0];
+                let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
+                dbg!(&af);
                 let mut vaf_density = BTreeMap::new();
                 for pair in afd.split(',') {
                     let (vaf, density) = pair.split_once("=").unwrap();
@@ -394,7 +398,7 @@ impl HaplotypeCalls {
                         (vaf.parse().unwrap(), density.parse().unwrap());
                     vaf_density.insert(vaf, density);
                 }
-                calls.insert(VariantID(variant_id), (af[0], AlleleFreqDist(vaf_density)));
+                calls.insert(VariantID(variant_id), (af, AlleleFreqDist(vaf_density)));
             }
         }
         Ok(HaplotypeCalls(calls))
