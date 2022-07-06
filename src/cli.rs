@@ -10,7 +10,7 @@ use structopt::StructOpt;
     name = "orthanq",
     about = "A haplotype caller for HLA typing and/or viral strain quantification.",
     usage = "orthanq --haplotype-variants variants.vcf \
-     --haplotype-calls calls.bcf --observations observations.bcf --k-reads 20 \
+     --haplotype-calls calls.bcf --k-reads 20 \
      --max-haplotypes 3 --output results.tsv",
     setting = structopt::clap::AppSettings::ColoredHelp,
 )]
@@ -63,13 +63,13 @@ pub enum Orthanq {
             help = "Haplotype calls"
         )]
         haplotype_calls: PathBuf,
-        #[structopt(
-            parse(from_os_str),
-            long = "observations",
-            required = true,
-            help = "Variant observations by Varlociraptor."
-        )]
-        observations: PathBuf,
+        // #[structopt(
+        //     parse(from_os_str),
+        //     long = "observations",
+        //     required = true,
+        //     help = "Variant observations by Varlociraptor."
+        // )]
+        // observations: PathBuf,
         #[structopt(
             default_value = "2", //for ploidy = 2
             long = "max-haplotypes",
@@ -90,7 +90,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
         Orthanq::Call {
             haplotype_variants,
             haplotype_calls,
-            observations,
+            //observations,
             max_haplotypes,
             output,
         } => {
@@ -98,7 +98,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 .haplotype_variants(bcf::Reader::from_path(&haplotype_variants)?)
                 .haplotype_calls(bcf::Reader::from_path(&haplotype_calls)?)
                 .max_haplotypes(max_haplotypes)
-                .observations(bcf::Reader::from_path(observations)?)
+                //.observations(bcf::Reader::from_path(observations)?)
                 .outcsv(output)
                 .build()
                 .unwrap();

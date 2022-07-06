@@ -97,7 +97,8 @@ impl Likelihood {
         _cache: &mut Cache,
     ) -> LogProb {
         let variant_matrix: Vec<(BitVec, BitVec)> = data.variant_matrix.values().cloned().collect();
-        let variant_calls: Vec<AlleleFreqDist> = data.haplotype_calls.values().cloned().collect();
+        let variant_calls: Vec<AlleleFreqDist> = data.haplotype_calls.iter().map(|(variant, (af,afd))| afd.clone()).collect();
+
         variant_matrix
             .iter()
             .zip(variant_calls.iter())
