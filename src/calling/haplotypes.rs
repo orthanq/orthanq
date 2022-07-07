@@ -32,6 +32,7 @@ impl Caller {
 
         //collect the variant IDs from the varlociraptor calls.
         let variant_ids: Vec<VariantID> = haplotype_calls.keys().cloned().collect();
+        dbg!(&variant_ids.len());
         //2) collect the candidate variants and haplotypes (horizontal evidence, shortlist of haplotypes)
         let mut haplotype_variants = HaplotypeVariants::new(
             //&mut self.observations,
@@ -89,9 +90,10 @@ impl Caller {
                     }
                     vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
                         / NotNan::new(100.0).unwrap();
+
                     let answer = afd.vaf_query(&vaf_sum);
                     if counter > 0 {
-                        vaf_queries.insert(*variant_id, (vaf_sum, answer));
+                        vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
                     }
                 });
             event_queries.push(vaf_queries);
@@ -256,11 +258,12 @@ impl HaplotypeVariants {
                 let mut counter_1 = 0;
                 let mut counter_2 = 0;
                 let n_variants = variants.len();
+                dbg!(&haplotype);
                 dbg!(&n_variants);
-                let threshold = n_variants / 2; // half of the whole number of variants per haplotype, the number can be modified.
+                let threshold = n_variants * 2 / 100; // various percentages can be tried. 
+                dbg!(&threshold);
                 for (variant, genotype) in variants {
                     let (af, _) = haplotype_calls.get(&(variant)).unwrap().clone();
-                    dbg!(&af);
                     if af > 0.0 && genotype {
                         counter_1 += 1;
                     } else if af < 1.0 && !genotype {
@@ -270,7 +273,7 @@ impl HaplotypeVariants {
                 dbg!(&counter_1);
                 dbg!(&counter_2);
                 //compare the rate of variants satisfy above two conditions with the threshold
-                if counter_1 / n_variants > threshold && counter_2 / n_variants > threshold {
+                if counter_1 > threshold && n_variants > threshold {
                     Some(haplotype)
                 } else {
                     None
@@ -331,15 +334,15 @@ impl HaplotypeVariants {
 pub(crate) struct AlleleFreqDist(#[deref] BTreeMap<AlleleFreq, f64>);
 
 impl AlleleFreqDist {
-    pub(crate) fn vaf_query(&self, vaf: &AlleleFreq) -> LogProb {
+    pub(crate) fn vaf_query(&self, vaf: &AlleleFreq) -> Option<LogProb> {
         if self.contains_key(&vaf) {
-            LogProb::from(PHREDProb(*self.get(&vaf).unwrap()))
+            Some(LogProb::from(PHREDProb(*self.get(&vaf).unwrap())))
         } else {
             let (x_0, y_0) = self.range(..vaf).next_back().unwrap();
             let (x_1, y_1) = self.range(vaf..).next().unwrap();
             let density =
                 NotNan::new(*y_0).unwrap() + (*vaf - *x_0) * (*y_1 - *y_0) / (*x_1 - *x_0); //calculation of density for given vaf by linear interpolation
-            LogProb::from(PHREDProb(NotNan::into_inner(density)))
+            Some(LogProb::from(PHREDProb(NotNan::into_inner(density))))
         }
     }
 }
@@ -384,19 +387,20 @@ impl HaplotypeCalls {
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
             let read_depths = record.format(b"DP").integer().unwrap();
-            if read_depths[0] != &[0] && afd != "."
+            if read_depths[0] != &[0]
+            //&& afd != "."
             //&& &prob_absent_prob <= &Prob(0.1) || &prob_absent_prob >= &Prob(0.9)
             {
                 //because some afd strings are just "." and that throws an error while splitting below.
                 let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
                 let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
-                dbg!(&af);
                 let mut vaf_density = BTreeMap::new();
                 for pair in afd.split(',') {
-                    let (vaf, density) = pair.split_once("=").unwrap();
-                    let (vaf, density): (AlleleFreq, f64) =
+                    if let Some((vaf, density)) = pair.split_once("=") {
+                        let (vaf, density): (AlleleFreq, f64) =
                         (vaf.parse().unwrap(), density.parse().unwrap());
-                    vaf_density.insert(vaf, density);
+                        vaf_density.insert(vaf, density);
+                    }
                 }
                 calls.insert(VariantID(variant_id), (af, AlleleFreqDist(vaf_density)));
             }
