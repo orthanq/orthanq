@@ -125,7 +125,11 @@ impl Likelihood {
                 //In any case, for a direct query to the AFD VAFs (they contain 2 decimal places).
                 vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
                     / NotNan::new(100.0).unwrap();
-                afd.vaf_query(&vaf_sum).unwrap()
+                if !afd.is_empty() {
+                    afd.vaf_query(&vaf_sum).unwrap()
+                } else {
+                    LogProb::ln_one()
+                }
             })
             .sum()
         //LogProb::ln_one()

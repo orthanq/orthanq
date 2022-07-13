@@ -38,18 +38,18 @@ impl Caller {
             //&mut self.observations,
             &mut self.haplotype_variants,
             &variant_ids,
-            &self.max_haplotypes,
         )?;
 
         //5) finalize haplotype variants struct to contain only thee shortlisted haplotypes and
         //select top N haplotypes according to --max-haplotypes N.
-        haplotype_variants.find_plausible_haplotypes(&haplotype_calls)?;
-        let (_, haplotypes_gt_c) = haplotype_variants.iter().next().unwrap();
+        let filtered_haplotype_variants =
+            haplotype_variants.find_plausible_haplotypes(&haplotype_calls, self.max_haplotypes)?;
+        let (_, haplotypes_gt_c) = filtered_haplotype_variants.iter().next().unwrap();
         let haplotypes: Vec<Haplotype> = haplotypes_gt_c.keys().cloned().collect();
-
+        dbg!(&haplotypes);
         //6) create the GenotypesLoci struct that contains variants, genotypes and loci information,
         //together with only selected top N haplotypes from the previous step.
-        let variant_matrix = GenotypesLoci::new(&haplotype_variants, &haplotypes).unwrap();
+        let variant_matrix = GenotypesLoci::new(&filtered_haplotype_variants, &haplotypes).unwrap();
         // Step 2: setup model.
         let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
         let data = Data::new(variant_matrix, haplotype_calls);
@@ -57,7 +57,6 @@ impl Caller {
         //let m = model.compute(universe, &data);
         let m = model.compute_from_marginal(&Marginal::new(haplotypes.len()), &data);
         let posterior_output = m.event_posteriors();
-
         //add variant query and probabilities to the outout table for each event
         let variant_calls: Vec<AlleleFreqDist> = data
             .haplotype_calls
@@ -91,9 +90,11 @@ impl Caller {
                     vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
                         / NotNan::new(100.0).unwrap();
 
-                    let answer = afd.vaf_query(&vaf_sum);
-                    if counter > 0 {
+                    if !afd.is_empty() && counter > 0 {
+                        let answer = afd.vaf_query(&vaf_sum);
                         vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
+                    } else {
+                        ()
                     }
                 });
             event_queries.push(vaf_queries);
@@ -197,7 +198,7 @@ impl HaplotypeVariants {
         //observations: &mut bcf::Reader,
         haplotype_variants: &mut bcf::Reader,
         filtered_ids: &Vec<VariantID>,
-        max_haplotypes: &usize,
+        //max_haplotypes: &usize,
     ) -> Result<Self> {
         let mut variant_records = BTreeMap::new();
         for record_result in haplotype_variants.records() {
@@ -225,7 +226,11 @@ impl HaplotypeVariants {
     //TODO: find plausible haplotypes to be present if at least half of its variants
     //(including the non-exclusive) with GT:C=1:1 have an AF of >0.0, and at least half
     // of its variants with GT:C=0:1 have an AF of < 1.0
-    fn find_plausible_haplotypes(&mut self, haplotype_calls: &HaplotypeCalls) -> Result<Self> {
+    fn find_plausible_haplotypes(
+        &self,
+        haplotype_calls: &HaplotypeCalls,
+        max_haplotypes: usize,
+    ) -> Result<Self> {
         let (_, haplotypes_gt_c) = self.iter().next().unwrap();
         let mut haplotype_content: BTreeMap<Haplotype, BTreeMap<VariantID, bool>> = haplotypes_gt_c
             .keys()
@@ -249,19 +254,22 @@ impl HaplotypeVariants {
         });
         dbg!(&haplotype_content.len());
         dbg!(&haplotype_content);
-        let plausible_haplotypes = haplotype_content
+        let mut plausible_haplotypes = haplotype_content
             .into_iter()
             .filter_map(|(haplotype, variants)| {
-                //TODO: find plausible haplotypes to be present if at least half of its variants
-                //(including the non-exclusive) with GT:C=1:1 have an AF of >0.0, and at least half
+                //TODO: find plausible haplotypes to be present if at least half (5% for now) of its variants
+                //(including the non-exclusive) with GT:C=1:1 have an AF of >0.0, and at least half (50% for now)
                 // of its variants with GT:C=0:1 have an AF of < 1.0
                 let mut counter_1 = 0;
                 let mut counter_2 = 0;
                 let n_variants = variants.len();
                 dbg!(&haplotype);
                 dbg!(&n_variants);
-                let threshold = n_variants * 2 / 100; // various percentages can be tried. 
-                dbg!(&threshold);
+                let threshold_1 = n_variants * 5 / 100; // various percentages are tested.
+                //let threshold_1 = 1; // various percentages are tested.
+                let threshold_2 = n_variants * 50 / 100; // various percentages are tested.
+                dbg!(&threshold_1);
+                dbg!(&threshold_2);
                 for (variant, genotype) in variants {
                     let (af, _) = haplotype_calls.get(&(variant)).unwrap().clone();
                     if af > 0.0 && genotype {
@@ -272,29 +280,36 @@ impl HaplotypeVariants {
                 }
                 dbg!(&counter_1);
                 dbg!(&counter_2);
+                let rate_of_evidences = (counter_1 as f32 + counter_2 as f32) / n_variants as f32; //create a variable for "variant load" of haplotypes.
+                dbg!(&rate_of_evidences);
                 //compare the rate of variants satisfy above two conditions with the threshold
-                if counter_1 > threshold && n_variants > threshold {
-                    Some(haplotype)
+                if counter_1 > threshold_1 || counter_2 >= threshold_2 {
+                    Some((haplotype, rate_of_evidences))
                 } else {
                     None
                 }
+                //Some((haplotype, rate_of_evidences))
             })
-            .collect::<Vec<Haplotype>>();
+            .collect::<Vec<(Haplotype, f32)>>();
         dbg!(&plausible_haplotypes);
 
+        //sort the map for the rate of variants and get --max-n-haplotypes
+        plausible_haplotypes.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        let max_n_haplotypes: Vec<Haplotype> = plausible_haplotypes[0..max_haplotypes]
+            .iter()
+            .map(|(haplotype, _)| haplotype.clone())
+            .collect();
+        dbg!(&max_n_haplotypes);
+
         //filter both for the selected haplotypes and the variants.
-        let filtered_variant_records =
-            HaplotypeVariants::filter_haplotypes(self, &plausible_haplotypes).unwrap();
+        let filtered_variant_records = self.filter_haplotypes(&max_n_haplotypes).unwrap();
         Ok(filtered_variant_records)
     }
 
-    fn filter_haplotypes(
-        haplotype_variants: &mut Self,
-        filtered_haps: &Vec<Haplotype>,
-    ) -> Result<Self> {
+    fn filter_haplotypes(&self, filtered_haps: &Vec<Haplotype>) -> Result<Self> {
         let mut filtered_haplotypes: Vec<String> = Vec::new();
         //the loop for discovering haplotype names that bear the filtered variants.
-        for (_, genotypes_loci_map) in haplotype_variants.iter() {
+        for (_, genotypes_loci_map) in self.iter() {
             for (haplotype, (genotype, _)) in genotypes_loci_map {
                 if *genotype && filtered_haps.contains(haplotype) {
                     filtered_haplotypes.push(haplotype.to_string());
@@ -303,9 +318,9 @@ impl HaplotypeVariants {
         }
         //remove the duplicates.
         let filtered_haplotypes: Vec<String> = filtered_haplotypes.into_iter().unique().collect();
-        //1) collect the first record of haplotype_variants and collect the indices of haplotypes for further filtering in the following.
+        //1) collect the first record of self and collect the indices of haplotypes for further filtering in the following.
         let mut haplotype_indices: Vec<usize> = Vec::new();
-        if let Some((_, bmap)) = haplotype_variants.iter().next() {
+        if let Some((_, bmap)) = self.iter().next() {
             bmap.iter().enumerate().for_each(|(i, (haplotype, _))| {
                 if filtered_haplotypes.contains(haplotype) {
                     haplotype_indices.push(i)
@@ -314,7 +329,7 @@ impl HaplotypeVariants {
         };
         //create the filtered matrix with the indices of filtered haplotypes.
         let mut new_variants = BTreeMap::new();
-        haplotype_variants.iter().for_each(|(variant_id, bmap)| {
+        self.iter().for_each(|(variant_id, bmap)| {
             let mut matrix_map = BTreeMap::new();
             bmap.iter()
                 .enumerate()
@@ -398,7 +413,7 @@ impl HaplotypeCalls {
                 for pair in afd.split(',') {
                     if let Some((vaf, density)) = pair.split_once("=") {
                         let (vaf, density): (AlleleFreq, f64) =
-                        (vaf.parse().unwrap(), density.parse().unwrap());
+                            (vaf.parse().unwrap(), density.parse().unwrap());
                         vaf_density.insert(vaf, density);
                     }
                 }

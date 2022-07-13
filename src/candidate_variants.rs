@@ -304,12 +304,6 @@ impl Caller {
 
     #[allow(dead_code)]
     fn alignment(&self) -> Result<()> {
-        let genome_name = format!(
-            "{}{}",
-            self.genome.file_name().unwrap().to_str().unwrap(),
-            ".mmi"
-        );
-        let _alleles_name = format!("{}", self.alleles.file_name().unwrap().to_str().unwrap());
         let index = {
             Command::new("minimap2")
                 .arg("-d")
@@ -322,8 +316,8 @@ impl Caller {
 
         let align = {
             Command::new("minimap2")
-                .args(["-a", "-t", "36"])
-                .arg(&genome_name)
+                .args(["-a", "-t", "36", "--eqx", "--MD"])
+                .arg(self.genome.clone())
                 .arg(self.alleles.clone())
                 .output()
                 .expect("failed to execute alignment process")
@@ -376,6 +370,7 @@ impl Caller {
             //push contig names to the header.
             header.push_record(br#"##contig=<ID=1>"#);
             header.push_record(br#"##contig=<ID=6>"#);
+            header.push_record(br#"##contig=<ID=7>"#);
             header.push_record(br#"##contig=<ID=8>"#);
             header.push_record(br#"##contig=<ID=9>"#);
             header.push_record(br#"##contig=<ID=11>"#);
