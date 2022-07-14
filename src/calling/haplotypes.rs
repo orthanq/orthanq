@@ -265,14 +265,15 @@ impl HaplotypeVariants {
                 let n_variants = variants.len();
                 dbg!(&haplotype);
                 dbg!(&n_variants);
-                let threshold_1 = n_variants * 5 / 100; // various percentages are tested.
+                let threshold_1 = n_variants * 15 / 100; // various percentages are tested.
                 //let threshold_1 = 1; // various percentages are tested.
-                let threshold_2 = n_variants * 50 / 100; // various percentages are tested.
+                let threshold_2 = n_variants * 80 / 100; // various percentages are tested.
                 dbg!(&threshold_1);
                 dbg!(&threshold_2);
                 for (variant, genotype) in variants {
                     let (af, _) = haplotype_calls.get(&(variant)).unwrap().clone();
                     if af > 0.0 && genotype {
+                        dbg!(&variant);
                         counter_1 += 1;
                     } else if af < 1.0 && !genotype {
                         counter_2 += 1;
