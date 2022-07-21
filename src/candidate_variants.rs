@@ -303,7 +303,7 @@ impl Caller {
     }
 
     #[allow(dead_code)]
-    fn alignment(&self) -> Result<()> { 
+    fn alignment(&self) -> Result<()> {
         let genome_name = format!(
             "{}{}",
             self.genome.file_name().unwrap().to_str().unwrap(),
@@ -352,13 +352,13 @@ impl Caller {
             .cloned()
             .collect::<Vec<&str>>();
 
-        let mut locus_columns = vec!["Index", "ID"];
         // for locus in vec![
         //     "A", "DPA1", "DRB4", "V", "B", "DPB1", "DRB5", "W", "C", "DQA1", "E", "DQA2", "F", "S",
         //     "DMA", "DQB1", "G", "TAP1", "DMB", "DRA", "HFE", "TAP2", "DOA", "DRB1", "T", "DOB",
         //     "DRB3", "MICA", "U", //all the non-pseudogenes
         // ]
-        for locus in vec!["DQA1", "A"] {
+        for locus in vec!["A", "DQA1"] {
+            let mut locus_columns = vec!["Index", "ID"];
             for column_name in names.iter() {
                 let splitted = column_name.split("*").collect::<Vec<&str>>();
                 if splitted[0] == locus {
