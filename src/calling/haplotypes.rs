@@ -274,23 +274,20 @@ impl HaplotypeVariants {
             .into_iter()
             .filter_map(|(haplotype, variants)| {
                 //TODO: find plausible haplotypes
+                dbg!(&haplotype);
                 let mut counter_1 = NotNan::new(0.0).unwrap();
                 let mut counter_2 = NotNan::new(0.0).unwrap();
                 let total_n_variants = variants.len();
                 dbg!(&total_n_variants);
                 let n_variants = variants.iter().filter(|(_, genotype)| **genotype).count();
                 dbg!(&n_variants);
-                dbg!(&haplotype);
                 let mut sum_w_variants = NotNan::new(0.0).unwrap();
                 let mut sum_w_non_variants = NotNan::new(0.0).unwrap();
                 for (variant, genotype) in variants {
                     let (af, _, prob_not_present) =
                         haplotype_calls.get(&(variant)).unwrap().clone();
-                    dbg!(&prob_not_present);
                     let w_variant = NotNan::new(1.0).unwrap() - prob_not_present;
-                    dbg!(&w_variant);
                     let w_non_variant = core::cmp::Ord::max(prob_not_present, w_variant);
-                    dbg!(&w_non_variant);
                     sum_w_variants += w_variant;
                     sum_w_non_variants += w_non_variant;
                     if af > 0.0 && genotype {
@@ -305,7 +302,10 @@ impl HaplotypeVariants {
                 }
                 dbg!(&counter_1);
                 dbg!(&counter_2);
-                let score = (counter_1 + counter_2) / sum_w_variants + sum_w_non_variants;
+                dbg!(&sum_w_variants);
+                dbg!(&sum_w_non_variants);
+                let score = (counter_2 + counter_1) / (sum_w_variants + sum_w_non_variants);
+                dbg!(&score);
                 Some((haplotype, score))
             })
             .collect::<Vec<(Haplotype, NotNan<f64>)>>();
@@ -423,16 +423,12 @@ impl HaplotypeCalls {
             {
                 //because some afd strings are just "." and that throws an error while splitting below.
                 let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
-                dbg!(&variant_id);
                 let prob_absent = record.info(b"PROB_ABSENT").float().unwrap().unwrap()[0];
                 let prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
-                dbg!(&prob_absent_prob);
                 let prob_artifact = record.info(b"PROB_ARTIFACT").float().unwrap().unwrap()[0];
                 let prob_artifact_prob = Prob::from(PHREDProb(prob_artifact.into()));
-                dbg!(&prob_artifact_prob);
                 let prob_not_present =
                     NotNan::from(f64::from(prob_absent_prob + prob_artifact_prob)); //From<Prob> for f32 is not implemented.
-                dbg!(&prob_not_present);
                 let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
                 let mut vaf_density = BTreeMap::new();
                 for pair in afd.split(',') {
