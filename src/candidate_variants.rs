@@ -357,7 +357,7 @@ impl Caller {
         //     "DMA", "DQB1", "G", "TAP1", "DMB", "DRA", "HFE", "TAP2", "DOA", "DRB1", "T", "DOB",
         //     "DRB3", "MICA", "U", //all the non-pseudogenes
         // ]
-        for locus in vec!["A", "DQA1"] {
+        for locus in vec!["A", "DQA1", "DQB1", "DRB1" ,"C"] {
             let mut locus_columns = vec!["Index", "ID"];
             for column_name in names.iter() {
                 let splitted = column_name.split("*").collect::<Vec<&str>>();

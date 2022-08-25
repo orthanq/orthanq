@@ -274,15 +274,17 @@ impl HaplotypeVariants {
             .into_iter()
             .filter_map(|(haplotype, variants)| {
                 //TODO: find plausible haplotypes
-                dbg!(&haplotype);
+                //dbg!(&haplotype);
                 let mut counter_1 = NotNan::new(0.0).unwrap();
                 let mut counter_2 = NotNan::new(0.0).unwrap();
                 let total_n_variants = variants.len();
-                dbg!(&total_n_variants);
+                //dbg!(&total_n_variants);
                 let n_variants = variants.iter().filter(|(_, genotype)| **genotype).count();
-                dbg!(&n_variants);
+                //dbg!(&n_variants);
                 let mut sum_w_variants = NotNan::new(0.0).unwrap();
                 let mut sum_w_non_variants = NotNan::new(0.0).unwrap();
+                let mut number_variants = 0;
+                let mut number_non_variants = 0;
                 for (variant, genotype) in variants {
                     let (af, _, prob_not_present) =
                         haplotype_calls.get(&(variant)).unwrap().clone();
@@ -291,15 +293,21 @@ impl HaplotypeVariants {
                     sum_w_variants += w_variant;
                     sum_w_non_variants += w_non_variant;
                     if af > 0.0 && genotype {
+                        // dbg!(&variant);
                         counter_1 += w_variant;
+                        number_variants += 1;
                     }
-                    // else if genotype {
-                    //     dbg!(&variant);
-                    // }
+                    else if genotype {
+                        dbg!(&variant);
+                    }
                     else if af < 1.0 && !genotype {
+                        // dbg!(&variant);
                         counter_2 += w_non_variant;
+                        number_non_variants += 1;
                     }
                 }
+                dbg!(&number_variants);
+                dbg!(&number_non_variants);
                 dbg!(&counter_1);
                 dbg!(&counter_2);
                 dbg!(&sum_w_variants);
@@ -313,12 +321,13 @@ impl HaplotypeVariants {
 
         //sort the map for the rate of variants and get --max-n-haplotypes
         plausible_haplotypes.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        let max_n_haplotypes: Vec<Haplotype> = plausible_haplotypes[0..max_haplotypes]
-            .iter()
-            .map(|(haplotype, _)| haplotype.clone())
-            .collect();
-        dbg!(&max_n_haplotypes);
-
+        dbg!(&plausible_haplotypes);
+        // let max_n_haplotypes: Vec<Haplotype> = plausible_haplotypes[0..max_haplotypes]
+        //     .iter()
+        //     .map(|(haplotype, _)| haplotype.clone())
+        //     .collect();
+        // dbg!(&max_n_haplotypes);
+        let max_n_haplotypes = vec![Haplotype("A*03:01".to_string()), Haplotype("A*24:215".to_string()), Haplotype("A*24:02".to_string()), Haplotype("A*24:61".to_string())];
         //filter both for the selected haplotypes and the variants.
         let filtered_variant_records = self.filter_haplotypes(&max_n_haplotypes).unwrap();
         Ok(filtered_variant_records)
