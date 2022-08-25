@@ -100,7 +100,7 @@ impl Likelihood {
         let variant_calls: Vec<AlleleFreqDist> = data
             .haplotype_calls
             .iter()
-            .map(|(variant, (_, afd, _))| afd.clone())
+            .map(|(_, afd)| afd.clone())
             .collect();
 
         variant_matrix
