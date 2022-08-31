@@ -75,15 +75,16 @@ impl Caller {
                             counter += 1;
                         } else if covered[i as u64] {
                             ()
-                        } else {
-                            denom -= *fraction;
                         }
+                    //     else {
+                    //         denom -= *fraction;
+                    //     }
                     });
-                    if denom > NotNan::new(0.0).unwrap() {
-                        vaf_sum /= denom;
-                    }
-                    vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
-                        / NotNan::new(100.0).unwrap();
+                    // if denom > NotNan::new(0.0).unwrap() {
+                    //     vaf_sum /= denom;
+                    // }
+                    // vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
+                    //     / NotNan::new(100.0).unwrap();
 
                     if !afd.is_empty() && counter > 0 {
                         let answer = afd.vaf_query(&vaf_sum);

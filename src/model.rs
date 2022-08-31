@@ -114,17 +114,18 @@ impl Likelihood {
                         vaf_sum += *fraction;
                     } else if covered[i as u64] {
                         ()
-                    } else {
-                        denom -= *fraction;
                     }
+                    // else {
+                    //     denom -= *fraction;
+                    // }
                 });
-                if denom > NotNan::new(0.0).unwrap() {
-                    vaf_sum /= denom;
-                }
-                //to overcome a bug that results in larger than 1.0 VAF. After around 10 - 15th decimal place, the value becomes larger.
-                //In any case, for a direct query to the AFD VAFs (they contain 2 decimal places).
-                vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
-                    / NotNan::new(100.0).unwrap();
+                // if denom > NotNan::new(0.0).unwrap() {
+                //     vaf_sum /= denom;
+                // }
+                // //to overcome a bug that results in larger than 1.0 VAF. After around 10 - 15th decimal place, the value becomes larger.
+                // //In any case, for a direct query to the AFD VAFs (they contain 2 decimal places).
+                // vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
+                //     / NotNan::new(100.0).unwrap();
                 if !afd.is_empty() {
                     afd.vaf_query(&vaf_sum).unwrap()
                 } else {
