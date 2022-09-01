@@ -62,7 +62,7 @@ pub enum Orthanq {
             required = true,
             help = "Haplotype calls"
         )]
-        haplotype_calls: PathBuf,
+        variant_calls: PathBuf,
         // #[structopt(
         //     parse(from_os_str),
         //     long = "observations",
@@ -89,14 +89,14 @@ pub fn run(opt: Orthanq) -> Result<()> {
     match opt_clone {
         Orthanq::Call {
             haplotype_variants,
-            haplotype_calls,
+            variant_calls,
             //observations,
             max_haplotypes,
             output,
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
                 .haplotype_variants(bcf::Reader::from_path(&haplotype_variants)?)
-                .haplotype_calls(bcf::Reader::from_path(&haplotype_calls)?)
+                .variant_calls(bcf::Reader::from_path(&variant_calls)?)
                 .max_haplotypes(max_haplotypes)
                 //.observations(bcf::Reader::from_path(observations)?)
                 .outcsv(output)

@@ -1,4 +1,4 @@
-use crate::calling::haplotypes::{AlleleFreqDist, GenotypesLoci, HaplotypeCalls};
+use crate::calling::haplotypes::{AlleleFreqDist, CandidateMatrix, VariantCalls};
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb};
 use bv::BitVec;
@@ -73,12 +73,14 @@ impl model::Marginal for Marginal {
 
 #[derive(Debug, new)]
 pub(crate) struct Data {
-    pub variant_matrix: GenotypesLoci,
-    pub haplotype_calls: HaplotypeCalls,
+    pub candidate_matrix: CandidateMatrix,
+    pub variant_calls: VariantCalls,
 }
 
 #[derive(Debug, new)]
-pub(crate) struct Likelihood;
+pub(crate) struct Likelihood {
+    normalization: bool
+}
 
 impl model::Likelihood<Cache> for Likelihood {
     type Event = HaplotypeFractions;
@@ -96,43 +98,65 @@ impl Likelihood {
         data: &Data,
         _cache: &mut Cache,
     ) -> LogProb {
-        let variant_matrix: Vec<(BitVec, BitVec)> = data.variant_matrix.values().cloned().collect();
+        let candidate_matrix: Vec<(BitVec, BitVec)> = data.candidate_matrix.values().cloned().collect();
         let variant_calls: Vec<AlleleFreqDist> = data
-            .haplotype_calls
+            .variant_calls
             .iter()
             .map(|(_, afd)| afd.clone())
             .collect();
-
-        variant_matrix
-            .iter()
-            .zip(variant_calls.iter())
-            .map(|((genotypes, covered), afd)| {
-                let mut denom = NotNan::new(1.0).unwrap();
-                let mut vaf_sum = NotNan::new(0.0).unwrap();
-                event.iter().enumerate().for_each(|(i, fraction)| {
-                    if genotypes[i as u64] && covered[i as u64] {
-                        vaf_sum += *fraction;
-                    } else if covered[i as u64] {
-                        ()
+        if self.normalization {
+            candidate_matrix
+                .iter()
+                .zip(variant_calls.iter())
+                .map(|((genotypes, covered), afd)| {
+                    let mut denom = NotNan::new(1.0).unwrap();
+                    let mut vaf_sum = NotNan::new(0.0).unwrap();
+                    event.iter().enumerate().for_each(|(i, fraction)| {
+                        if genotypes[i as u64] && covered[i as u64] {
+                            vaf_sum += *fraction;
+                        } else if covered[i as u64] {
+                            ()
+                        }
+                        else {
+                            denom -= *fraction;
+                        }
+                    });
+                    if denom > NotNan::new(0.0).unwrap() {
+                        vaf_sum /= denom;
                     }
-                    // else {
-                    //     denom -= *fraction;
-                    // }
-                });
-                // if denom > NotNan::new(0.0).unwrap() {
-                //     vaf_sum /= denom;
-                // }
-                // //to overcome a bug that results in larger than 1.0 VAF. After around 10 - 15th decimal place, the value becomes larger.
-                // //In any case, for a direct query to the AFD VAFs (they contain 2 decimal places).
-                // vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
-                //     / NotNan::new(100.0).unwrap();
-                if !afd.is_empty() {
-                    afd.vaf_query(&vaf_sum).unwrap()
-                } else {
-                    LogProb::ln_one()
-                }
-            })
-            .sum()
+                    //to overcome a bug that results in larger than 1.0 VAF. After around 10 - 15th decimal place, the value becomes larger.
+                    //In any case, for a direct query to the AFD VAFs (they contain 2 decimal places).
+                    vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
+                        / NotNan::new(100.0).unwrap();
+                    if !afd.is_empty() {
+                        afd.vaf_query(&vaf_sum).unwrap()
+                    } else {
+                        LogProb::ln_one()
+                    }
+                })
+                .sum()
+        } else {
+            candidate_matrix
+                .iter()
+                .zip(variant_calls.iter())
+                .map(|((genotypes, covered), afd)| {
+                    let mut denom = NotNan::new(1.0).unwrap();
+                    let mut vaf_sum = NotNan::new(0.0).unwrap();
+                    event.iter().enumerate().for_each(|(i, fraction)| {
+                        if genotypes[i as u64] && covered[i as u64] {
+                            vaf_sum += *fraction;
+                        } else if covered[i as u64] {
+                            ()
+                        }
+                    });
+                    if !afd.is_empty() {
+                        afd.vaf_query(&vaf_sum).unwrap()
+                    } else {
+                        LogProb::ln_one()
+                    }
+                })
+                .sum()
+        }
         //LogProb::ln_one()
     }
 }

@@ -1,4 +1,4 @@
-use crate::model::{AlleleFreq, Data, Likelihood, Marginal, Posterior, Prior};
+use crate::model::{AlleleFreq, Data, HaplotypeFractions, Likelihood, Marginal, Posterior, Prior};
 use anyhow::Result;
 use bio::stats::{bayesian::model::Model, probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
@@ -21,80 +21,100 @@ use std::{path::PathBuf, str};
 #[builder(pattern = "owned")]
 pub struct Caller {
     haplotype_variants: bcf::Reader,
-    haplotype_calls: bcf::Reader,
-    //observations: bcf::Reader,
+    variant_calls: bcf::Reader,
     max_haplotypes: usize,
     outcsv: Option<PathBuf>,
 }
 
 impl Caller {
     pub fn call(&mut self) -> Result<()> {
-        let mut haplotype_calls = HaplotypeCalls::new(&mut self.haplotype_calls)?;
-        let variant_ids: Vec<VariantID> = haplotype_calls.keys().cloned().collect();
-        dbg!(&variant_ids.len());
+        let mut variant_calls = VariantCalls::new(&mut self.variant_calls)?;
+        let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
         let mut haplotype_variants =
             HaplotypeVariants::new(&mut self.haplotype_variants, &variant_ids)?;
-        //select top N haplotypes according to --max-haplotypes N.
-        let filtered_haplotype_variants =
+        let haplotype_variants =
             haplotype_variants.find_plausible_haplotypes(self.max_haplotypes)?;
+        let (_, candidate_matrix) = haplotype_variants.iter().next().unwrap();
+        let haplotypes: Vec<Haplotype> = candidate_matrix.keys().cloned().collect();
+        let candidate_matrix = CandidateMatrix::new(&haplotype_variants, &haplotypes).unwrap();
 
-        let (_, haplotypes_gt_c) = filtered_haplotype_variants.iter().next().unwrap();
-        let haplotypes: Vec<Haplotype> = haplotypes_gt_c.keys().cloned().collect();
+        //model computation
+        let normalization = false;
+        let model = Model::new(Likelihood::new(normalization), Prior::new(), Posterior::new());
+        let data = Data::new(candidate_matrix, variant_calls);
+        let computed_model = model.compute_from_marginal(&Marginal::new(self.max_haplotypes), &data);
+        let mut event_posteriors = computed_model.event_posteriors();
 
-        //6) create the GenotypesLoci struct that contains variants, genotypes and loci information,
-        //together with only selected top N haplotypes from the previous step.
-        let variant_matrix = GenotypesLoci::new(&filtered_haplotype_variants, &haplotypes).unwrap();
-        // Step 2: setup model.
-        let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
-        let data = Data::new(variant_matrix, haplotype_calls);
-        // Step 3: calculate posteriors.
-        //let m = model.compute(universe, &data);
-        let m = model.compute_from_marginal(&Marginal::new(self.max_haplotypes), &data);
-        let posterior_output = m.event_posteriors();
         //add variant query and probabilities to the outout table for each event
-        let variant_calls: Vec<AlleleFreqDist> = data
-            .haplotype_calls
+        let variant_calls: Vec<AlleleFreqDist> = data.variant_calls
             .iter()
             .map(|(_, afd)| afd.clone())
             .collect();
-        let genotype_loci_matrix = data.variant_matrix;
         let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
-        posterior_output.for_each(|(fractions, _)| {
-            dbg!(&fractions);
-            let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
-            genotype_loci_matrix
-                .iter()
-                .zip(variant_calls.iter())
-                .for_each(|((variant_id, (genotypes, covered)), afd)| {
-                    let mut denom = NotNan::new(1.0).unwrap();
-                    let mut vaf_sum = NotNan::new(0.0).unwrap();
-                    let mut counter = 0;
-                    fractions.iter().enumerate().for_each(|(i, fraction)| {
-                        if genotypes[i as u64] && covered[i as u64] {
-                            vaf_sum += *fraction;
-                            counter += 1;
-                        } else if covered[i as u64] {
+        if normalization {
+            event_posteriors.for_each(|(fractions, _)| {
+                let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
+                data.candidate_matrix
+                    .iter()
+                    .zip(variant_calls.iter())
+                    .for_each(|((variant_id, (genotypes, covered)), afd)| {
+                        let mut denom = NotNan::new(1.0).unwrap();
+                        let mut vaf_sum = NotNan::new(0.0).unwrap();
+                        let mut counter = 0;
+                        fractions.iter().enumerate().for_each(|(i, fraction)| {
+                            if genotypes[i as u64] && covered[i as u64] {
+                                vaf_sum += *fraction;
+                                counter += 1;
+                            } else if covered[i as u64] {
+                                ()
+                            }
+                            else {
+                                denom -= *fraction;
+                            }
+                        });
+                        if denom > NotNan::new(0.0).unwrap() {
+                            vaf_sum /= denom;
+                        }
+                        vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
+                            / NotNan::new(100.0).unwrap();
+                        if !afd.is_empty() && counter > 0 {
+                            let answer = afd.vaf_query(&vaf_sum);
+                            vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
+                        } else {
                             ()
                         }
-                    //     else {
-                    //         denom -= *fraction;
-                    //     }
                     });
-                    // if denom > NotNan::new(0.0).unwrap() {
-                    //     vaf_sum /= denom;
-                    // }
-                    // vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
-                    //     / NotNan::new(100.0).unwrap();
+                event_queries.push(vaf_queries);
+            });
+        } else {
+            event_posteriors.for_each(|(fractions, _)| {
+                let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
+                data.candidate_matrix
+                    .iter()
+                    .zip(variant_calls.iter())
+                    .for_each(|((variant_id, (genotypes, covered)), afd)| {
+                        let mut denom = NotNan::new(1.0).unwrap();
+                        let mut vaf_sum = NotNan::new(0.0).unwrap();
+                        let mut counter = 0;
+                        fractions.iter().enumerate().for_each(|(i, fraction)| {
+                            if genotypes[i as u64] && covered[i as u64] {
+                                vaf_sum += *fraction;
+                                counter += 1;
+                            } else if covered[i as u64] {
+                                ()
+                            }
+                        });
+                        if !afd.is_empty() && counter > 0 {
+                            let answer = afd.vaf_query(&vaf_sum);
+                            vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
+                        } else {
+                            ()
+                        }
+                    });
+                event_queries.push(vaf_queries);
+            });
+        }
 
-                    if !afd.is_empty() && counter > 0 {
-                        let answer = afd.vaf_query(&vaf_sum);
-                        vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
-                    } else {
-                        ()
-                    }
-                });
-            event_queries.push(vaf_queries);
-        });
         // Step 4: print TSV table with results
         // TODO use csv crate
         // Columns: posterior_prob, haplotype_a, haplotype_b, haplotype_c, ...
@@ -112,8 +132,8 @@ impl Caller {
 
         //write best record on top
         let mut records = Vec::new();
-        let mut posterior = m.event_posteriors();
-        let (haplotype_frequencies, best_density) = posterior.next().unwrap();
+        let mut event_posteriors = computed_model.event_posteriors(); //compute a second time because event_posteriors can't be cloned from above.
+        let (haplotype_frequencies, best_density) = event_posteriors.next().unwrap();
         let best_odds = 1;
         let format_f64 = |number: f64, records: &mut Vec<String>| {
             if number <= 0.01 {
@@ -153,7 +173,7 @@ impl Caller {
         wtr.write_record(records)?;
 
         //write the rest of the records
-        posterior.zip(event_queries.iter().skip(1)).for_each(
+        event_posteriors.zip(event_queries.iter().skip(1)).for_each(
             |((haplotype_frequencies, density), queries)| {
                 let mut records = Vec::new();
                 let odds = (density - best_density).exp();
@@ -219,9 +239,7 @@ impl HaplotypeVariants {
         }
         Ok(HaplotypeVariants(variant_records))
     }
-    //TODO: find plausible haplotypes to be present if at least half of its variants
-    //(including the non-exclusive) with GT:C=1:1 have an AF of >0.0, and at least half
-    // of its variants with GT:C=0:1 have an AF of < 1.0
+
     fn find_plausible_haplotypes(&self, max_haplotypes: usize) -> Result<Self> {
         //prepare the vectors to be used
         let variants: Vec<VariantID> = self.keys().cloned().collect();
@@ -417,6 +435,13 @@ impl HaplotypeVariants {
             }
             pseudohaplotypes_variants.insert(variants[index].clone(), matrix_map);
         }
+
+
+        // let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
+        // let data = Data::new(candidate_matrix, variant_calls);
+        // let mut event_posteriors = model.compute_from_marginal(&Marginal::new(n_haplotypes), &data).event_posteriors();
+        // let (haplotype_fractions, _) = event_posteriors.next().unwrap();
+        
         dbg!(&pseudohaplotypes_variants);
         Ok(HaplotypeVariants(pseudohaplotypes_variants))
     }
@@ -439,14 +464,14 @@ impl AlleleFreqDist {
 }
 
 #[derive(Derefable, Debug)]
-pub(crate) struct GenotypesLoci(#[deref] BTreeMap<VariantID, (BitVec, BitVec)>);
+pub(crate) struct CandidateMatrix(#[deref] BTreeMap<VariantID, (BitVec, BitVec)>);
 
-impl GenotypesLoci {
+impl CandidateMatrix {
     pub(crate) fn new(
         haplotype_variants: &HaplotypeVariants,
         haplotypes: &Vec<Haplotype>,
     ) -> Result<Self> {
-        let mut variant_matrix = BTreeMap::new();
+        let mut candidate_matrix = BTreeMap::new();
         haplotype_variants.iter().for_each(|(variant_id, bmap)| {
             let mut haplotype_variants_gt = BitVec::new();
             let mut haplotype_variants_c = BitVec::new();
@@ -454,19 +479,19 @@ impl GenotypesLoci {
                 haplotype_variants_gt.push(*gt);
                 haplotype_variants_c.push(*c);
             });
-            variant_matrix.insert(*variant_id, (haplotype_variants_gt, haplotype_variants_c));
+            candidate_matrix.insert(*variant_id, (haplotype_variants_gt, haplotype_variants_c));
         });
-        Ok(GenotypesLoci(variant_matrix))
+        Ok(CandidateMatrix(candidate_matrix))
     }
 }
 
 #[derive(Derefable, DerefMut, Debug, Clone)]
-pub(crate) struct HaplotypeCalls(#[deref] BTreeMap<VariantID, AlleleFreqDist>);
+pub(crate) struct VariantCalls(#[deref] BTreeMap<VariantID, AlleleFreqDist>);
 
-impl HaplotypeCalls {
-    pub(crate) fn new(haplotype_calls: &mut bcf::Reader) -> Result<Self> {
+impl VariantCalls {
+    pub(crate) fn new(variant_calls: &mut bcf::Reader) -> Result<Self> {
         let mut calls = BTreeMap::new();
-        for record_result in haplotype_calls.records() {
+        for record_result in variant_calls.records() {
             let mut record = record_result?;
             record.unpack();
             let afd_utf = record.format(b"AFD").string()?;
@@ -486,7 +511,7 @@ impl HaplotypeCalls {
                 calls.insert(VariantID(variant_id), AlleleFreqDist(vaf_density));
             }
         }
-        Ok(HaplotypeCalls(calls))
+        Ok(VariantCalls(calls))
     }
 }
 
