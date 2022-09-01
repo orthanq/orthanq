@@ -329,28 +329,46 @@ impl HaplotypeVariants {
             let name = format!("{}{:?}", "Pseudohaplotype_", i);
             pseudohaplotype_names.push(Haplotype(name));
         }
-        let final_variants_indices: Vec<usize> =
-            final_variants_indices.into_iter().unique().collect();
+        let final_variants_indices_2 = final_variants_indices.clone();
+        dbg!(&final_variants_indices_2);
+        let final_variants_indices_unique: Vec<usize> =
+            final_variants_indices_2.into_iter().unique().collect();
+            
+        //find the number of common variants that are exclusive to each pseudohaplotype cluster and create the candidate matrix with them.
+        let mut unique_variants_indices: Vec<usize> = Vec::new();
+        dbg!(&final_variants_indices_unique.len());
+        for unique in final_variants_indices_unique.iter() {
+            let count_of_index = final_variants_indices
+                .iter()
+                .filter(|&n| *n == *unique)
+                .count();
+            if count_of_index == 1 {
+                unique_variants_indices.push(*unique);
+            }
+        }
         dbg!(&final_variants_indices.len());
+        dbg!(&unique_variants_indices.len());
+        dbg!(&unique_variants_indices);
         let mut pseudohaplotypes_variants = BTreeMap::new();
 
         //creating final HaplotypeVariants
-        for variant_index in final_variants_indices {
+        for variant_index in unique_variants_indices.iter() {
+            dbg!(&variant_index);
             let mut matrix_map: BTreeMap<Haplotype, (bool, bool)> = BTreeMap::new();
             for (haplotype_index, haplotype_vector) in haplotype_vectors.iter().enumerate() {
-                for haplotype_array in haplotype_vector.iter() {
-                    let pseudohaplotype_name = pseudohaplotype_names[haplotype_index].clone();
-                    matrix_map.insert(
-                        pseudohaplotype_name,
-                        (
-                            haplotype_array[variant_index] == 1.0,
-                            haplotype_array[variant_index] == 1.0,
-                        ),
-                    );
-                }
+                let pseudohaplotype_name = pseudohaplotype_names[haplotype_index].clone();
+                let random_array = haplotype_vector[0];
+                matrix_map.insert(
+                    pseudohaplotype_name,
+                    (
+                        random_array[*variant_index] == 1.0,
+                        random_array[*variant_index] == 1.0,
+                    ),
+                );
             }
-            pseudohaplotypes_variants.insert(variants[variant_index].clone(), matrix_map);
+            pseudohaplotypes_variants.insert(variants[*variant_index].clone(), matrix_map);
         }
+        dbg!(&pseudohaplotypes_variants);
 
         //model computation, only first round for now
         let normalization = false;
