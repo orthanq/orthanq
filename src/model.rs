@@ -79,7 +79,7 @@ pub(crate) struct Data {
 
 #[derive(Debug, new)]
 pub(crate) struct Likelihood {
-    normalization: bool
+    normalization: bool,
 }
 
 impl model::Likelihood<Cache> for Likelihood {
@@ -98,7 +98,8 @@ impl Likelihood {
         data: &Data,
         _cache: &mut Cache,
     ) -> LogProb {
-        let candidate_matrix: Vec<(BitVec, BitVec)> = data.candidate_matrix.values().cloned().collect();
+        let candidate_matrix: Vec<(BitVec, BitVec)> =
+            data.candidate_matrix.values().cloned().collect();
         let variant_calls: Vec<AlleleFreqDist> = data
             .variant_calls
             .iter()
@@ -116,8 +117,7 @@ impl Likelihood {
                             vaf_sum += *fraction;
                         } else if covered[i as u64] {
                             ()
-                        }
-                        else {
+                        } else {
                             denom -= *fraction;
                         }
                     });
@@ -140,7 +140,6 @@ impl Likelihood {
                 .iter()
                 .zip(variant_calls.iter())
                 .map(|((genotypes, covered), afd)| {
-                    let mut denom = NotNan::new(1.0).unwrap();
                     let mut vaf_sum = NotNan::new(0.0).unwrap();
                     event.iter().enumerate().for_each(|(i, fraction)| {
                         if genotypes[i as u64] && covered[i as u64] {
