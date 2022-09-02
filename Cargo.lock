@@ -1897,6 +1897,7 @@ dependencies = [
  "plotters",
  "polars",
  "rand",
+ "rand_xoshiro",
  "rust-htslib",
  "smartcore",
  "statrs",

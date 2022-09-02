@@ -13,6 +13,7 @@ use ndarray::prelude::*;
 use ordered_float::NotNan;
 use plotters::prelude::*;
 use rand::prelude::*;
+use rand_xoshiro::Xoshiro256Plus;
 use rust_htslib::bcf::{self, record::GenotypeAllele::Unphased, Read};
 use std::collections::BTreeMap;
 use std::convert::TryInto;
@@ -272,9 +273,10 @@ impl HaplotypeVariants {
                     });
             });
 
-        // perform k-means clustering
+        // perform k-means clustering, seeded for reproducibility
+        let seed = 42;
+        let mut rng = Xoshiro256Plus::seed_from_u64(seed);
         let dataset = DatasetBase::from(haplotype_vector);
-        let rng = thread_rng(); // Random number generator
         let n_clusters = max_haplotypes;
         let model = KMeans::params_with_rng(n_clusters, rng)
             .max_n_iterations(200)
@@ -286,11 +288,10 @@ impl HaplotypeVariants {
         //initialize vectors
         let mut pseudohaplotypes: BTreeMap<usize, Vec<Haplotype>> = BTreeMap::new();
         let mut haplotype_vectors: Vec<Vec<_>> = vec![];
-        let mut common_variants_indices: Vec<Vec<_>> = vec![];
+        let mut common_variants_indices = Vec::new();
         for cluster_index in 0..n_clusters {
             pseudohaplotypes.insert(cluster_index, vec![]);
             haplotype_vectors.push(vec![]);
-            common_variants_indices.push(vec![]);
         }
 
         //collect variant vectors of haplotypes to corresponding clusters
@@ -308,52 +309,41 @@ impl HaplotypeVariants {
         dbg!(&pseudohaplotypes);
 
         //collect indices of common variants and nonvariants
+        //only consider variants and non variants that occur or not occur in all haplotypes of each pseudohaplotype.
         for (index, haplotype_vector) in haplotype_vectors.iter().enumerate() {
             for variant_index in 0..dataset.records.shape()[1] {
                 let mut temp_haplotypes = Vec::new();
                 for haplotype_array in haplotype_vector.iter() {
                     temp_haplotypes.push(haplotype_array[variant_index]);
                 }
-                let any_element = temp_haplotypes[0];
+                let any_element = temp_haplotypes[0]; //they must either all be 0 or 1.
                 if temp_haplotypes.iter().all(|h| h == &any_element) {
-                    common_variants_indices[index].push(variant_index);
+                    common_variants_indices.push(variant_index);
+                } else {
+                    if let Some(position) = common_variants_indices
+                        .iter()
+                        .position(|x| *x == variant_index)
+                    {
+                        common_variants_indices.remove(position);
+                    }
                 }
             }
         }
-
+        dbg!(&common_variants_indices);
         //collect common variants from all clusters into one vector
-        let mut final_variants_indices: Vec<usize> = Vec::new();
         let mut pseudohaplotype_names: Vec<Haplotype> = Vec::new();
-        for i in 0..common_variants_indices.len() {
-            final_variants_indices.extend(common_variants_indices[i].clone());
+        for i in 0..n_clusters {
             let name = format!("{}{:?}", "Pseudohaplotype_", i);
             pseudohaplotype_names.push(Haplotype(name));
         }
-        let final_variants_indices_2 = final_variants_indices.clone();
-        dbg!(&final_variants_indices_2);
-        let final_variants_indices_unique: Vec<usize> =
-            final_variants_indices_2.into_iter().unique().collect();
-            
-        //find the number of common variants that are exclusive to each pseudohaplotype cluster and create the candidate matrix with them.
-        let mut unique_variants_indices: Vec<usize> = Vec::new();
-        dbg!(&final_variants_indices_unique.len());
-        for unique in final_variants_indices_unique.iter() {
-            let count_of_index = final_variants_indices
-                .iter()
-                .filter(|&n| *n == *unique)
-                .count();
-            if count_of_index == 1 {
-                unique_variants_indices.push(*unique);
-            }
-        }
+
+        let final_variants_indices: Vec<usize> =
+            common_variants_indices.into_iter().unique().collect();
         dbg!(&final_variants_indices.len());
-        dbg!(&unique_variants_indices.len());
-        dbg!(&unique_variants_indices);
-        let mut pseudohaplotypes_variants = BTreeMap::new();
 
         //creating final HaplotypeVariants
-        for variant_index in unique_variants_indices.iter() {
-            dbg!(&variant_index);
+        let mut pseudohaplotypes_variants = BTreeMap::new();
+        for variant_index in final_variants_indices.iter() {
             let mut matrix_map: BTreeMap<Haplotype, (bool, bool)> = BTreeMap::new();
             for (haplotype_index, haplotype_vector) in haplotype_vectors.iter().enumerate() {
                 let pseudohaplotype_name = pseudohaplotype_names[haplotype_index].clone();
