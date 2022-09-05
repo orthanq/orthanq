@@ -1,4 +1,4 @@
-use crate::model::{AlleleFreq, Data, Likelihood, Marginal, Posterior, Prior};
+use crate::model::{AlleleFreq, Data, HaplotypeFractions, Likelihood, Marginal, Posterior, Prior};
 use anyhow::Result;
 use bio::stats::{bayesian::model::Model, probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
@@ -39,6 +39,7 @@ impl Caller {
 
         //model computation
         let normalization = false;
+        let upper_bond = NotNan::new(1.0).unwrap();
         let model = Model::new(
             Likelihood::new(normalization),
             Prior::new(),
@@ -46,7 +47,7 @@ impl Caller {
         );
         let data = Data::new(candidate_matrix, variant_calls);
         let computed_model =
-            model.compute_from_marginal(&Marginal::new(self.max_haplotypes), &data);
+            model.compute_from_marginal(&Marginal::new(self.max_haplotypes, upper_bond), &data);
         let event_posteriors = computed_model.event_posteriors();
 
         //add variant query and probabilities to the outout table for each event
@@ -249,6 +250,24 @@ impl HaplotypeVariants {
         variant_calls: &VariantCalls,
         max_haplotypes: usize,
     ) -> Result<Self> {
+        //apply clustering and assign haplotypes to pseudohaplotypes
+        let upper_bond = NotNan::new(1.0).unwrap();
+        let (pseudohaplotypes, haplotype_fractions) =
+            self.cluster_and_run_model(variant_calls, max_haplotypes, upper_bond)?;
+        //TODO: recursively cluster and run the model until finding the best combination of haplotypes. 
+
+        dbg!(&pseudohaplotypes);
+        dbg!(&haplotype_fractions);
+        Ok(self.clone())
+    }
+
+    fn cluster_and_run_model(
+        &self,
+        variant_calls: &VariantCalls,
+        max_haplotypes: usize,
+        upper_bond: NotNan<f64>,
+    ) -> Result<(BTreeMap<usize, Vec<Haplotype>>, HaplotypeFractions)> {
+        //STEP 1: cluster haplotypes
         //prepare the vectors to be used
         let variants: Vec<VariantID> = self.keys().cloned().collect();
         let (_, haplotypes_gt_c) = self.iter().next().unwrap();
@@ -284,9 +303,27 @@ impl HaplotypeVariants {
 
         //initialize vectors
         let mut pseudohaplotypes: BTreeMap<usize, Vec<Haplotype>> = BTreeMap::new();
-        let mut haplotype_vectors = Vec::new();
         for cluster_index in 0..n_clusters {
             pseudohaplotypes.insert(cluster_index, vec![]);
+        }
+
+        //collect pseudohaplotype groups
+        for (haplotype_index, haplotype) in haplotype_names.iter().enumerate() {
+            for cluster_index in 0..n_clusters {
+                if dataset.targets[haplotype_index] == cluster_index {
+                    let mut existing = pseudohaplotypes.get(&cluster_index).unwrap().clone();
+                    existing.push(haplotype.clone());
+                    pseudohaplotypes.insert(cluster_index, existing.to_vec());
+                }
+            }
+        }
+        dbg!(&pseudohaplotypes);
+
+        //STEP 2: run the model
+
+        //initialize vectors
+        let mut haplotype_vectors = Vec::new();
+        for cluster_index in 0..n_clusters {
             haplotype_vectors.push(vec![]);
         }
 
@@ -294,15 +331,11 @@ impl HaplotypeVariants {
         for (haplotype_index, haplotype) in haplotype_names.iter().enumerate() {
             for cluster_index in 0..n_clusters {
                 if dataset.targets[haplotype_index] == cluster_index {
-                    let mut existing = pseudohaplotypes.get(&cluster_index).unwrap().clone();
-                    existing.push(haplotype.clone());
-                    pseudohaplotypes.insert(cluster_index, existing.to_vec());
                     haplotype_vectors[cluster_index]
                         .push(dataset.records.slice(s![haplotype_index, 0..self.len()]));
                 }
             }
         }
-
         //collect indices of common variants and nonvariants
         //only consider variants and non variants that occur or not occur in all haplotypes of each pseudohaplotype.
         let mut temp_variants_indices: HashMap<usize, usize> = HashMap::new();
@@ -369,14 +402,15 @@ impl HaplotypeVariants {
         )
         .unwrap();
         let data = Data::new(candidate_matrix, variant_calls.clone());
-        let computed_model = model.compute_from_marginal(&Marginal::new(max_haplotypes), &data);
+        let computed_model =
+            model.compute_from_marginal(&Marginal::new(max_haplotypes, upper_bond), &data);
         let mut event_posteriors = computed_model.event_posteriors();
-        let (haplotype_fractions, density) = event_posteriors.next().unwrap();
+        let (haplotype_fractions, _) = event_posteriors.next().unwrap();
 
         dbg!(&haplotype_fractions);
-        dbg!(&density);
         dbg!(&pseudohaplotypes_variants);
-        Ok(HaplotypeVariants(pseudohaplotypes_variants))
+
+        Ok((pseudohaplotypes, haplotype_fractions.clone()))
     }
 }
 #[derive(Debug, Clone, Derefable)]
