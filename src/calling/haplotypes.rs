@@ -252,117 +252,115 @@ impl HaplotypeVariants {
     ) -> Result<Self> {
         //apply clustering and assign haplotypes to pseudohaplotypes
         let upper_bond = NotNan::new(1.0).unwrap();
+        dbg!(&self.len());
+        dbg!(&variant_calls.len());
         let (variants, pseudohaplotypes, haplotype_fractions) =
-            self.cluster_and_run_model(variant_calls, max_haplotypes, upper_bond)?;
+            self.cluster_and_run_model(variant_calls, max_haplotypes, &upper_bond)?;
         //TODO: recursively cluster and run the model resulting in the actual combination of haplotypes.
-        //playground
-        let final_fractions = Vec::new();
         let initial_fractions = haplotype_fractions.clone();
         for (index, fraction) in initial_fractions.iter().enumerate() {
-            if fraction > 0.00 {
-                dbg!(&pseudohaplotypes);
-                dbg!(&haplotype_fractions);
-                let selected_haplotypes = pseudohaplotypes.get(index).unwrap().clone();
+            let haplotypes_in_cluster = pseudohaplotypes.get(&index).unwrap();
+            let selected_haplotypes = haplotypes_in_cluster.clone();
+            dbg!(&selected_haplotypes);
+            self.recursive_clustering(
+                index,
+                &variant_calls,
+                &fraction,
+                &pseudohaplotypes,
+                max_haplotypes,
+            );
+        }
+
+        Ok(self.clone())
+    }
+
+    fn recursive_clustering(
+        &self,
+        index: usize,
+        variant_calls: &VariantCalls,
+        fraction: &AlleleFreq,
+        pseudohaplotypes: &BTreeMap<usize, Vec<Haplotype>>,
+        max_haplotypes: usize,
+    ) -> Result<()> {
+        dbg!(&fraction);
+        let mut variants: Vec<VariantID> = Vec::new();
+        let haplotypes_in_cluster = pseudohaplotypes.get(&index).unwrap();
+        if fraction > &NotNan::new(0.00).unwrap() {
+            if haplotypes_in_cluster.len() > max_haplotypes {
+                let selected_haplotypes = haplotypes_in_cluster.clone();
                 dbg!(&selected_haplotypes);
-                let haplotype_variants_selected = self.filter_haplotypes(&selected_haplotypes).unwrap();
+                let haplotype_variants_selected =
+                    self.filter_haplotypes(&selected_haplotypes).unwrap();
                 //apply clustering and assign haplotypes to pseudohaplotypes
                 let (variants, pseudohaplotypes, haplotype_fractions) = haplotype_variants_selected
                     .cluster_and_run_model(variant_calls, max_haplotypes, fraction)?;
                 dbg!(&pseudohaplotypes);
                 dbg!(&haplotype_fractions);
-                //todo: recurse continously
-            }
-        } 
-        //playground
+                self.recursive_clustering(
+                    index,
+                    variant_calls,
+                    fraction,
+                    &pseudohaplotypes,
+                    max_haplotypes,
+                );
+            } else {
+                let filtered_haplotype_variants: BTreeMap<
+                    VariantID,
+                    BTreeMap<Haplotype, (bool, bool)>,
+                > = self
+                    .iter()
+                    .filter(|&(k, _)| variants.contains(k))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                let filtered_haplotype_variants = HaplotypeVariants(filtered_haplotype_variants);
+                let filtered_variant_calls: BTreeMap<VariantID, AlleleFreqDist> = variant_calls
+                    .iter()
+                    .filter(|&(k, _)| variants.contains(k))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                let filtered_variant_calls = VariantCalls(filtered_variant_calls);
 
-        //continue with the highest fraction.
-        //create the HaplotypeVariants for haplotypes in the selected pseudohaplotype cluster.
-        dbg!(&pseudohaplotypes);
-        dbg!(&haplotype_fractions);
-        //1st
-        let (highest_index, max_fraction) = haplotype_fractions
-            .iter()
-            .enumerate()
-            .max_by(|(_, a), (_, b)| a.total_cmp(b))
-            .map(|(index, max_fraction)| (index, max_fraction))
-            .unwrap();
-        dbg!(&highest_index);
-        let selected_haplotypes = pseudohaplotypes.get(&highest_index).unwrap().clone();
-        dbg!(&selected_haplotypes);
-        let haplotype_variants_selected = self.filter_haplotypes(&selected_haplotypes).unwrap();
-        //apply clustering and assign haplotypes to pseudohaplotypes
-        let (variants, pseudohaplotypes, haplotype_fractions) = haplotype_variants_selected
-            .cluster_and_run_model(variant_calls, max_haplotypes, *max_fraction)?;
-        dbg!(&pseudohaplotypes);
-        dbg!(&haplotype_fractions);
-        //2nd
-        let (highest_index, max_fraction) = haplotype_fractions
-            .iter()
-            .enumerate()
-            .max_by(|(_, a), (_, b)| a.total_cmp(b))
-            .map(|(index, max_fraction)| (index, max_fraction))
-            .unwrap();
-        dbg!(&highest_index);
-        let selected_haplotypes = pseudohaplotypes.get(&highest_index).unwrap().clone();
-        dbg!(&selected_haplotypes);
-        let haplotype_variants_selected = self.filter_haplotypes(&selected_haplotypes).unwrap();
-        //apply clustering and assign haplotypes to pseudohaplotypes
-        let (variants, pseudohaplotypes, haplotype_fractions) = haplotype_variants_selected
-            .cluster_and_run_model(variant_calls, max_haplotypes, *max_fraction)?;
-        dbg!(&pseudohaplotypes);
-        dbg!(&haplotype_fractions);
+                let selected_haplotypes = pseudohaplotypes.get(&index).unwrap().clone();
+                dbg!(&selected_haplotypes);
+                let haplotype_variants_selected = filtered_haplotype_variants
+                    .filter_haplotypes(&selected_haplotypes)
+                    .unwrap();
 
-        let (_, max_fraction) = haplotype_fractions
-        .iter()
-        .enumerate()
-        .max_by(|(_, a), (_, b)| a.total_cmp(b))
-        .map(|(index, max_fraction)| (index, max_fraction))
-        .unwrap();
-        //3rd
-        //en yuksek fraction alan 1 numarali clusterda 5 adet haplotype var.
-        //filter
-        let filtered_haplotype_variants: BTreeMap<VariantID, BTreeMap<Haplotype, (bool, bool)>> = self
-         .iter()
-         .filter(|&(k, _)| variants.contains(k))
-         .map(|(k, v)| (k.clone(), v.clone()))
-         .collect();
-        let filtered_haplotype_variants = HaplotypeVariants(filtered_haplotype_variants);
-        let filtered_variant_calls: BTreeMap<VariantID, AlleleFreqDist> = variant_calls
-         .iter()
-         .filter(|&(k, _)| variants.contains(k))
-         .map(|(k, v)| (k.clone(), v.clone()))
-         .collect();
-        let filtered_variant_calls = VariantCalls(filtered_variant_calls);
-
-        let selected_haplotypes = pseudohaplotypes.get(&1).unwrap().clone();
-        dbg!(&selected_haplotypes);
-        let haplotype_variants_selected = filtered_haplotype_variants.filter_haplotypes(&selected_haplotypes).unwrap();
-        
-        //model computation, only first round for now
-        let normalization = false;
-        let model = Model::new(
-            Likelihood::new(normalization),
-            Prior::new(),
-            Posterior::new(),
-        );
-        let candidate_matrix =
-            CandidateMatrix::new(&haplotype_variants_selected.clone(), &selected_haplotypes)
+                let normalization = false;
+                let model = Model::new(
+                    Likelihood::new(normalization),
+                    Prior::new(),
+                    Posterior::new(),
+                );
+                let candidate_matrix = CandidateMatrix::new(
+                    &haplotype_variants_selected.clone(),
+                    &selected_haplotypes,
+                )
                 .unwrap();
-        let data = Data::new(candidate_matrix, filtered_variant_calls.clone());
-        let computed_model = model.compute_from_marginal(&Marginal::new(5, *max_fraction), &data);
-        let mut event_posteriors = computed_model.event_posteriors();
-        dbg!(&selected_haplotypes);
-        let (haplotype_fractions, _) = event_posteriors.next().unwrap();
-        dbg!(&haplotype_fractions);
-        Ok(self.clone())
+                let data = Data::new(candidate_matrix, filtered_variant_calls.clone());
+                let computed_model =
+                    model.compute_from_marginal(&Marginal::new(5, *fraction), &data);
+                let mut event_posteriors = computed_model.event_posteriors();
+                dbg!(&selected_haplotypes);
+                let (haplotype_fractions, _) = event_posteriors.next().unwrap();
+                dbg!(&haplotypes_in_cluster);
+                dbg!(&haplotype_fractions);
+            }
+        }
+
+        Ok(())
     }
 
     fn cluster_and_run_model(
         &self,
         variant_calls: &VariantCalls,
         max_haplotypes: usize,
-        upper_bond: NotNan<f64>,
-    ) -> Result<(Vec<VariantID> ,BTreeMap<usize, Vec<Haplotype>>, HaplotypeFractions)> {
+        upper_bond: &NotNan<f64>,
+    ) -> Result<(
+        Vec<VariantID>,
+        BTreeMap<usize, Vec<Haplotype>>,
+        HaplotypeFractions,
+    )> {
         //STEP 1: cluster haplotypes
         //prepare the vectors to be used
         let variants: Vec<VariantID> = self.keys().cloned().collect();
@@ -413,8 +411,7 @@ impl HaplotypeVariants {
                 }
             }
         }
-        dbg!(&pseudohaplotypes);
-
+        //dbg!(&pseudohaplotypes);
         //STEP 2: run the model
 
         //initialize vectors
@@ -434,13 +431,16 @@ impl HaplotypeVariants {
         }
         //collect indices of common variants and nonvariants
         //only consider variants and non variants that occur or not occur in all haplotypes of each pseudohaplotype.
+        // dbg!(&haplotype_vectors);
         let mut temp_variants_indices: HashMap<usize, usize> = HashMap::new();
         for haplotype_vector in haplotype_vectors.iter() {
             for variant_index in 0..variants.len() {
                 let mut temp_haplotypes = Vec::new();
                 for haplotype_array in haplotype_vector.iter() {
+                    // dbg!(&haplotype_array);
                     temp_haplotypes.push(haplotype_array[variant_index]);
                 }
+                //dbg!(&temp_haplotypes);
                 let any_element = temp_haplotypes[0]; //they must either all be 0 or 1.
                 if temp_haplotypes.iter().all(|h| h == &any_element) {
                     temp_variants_indices
@@ -450,7 +450,6 @@ impl HaplotypeVariants {
                 }
             }
         }
-        dbg!(&temp_variants_indices);
 
         //keep only common indices in all of the pseudohaplotypes.
         let final_variants_indices = temp_variants_indices
@@ -458,7 +457,7 @@ impl HaplotypeVariants {
             .filter(|(_, count)| *count == &n_clusters)
             .map(|(variant_index, _)| *variant_index)
             .collect::<Vec<usize>>();
-        dbg!(&final_variants_indices.len());
+        //dbg!(&final_variants_indices.len());
 
         //collect common variants from all clusters into one vector
         let mut pseudohaplotype_names: Vec<Haplotype> = Vec::new();
@@ -484,6 +483,13 @@ impl HaplotypeVariants {
             }
             pseudohaplotypes_variants.insert(variants[*variant_index].clone(), matrix_map);
         }
+        //make sure VariantCalls have the same variants
+        let variant_calls: BTreeMap<VariantID, AlleleFreqDist> = variant_calls
+            .iter()
+            .filter(|&(k, _)| pseudohaplotypes_variants.contains_key(k))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        let variant_calls = VariantCalls(variant_calls);
 
         //model computation, only first round for now
         let normalization = false;
@@ -499,13 +505,10 @@ impl HaplotypeVariants {
         .unwrap();
         let data = Data::new(candidate_matrix, variant_calls.clone());
         let computed_model =
-            model.compute_from_marginal(&Marginal::new(max_haplotypes, upper_bond), &data);
+            model.compute_from_marginal(&Marginal::new(max_haplotypes, *upper_bond), &data);
         let mut event_posteriors = computed_model.event_posteriors();
         let (haplotype_fractions, _) = event_posteriors.next().unwrap();
         let variants: Vec<VariantID> = pseudohaplotypes_variants.keys().cloned().collect();
-
-        dbg!(&haplotype_fractions);
-        //dbg!(&pseudohaplotypes_variants);
 
         Ok((variants, pseudohaplotypes, haplotype_fractions.clone()))
     }
