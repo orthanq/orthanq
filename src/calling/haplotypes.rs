@@ -252,102 +252,97 @@ impl HaplotypeVariants {
     ) -> Result<Self> {
         //apply clustering and assign haplotypes to pseudohaplotypes
         let upper_bond = NotNan::new(1.0).unwrap();
-        dbg!(&self.len());
-        dbg!(&variant_calls.len());
         let (variants, pseudohaplotypes, haplotype_fractions) =
             self.cluster_and_run_model(variant_calls, max_haplotypes, &upper_bond)?;
+        dbg!(&pseudohaplotypes);
+        dbg!(&haplotype_fractions);
         //TODO: recursively cluster and run the model resulting in the actual combination of haplotypes.
-        let initial_fractions = haplotype_fractions.clone();
-        for (index, fraction) in initial_fractions.iter().enumerate() {
-            let haplotypes_in_cluster = pseudohaplotypes.get(&index).unwrap();
-            let selected_haplotypes = haplotypes_in_cluster.clone();
-            dbg!(&selected_haplotypes);
-            self.recursive_clustering(
-                index,
-                &variant_calls,
-                &fraction,
-                &pseudohaplotypes,
-                max_haplotypes,
-            );
-        }
-
+        self.recursive_clustering(
+            &variant_calls,
+            &haplotype_fractions,
+            &pseudohaplotypes,
+            max_haplotypes,
+        );
+        
         Ok(self.clone())
     }
 
     fn recursive_clustering(
         &self,
-        index: usize,
         variant_calls: &VariantCalls,
-        fraction: &AlleleFreq,
+        fractions: &HaplotypeFractions,
         pseudohaplotypes: &BTreeMap<usize, Vec<Haplotype>>,
         max_haplotypes: usize,
     ) -> Result<()> {
-        dbg!(&fraction);
         let mut variants: Vec<VariantID> = Vec::new();
-        let haplotypes_in_cluster = pseudohaplotypes.get(&index).unwrap();
-        if fraction > &NotNan::new(0.00).unwrap() {
-            if haplotypes_in_cluster.len() > max_haplotypes {
-                let selected_haplotypes = haplotypes_in_cluster.clone();
-                dbg!(&selected_haplotypes);
-                let haplotype_variants_selected =
-                    self.filter_haplotypes(&selected_haplotypes).unwrap();
-                //apply clustering and assign haplotypes to pseudohaplotypes
-                let (variants, pseudohaplotypes, haplotype_fractions) = haplotype_variants_selected
-                    .cluster_and_run_model(variant_calls, max_haplotypes, fraction)?;
-                dbg!(&pseudohaplotypes);
-                dbg!(&haplotype_fractions);
-                self.recursive_clustering(
-                    index,
-                    variant_calls,
-                    fraction,
-                    &pseudohaplotypes,
-                    max_haplotypes,
-                );
-            } else {
-                let filtered_haplotype_variants: BTreeMap<
-                    VariantID,
-                    BTreeMap<Haplotype, (bool, bool)>,
-                > = self
-                    .iter()
-                    .filter(|&(k, _)| variants.contains(k))
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-                let filtered_haplotype_variants = HaplotypeVariants(filtered_haplotype_variants);
-                let filtered_variant_calls: BTreeMap<VariantID, AlleleFreqDist> = variant_calls
-                    .iter()
-                    .filter(|&(k, _)| variants.contains(k))
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-                let filtered_variant_calls = VariantCalls(filtered_variant_calls);
+        for (index, fraction) in fractions.iter().enumerate() {
+            let haplotypes_in_cluster = pseudohaplotypes.get(&index).unwrap();
+            if fraction > &NotNan::new(0.00).unwrap() {
+                if haplotypes_in_cluster.len() > max_haplotypes {
+                    let selected_haplotypes = haplotypes_in_cluster.clone();
+                    dbg!(&selected_haplotypes);
+                    let haplotype_variants_selected =
+                        self.filter_haplotypes(&selected_haplotypes).unwrap();
+                    //apply clustering and assign haplotypes to pseudohaplotypes
+                    let (variants, pseudohaplotypes, haplotype_fractions) =
+                        haplotype_variants_selected.cluster_and_run_model(
+                            variant_calls,
+                            max_haplotypes,
+                            fraction,
+                        )?;
+                    dbg!(&pseudohaplotypes);
+                    dbg!(&haplotype_fractions);
+                    self.recursive_clustering(
+                        variant_calls,
+                        &haplotype_fractions,
+                        &pseudohaplotypes,
+                        max_haplotypes,
+                    );
+                } else {
+                    let filtered_haplotype_variants: BTreeMap<
+                        VariantID,
+                        BTreeMap<Haplotype, (bool, bool)>,
+                    > = self
+                        .iter()
+                        .filter(|&(k, _)| variants.contains(k))
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
+                    let filtered_haplotype_variants =
+                        HaplotypeVariants(filtered_haplotype_variants);
+                    let filtered_variant_calls: BTreeMap<VariantID, AlleleFreqDist> = variant_calls
+                        .iter()
+                        .filter(|&(k, _)| variants.contains(k))
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
+                    let filtered_variant_calls = VariantCalls(filtered_variant_calls);
 
-                let selected_haplotypes = pseudohaplotypes.get(&index).unwrap().clone();
-                dbg!(&selected_haplotypes);
-                let haplotype_variants_selected = filtered_haplotype_variants
-                    .filter_haplotypes(&selected_haplotypes)
+                    let selected_haplotypes = haplotypes_in_cluster.clone();
+                    dbg!(&selected_haplotypes);
+                    let haplotype_variants_selected = filtered_haplotype_variants
+                        .filter_haplotypes(&selected_haplotypes)
+                        .unwrap();
+
+                    let normalization = false;
+                    let model = Model::new(
+                        Likelihood::new(normalization),
+                        Prior::new(),
+                        Posterior::new(),
+                    );
+                    let candidate_matrix = CandidateMatrix::new(
+                        &haplotype_variants_selected.clone(),
+                        &selected_haplotypes,
+                    )
                     .unwrap();
-
-                let normalization = false;
-                let model = Model::new(
-                    Likelihood::new(normalization),
-                    Prior::new(),
-                    Posterior::new(),
-                );
-                let candidate_matrix = CandidateMatrix::new(
-                    &haplotype_variants_selected.clone(),
-                    &selected_haplotypes,
-                )
-                .unwrap();
-                let data = Data::new(candidate_matrix, filtered_variant_calls.clone());
-                let computed_model =
-                    model.compute_from_marginal(&Marginal::new(5, *fraction), &data);
-                let mut event_posteriors = computed_model.event_posteriors();
-                dbg!(&selected_haplotypes);
-                let (haplotype_fractions, _) = event_posteriors.next().unwrap();
-                dbg!(&haplotypes_in_cluster);
-                dbg!(&haplotype_fractions);
+                    let data = Data::new(candidate_matrix, filtered_variant_calls.clone());
+                    let computed_model =
+                        model.compute_from_marginal(&Marginal::new(selected_haplotypes.len(), *fraction), &data);
+                    let mut event_posteriors = computed_model.event_posteriors();
+                    let (haplotype_fractions, _) = event_posteriors.next().unwrap();
+                    dbg!(&haplotypes_in_cluster);
+                    dbg!(&haplotype_fractions);
+                }
             }
         }
-
         Ok(())
     }
 
