@@ -209,9 +209,15 @@ pub(crate) struct Haplotype(#[deref] String);
 #[derive(Derefable, Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, new)]
 pub(crate) struct VariantID(#[deref] i32);
 
+enum VariantStatus {
+    Present,
+    NotPresent,
+    Unknown,
+}
+
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub(crate) struct HaplotypeVariants(
-    #[deref] BTreeMap<VariantID, BTreeMap<Haplotype, (bool, bool)>>,
+    #[deref] BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>,
 );
 
 impl HaplotypeVariants {
@@ -233,10 +239,19 @@ impl HaplotypeVariants {
                 for (index, haplotype) in header.samples().iter().enumerate() {
                     let haplotype = Haplotype(str::from_utf8(haplotype).unwrap().to_string());
                     for gta in gts.get(index).iter() {
-                        matrices.insert(
-                            haplotype.clone(),
-                            ((*gta == Unphased(1)), (loci[index] == &[1])),
-                        );
+                        if *gta == Unphased(1) {
+                            matrices.insert(
+                                haplotype.clone(),
+                                (VariantStatus::Present),
+                                (loci[index] == &[1]),
+                            );
+                        } else {
+                            matrices.insert(
+                                haplotype.clone(),
+                                (VariantStatus::NotPresent),
+                                (loci[index] == &[1]),
+                            );
+                        }
                     }
                 }
                 variant_records.insert(variant_id, matrices);
@@ -263,7 +278,7 @@ impl HaplotypeVariants {
             &pseudohaplotypes,
             max_haplotypes,
         );
-        
+
         Ok(self.clone())
     }
 
@@ -334,8 +349,10 @@ impl HaplotypeVariants {
                     )
                     .unwrap();
                     let data = Data::new(candidate_matrix, filtered_variant_calls.clone());
-                    let computed_model =
-                        model.compute_from_marginal(&Marginal::new(selected_haplotypes.len(), *fraction), &data);
+                    let computed_model = model.compute_from_marginal(
+                        &Marginal::new(selected_haplotypes.len(), *fraction),
+                        &data,
+                    );
                     let mut event_posteriors = computed_model.event_posteriors();
                     let (haplotype_fractions, _) = event_posteriors.next().unwrap();
                     dbg!(&haplotypes_in_cluster);
@@ -424,60 +441,52 @@ impl HaplotypeVariants {
                 }
             }
         }
-        //collect indices of common variants and nonvariants
-        //only consider variants and non variants that occur or not occur in all haplotypes of each pseudohaplotype.
-        // dbg!(&haplotype_vectors);
-        let mut temp_variants_indices: HashMap<usize, usize> = HashMap::new();
-        for haplotype_vector in haplotype_vectors.iter() {
-            for variant_index in 0..variants.len() {
-                let mut temp_haplotypes = Vec::new();
-                for haplotype_array in haplotype_vector.iter() {
-                    // dbg!(&haplotype_array);
-                    temp_haplotypes.push(haplotype_array[variant_index]);
-                }
-                //dbg!(&temp_haplotypes);
-                let any_element = temp_haplotypes[0]; //they must either all be 0 or 1.
-                if temp_haplotypes.iter().all(|h| h == &any_element) {
-                    temp_variants_indices
-                        .entry(variant_index)
-                        .and_modify(|counter| *counter += 1)
-                        .or_insert(1);
-                }
-            }
-        }
 
-        //keep only common indices in all of the pseudohaplotypes.
-        let final_variants_indices = temp_variants_indices
-            .iter()
-            .filter(|(_, count)| *count == &n_clusters)
-            .map(|(variant_index, _)| *variant_index)
-            .collect::<Vec<usize>>();
-        //dbg!(&final_variants_indices.len());
-
-        //collect common variants from all clusters into one vector
+        //create pseudohaplotype names
         let mut pseudohaplotype_names: Vec<Haplotype> = Vec::new();
         for i in 0..n_clusters {
             let name = format!("{}{:?}", "Pseudohaplotype_", i);
             pseudohaplotype_names.push(Haplotype(name));
         }
 
-        //creating final HaplotypeVariants
+        //creating final HaplotypeVariants, if one variant is consistenly true or false in one pseudohaplotype group, use Present or NotPresent
+        //if not make it UNKNOWN
         let mut pseudohaplotypes_variants = BTreeMap::new();
-        for variant_index in final_variants_indices.iter() {
-            let mut matrix_map: BTreeMap<Haplotype, (bool, bool)> = BTreeMap::new();
+        for variant_index in 0..variants.len() {
+            let mut matrix_map: BTreeMap<Haplotype, (VariantStatus, bool)> = BTreeMap::new();
             for (haplotype_index, haplotype_vector) in haplotype_vectors.iter().enumerate() {
                 let pseudohaplotype_name = pseudohaplotype_names[haplotype_index].clone();
-                let random_array = haplotype_vector[0];
-                matrix_map.insert(
-                    pseudohaplotype_name,
-                    (
-                        random_array[*variant_index] == 1.0,
-                        random_array[*variant_index] == 1.0,
-                    ),
-                );
+                //store variant information for all haplotypes in the pseudohaplotype groups
+                let mut variant_information = Vec::new();
+                for haplotype_array in haplotype_vector.iter() {
+                    variant_information.push(haplotype_array[variant_index]);
+                }
+                //now check if variant has the same information across all haplotypes
+                //then create HaplotypeVariants accordingly.
+                let any_element = variant_information[0];
+                if temp_haplotypes.iter().all(|h| h == &any_element) {
+                    let random_array = haplotype_vector[0];
+                    if any_element == 1.0 {
+                        matrix_map.insert(
+                            pseudohaplotype_name,
+                            (VariantStatus::Present, any_element == 1.0),
+                        );
+                    } else {
+                        matrix_map.insert(
+                            pseudohaplotype_name,
+                            (VariantStatus::NotPresent, any_element == 1.0),
+                        );
+                    }
+                } else {
+                    matrix_map.insert(
+                        pseudohaplotype_name,
+                        (VariantStatus::Unknown, any_element == 1.0),
+                    );
+                }
             }
             pseudohaplotypes_variants.insert(variants[*variant_index].clone(), matrix_map);
         }
+        dbg!(&pseudohaplotypes_variants);
         //make sure VariantCalls have the same variants
         let variant_calls: BTreeMap<VariantID, AlleleFreqDist> = variant_calls
             .iter()
