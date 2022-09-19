@@ -37,13 +37,8 @@ impl Caller {
         let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
         //model computation
-        let normalization = false;
         let upper_bond = NotNan::new(1.0).unwrap();
-        let model = Model::new(
-            Likelihood::new(normalization),
-            Prior::new(),
-            Posterior::new(),
-        );
+        let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
         let data = Data::new(candidate_matrix, variant_calls);
         let computed_model =
             model.compute_from_marginal(&Marginal::new(self.max_haplotypes, upper_bond), &data);
@@ -56,68 +51,45 @@ impl Caller {
             .map(|(_, afd)| afd.clone())
             .collect();
         let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
-        if normalization {
-            event_posteriors.for_each(|(fractions, _)| {
-                let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
-                data.candidate_matrix
-                    .iter()
-                    .zip(variant_calls.iter())
-                    .for_each(|((variant_id, (genotypes, covered)), afd)| {
-                        let mut denom = NotNan::new(1.0).unwrap();
-                        let mut vaf_sum = NotNan::new(0.0).unwrap();
-                        let mut counter = 0;
-                        fractions.iter().enumerate().for_each(|(i, fraction)| {
-                            if genotypes[i as u64] && covered[i as u64] {
-                                vaf_sum += *fraction;
-                                counter += 1;
-                            } else if covered[i as u64] {
-                                ()
-                            } else {
-                                denom -= *fraction;
-                            }
-                        });
-                        if denom > NotNan::new(0.0).unwrap() {
-                            vaf_sum /= denom;
-                        }
-                        vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round())
-                            .unwrap()
-                            / NotNan::new(100.0).unwrap();
-                        if !afd.is_empty() && counter > 0 {
-                            let answer = afd.vaf_query(&vaf_sum);
-                            vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
-                        } else {
-                            ()
+        event_posteriors.for_each(|(fractions, _)| {
+            let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
+            data.candidate_matrix
+                .iter()
+                .zip(variant_calls.iter())
+                .for_each(|((variant_id, (genotypes, covered)), afd)| {
+                    let mut denom = NotNan::new(1.0).unwrap();
+                    let mut vaf_sum = NotNan::new(0.0).unwrap();
+                    let mut counter = 0;
+                    fractions.iter().enumerate().for_each(|(i, fraction)| {
+                        if genotypes[i as u64] == VariantStatus::Present && covered[i as u64] {
+                            vaf_sum += *fraction;
+                        } else if genotypes[i as u64] == VariantStatus::Unknown && covered[i as u64]
+                        {
+                            todo!();
+                        } else if genotypes[i as u64] == VariantStatus::Unknown
+                            && covered[i as u64] == false
+                        {
+                            todo!();
+                        } else if genotypes[i as u64] == VariantStatus::NotPresent
+                            && covered[i as u64] == false
+                        {
+                            denom -= *fraction;
                         }
                     });
-                event_queries.push(vaf_queries);
-            });
-        } else {
-            event_posteriors.for_each(|(fractions, _)| {
-                let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
-                data.candidate_matrix
-                    .iter()
-                    .zip(variant_calls.iter())
-                    .for_each(|((variant_id, (genotypes, covered)), afd)| {
-                        let mut vaf_sum = NotNan::new(0.0).unwrap();
-                        let mut counter = 0;
-                        fractions.iter().enumerate().for_each(|(i, fraction)| {
-                            if genotypes[i as u64] && covered[i as u64] {
-                                vaf_sum += *fraction;
-                                counter += 1;
-                            } else if covered[i as u64] {
-                                ()
-                            }
-                        });
-                        if !afd.is_empty() && counter > 0 {
-                            let answer = afd.vaf_query(&vaf_sum);
-                            vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
-                        } else {
-                            ()
-                        }
-                    });
-                event_queries.push(vaf_queries);
-            });
-        }
+                    if denom > NotNan::new(0.0).unwrap() {
+                        vaf_sum /= denom;
+                    }
+                    vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
+                        / NotNan::new(100.0).unwrap();
+                    if !afd.is_empty() && counter > 0 {
+                        let answer = afd.vaf_query(&vaf_sum);
+                        vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
+                    } else {
+                        ()
+                    }
+                });
+            event_queries.push(vaf_queries);
+        });
 
         // Step 4: print TSV table with results
         // TODO use csv crate
@@ -336,12 +308,7 @@ impl HaplotypeVariants {
                         .filter_haplotypes(&selected_haplotypes)
                         .unwrap();
 
-                    let normalization = false;
-                    let model = Model::new(
-                        Likelihood::new(normalization),
-                        Prior::new(),
-                        Posterior::new(),
-                    );
+                    let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
                     let candidate_matrix =
                         CandidateMatrix::new(&haplotype_variants_selected.clone()).unwrap();
                     let data = Data::new(candidate_matrix, filtered_variant_calls.clone());
@@ -506,12 +473,7 @@ impl HaplotypeVariants {
         let variant_calls = VariantCalls(variant_calls);
 
         //model computation, only first round for now
-        let normalization = false;
-        let model = Model::new(
-            Likelihood::new(normalization),
-            Prior::new(),
-            Posterior::new(),
-        );
+        let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
         let candidate_matrix =
             CandidateMatrix::new(&HaplotypeVariants(pseudohaplotypes_variants.clone())).unwrap();
         let data = Data::new(candidate_matrix, variant_calls.clone());

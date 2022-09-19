@@ -78,9 +78,7 @@ pub(crate) struct Data {
 }
 
 #[derive(Debug, new)]
-pub(crate) struct Likelihood {
-    normalization: bool,
-}
+pub(crate) struct Likelihood;
 
 impl model::Likelihood<Cache> for Likelihood {
     type Event = HaplotypeFractions;
@@ -105,57 +103,41 @@ impl Likelihood {
             .iter()
             .map(|(_, afd)| afd.clone())
             .collect();
-        if self.normalization {
-            candidate_matrix
-                .iter()
-                .zip(variant_calls.iter())
-                .map(|((genotypes, covered), afd)| {
-                    let mut denom = NotNan::new(1.0).unwrap();
-                    let mut vaf_sum = NotNan::new(0.0).unwrap();
-                    event.iter().enumerate().for_each(|(i, fraction)| {
-                        if genotypes[i as u64] && covered[i as u64] {
-                            vaf_sum += *fraction;
-                        } else if covered[i as u64] {
-                            ()
-                        } else {
-                            denom -= *fraction;
-                        }
-                    });
-                    if denom > NotNan::new(0.0).unwrap() {
-                        vaf_sum /= denom;
+        candidate_matrix
+            .iter()
+            .zip(variant_calls.iter())
+            .map(|((genotypes, covered), afd)| {
+                let mut denom = NotNan::new(1.0).unwrap();
+                let mut vaf_sum = NotNan::new(0.0).unwrap();
+                event.iter().enumerate().for_each(|(i, fraction)| {
+                    if genotypes[i as u64] == VariantStatus::Present && covered[i as u64] {
+                        vaf_sum += *fraction;
+                    } else if genotypes[i as u64] == VariantStatus::Unknown && covered[i as u64] {
+                        todo!();
+                    } else if genotypes[i as u64] == VariantStatus::Unknown
+                        && covered[i as u64] == false
+                    {
+                        todo!();
+                    } else if genotypes[i as u64] == VariantStatus::NotPresent
+                        && covered[i as u64] == false
+                    {
+                        denom -= *fraction;
                     }
-                    //to overcome a bug that results in larger than 1.0 VAF. After around 10 - 15th decimal place, the value becomes larger.
-                    //In any case, for a direct query to the AFD VAFs (they contain 2 decimal places).
-                    vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
-                        / NotNan::new(100.0).unwrap();
-                    if !afd.is_empty() {
-                        afd.vaf_query(&vaf_sum).unwrap()
-                    } else {
-                        LogProb::ln_one()
-                    }
-                })
-                .sum()
-        } else {
-            candidate_matrix
-                .iter()
-                .zip(variant_calls.iter())
-                .map(|((genotypes, covered), afd)| {
-                    let mut vaf_sum = NotNan::new(0.0).unwrap();
-                    event.iter().enumerate().for_each(|(i, fraction)| {
-                        if genotypes[i as u64] && covered[i as u64] {
-                            vaf_sum += *fraction;
-                        } else if covered[i as u64] {
-                            ()
-                        }
-                    });
-                    if !afd.is_empty() {
-                        afd.vaf_query(&vaf_sum).unwrap()
-                    } else {
-                        LogProb::ln_one()
-                    }
-                })
-                .sum()
-        }
+                });
+                if denom > NotNan::new(0.0).unwrap() {
+                    vaf_sum /= denom;
+                }
+                //to overcome a bug that results in larger than 1.0 VAF. After around 10 - 15th decimal place, the value becomes larger.
+                //In any case, for a direct query to the AFD VAFs (they contain 2 decimal places).
+                vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
+                    / NotNan::new(100.0).unwrap();
+                if !afd.is_empty() {
+                    afd.vaf_query(&vaf_sum).unwrap()
+                } else {
+                    LogProb::ln_one()
+                }
+            })
+            .sum()
         //LogProb::ln_one()
     }
 }
