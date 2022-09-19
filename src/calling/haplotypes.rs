@@ -34,8 +34,7 @@ impl Caller {
         let haplotype_variants =
             haplotype_variants.find_plausible_haplotypes(&variant_calls, self.max_haplotypes)?;
         let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
-        let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-        let candidate_matrix = CandidateMatrix::new(&haplotype_variants, &haplotypes).unwrap();
+        let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
         //model computation
         let normalization = false;
@@ -343,11 +342,8 @@ impl HaplotypeVariants {
                         Prior::new(),
                         Posterior::new(),
                     );
-                    let candidate_matrix = CandidateMatrix::new(
-                        &haplotype_variants_selected.clone(),
-                        &selected_haplotypes,
-                    )
-                    .unwrap();
+                    let candidate_matrix =
+                        CandidateMatrix::new(&haplotype_variants_selected.clone()).unwrap();
                     let data = Data::new(candidate_matrix, filtered_variant_calls.clone());
                     let computed_model = model.compute_from_marginal(
                         &Marginal::new(selected_haplotypes.len(), *fraction),
@@ -380,25 +376,29 @@ impl HaplotypeVariants {
         let haplotype_names: Vec<Haplotype> = haplotypes_gt_c.keys().cloned().collect();
         let len_haplotypes = haplotype_names.len();
 
-        //fill the haplotype vector with variant information
-        let mut haplotype_vector_input = Array2::<f32>::zeros((len_haplotypes, self.len()));
+        //fill genotype and coverage arrays
+        let mut genotype_array = Array2::<f32>::zeros((len_haplotypes, self.len()));
+        let mut coverage_array = Array2::<f32>::zeros((len_haplotypes, self.len()));
         self.iter()
             .enumerate()
             .for_each(|(variant_index, (_, matrices))| {
-                matrices
-                    .iter()
-                    .enumerate()
-                    .for_each(|(haplotype_index, (_, (genotype, _)))| {
+                matrices.iter().enumerate().for_each(
+                    |(haplotype_index, (_, (genotype, coverage)))| {
                         if *genotype {
-                            haplotype_vector_input[[haplotype_index, variant_index]] = 1.0;
+                            //coverage is automatically true aswell.
+                            genotype_array[[haplotype_index, variant_index]] = 1.0;
+                            coverage_array[[haplotype_index, variant_index]] = 1.0;
+                        } else if *coverage {
+                            coverage_array[[haplotype_index, variant_index]] = 1.0;
                         }
-                    });
+                    },
+                );
             });
 
         // perform k-means clustering, seeded for reproducibility
         let seed = 42;
         let rng = Xoshiro256Plus::seed_from_u64(seed);
-        let dataset = DatasetBase::from(haplotype_vector_input);
+        let dataset = DatasetBase::from(genotype_array);
         let n_clusters = max_haplotypes;
         let model = KMeans::params_with_rng(n_clusters, rng)
             .max_n_iterations(200)
@@ -424,20 +424,26 @@ impl HaplotypeVariants {
             }
         }
         //dbg!(&pseudohaplotypes);
+
         //STEP 2: run the model
 
         //initialize vectors
-        let mut haplotype_vectors = Vec::new();
+        let mut genotype_vectors = Vec::new();
+        let mut coverage_vectors = Vec::new();
+
         for cluster_index in 0..n_clusters {
-            haplotype_vectors.push(vec![]);
+            genotype_vectors.push(vec![]);
+            coverage_vectors.push(vec![]);
         }
 
         //collect variant vectors of haplotypes to corresponding clusters
         for (haplotype_index, haplotype) in haplotype_names.iter().enumerate() {
             for cluster_index in 0..n_clusters {
                 if dataset.targets[haplotype_index] == cluster_index {
-                    haplotype_vectors[cluster_index]
+                    genotype_vectors[cluster_index]
                         .push(dataset.records.slice(s![haplotype_index, 0..self.len()]));
+                    coverage_vectors[cluster_index]
+                        .push(coverage_array.slice(s![haplotype_index, 0..self.len()]));
                 }
             }
         }
@@ -454,33 +460,37 @@ impl HaplotypeVariants {
         let mut pseudohaplotypes_variants = BTreeMap::new();
         for variant_index in 0..variants.len() {
             let mut matrix_map: BTreeMap<Haplotype, (VariantStatus, bool)> = BTreeMap::new();
-            for (haplotype_index, haplotype_vector) in haplotype_vectors.iter().enumerate() {
+            for (haplotype_index, (genotype_vector, coverage_vector)) in genotype_vectors
+                .iter()
+                .zip(coverage_vectors.iter())
+                .enumerate()
+            {
+                let coverage_at_index = coverage_vector.iter().any(|&x| x == 1.0); //if at least one of them covers, the pseudohaplotype is also said to cover the variant.
                 let pseudohaplotype_name = pseudohaplotype_names[haplotype_index].clone();
-                //store variant information for all haplotypes in the pseudohaplotype groups
-                let mut variant_information = Vec::new();
-                for haplotype_array in haplotype_vector.iter() {
-                    variant_information.push(haplotype_array[variant_index]);
+                let mut variant_at_index = Vec::new();
+                for genotype_array in genotype_vector.iter() {
+                    variant_at_index.push(genotype_array[variant_index]);
                 }
                 //now check if variant has the same information across all haplotypes
                 //then create HaplotypeVariants accordingly.
-                let any_element = variant_information[0];
+                let any_element = variant_at_index[0];
                 if temp_haplotypes.iter().all(|h| h == &any_element) {
-                    let random_array = haplotype_vector[0];
+                    let random_array = genotype_vector[0];
                     if any_element == 1.0 {
                         matrix_map.insert(
                             pseudohaplotype_name,
-                            (VariantStatus::Present, any_element == 1.0),
+                            (VariantStatus::Present, coverage_at_index),
                         );
                     } else {
                         matrix_map.insert(
                             pseudohaplotype_name,
-                            (VariantStatus::NotPresent, any_element == 1.0),
+                            (VariantStatus::NotPresent, coverage_at_index),
                         );
                     }
                 } else {
                     matrix_map.insert(
                         pseudohaplotype_name,
-                        (VariantStatus::Unknown, any_element == 1.0),
+                        (VariantStatus::Unknown, coverage_at_index),
                     );
                 }
             }
@@ -502,11 +512,8 @@ impl HaplotypeVariants {
             Prior::new(),
             Posterior::new(),
         );
-        let candidate_matrix = CandidateMatrix::new(
-            &HaplotypeVariants(pseudohaplotypes_variants.clone()),
-            &pseudohaplotype_names,
-        )
-        .unwrap();
+        let candidate_matrix =
+            CandidateMatrix::new(&HaplotypeVariants(pseudohaplotypes_variants.clone())).unwrap();
         let data = Data::new(candidate_matrix, variant_calls.clone());
         let computed_model =
             model.compute_from_marginal(&Marginal::new(max_haplotypes, *upper_bond), &data);
@@ -563,16 +570,16 @@ impl AlleleFreqDist {
 }
 
 #[derive(Derefable, Debug)]
-pub(crate) struct CandidateMatrix(#[deref] BTreeMap<VariantID, (BitVec, BitVec)>);
+pub(crate) struct CandidateMatrix(#[deref] BTreeMap<VariantID, (Vec, BitVec)>);
 
 impl CandidateMatrix {
     pub(crate) fn new(
         haplotype_variants: &HaplotypeVariants,
-        haplotypes: &Vec<Haplotype>,
+        // haplotypes: &Vec<Haplotype>,
     ) -> Result<Self> {
         let mut candidate_matrix = BTreeMap::new();
         haplotype_variants.iter().for_each(|(variant_id, bmap)| {
-            let mut haplotype_variants_gt = BitVec::new();
+            let mut haplotype_variants_gt = Vec::new();
             let mut haplotype_variants_c = BitVec::new();
             bmap.iter().for_each(|(_, (gt, c))| {
                 haplotype_variants_gt.push(*gt);
@@ -613,16 +620,3 @@ impl VariantCalls {
         Ok(VariantCalls(calls))
     }
 }
-
-// fn (num_variants: i32, haplotype_vectors: &Vec<Array>) -> {
-//     for variant_index in 0..num_variants {
-//         let mut temp_haplotypes = Vec::new();
-//         for haplotype_array in haplotype_vectors_0.iter() {
-//             temp_haplotypes.push(haplotype_array[variant_index]);
-//         }
-//         let any_element = temp_haplotypes[0];
-//         if temp_haplotypes.iter().all(|h| h == &any_element) {
-//             common_variants_0.push(variants[variant_index]);
-//         }
-//     }
-// }

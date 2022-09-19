@@ -98,7 +98,7 @@ impl Likelihood {
         data: &Data,
         _cache: &mut Cache,
     ) -> LogProb {
-        let candidate_matrix: Vec<(BitVec, BitVec)> =
+        let candidate_matrix: Vec<(Vec, BitVec)> =
             data.candidate_matrix.values().cloned().collect();
         let variant_calls: Vec<AlleleFreqDist> = data
             .variant_calls
