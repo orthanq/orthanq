@@ -1,4 +1,4 @@
-use crate::calling::haplotypes::{AlleleFreqDist, CandidateMatrix, VariantCalls};
+use crate::calling::haplotypes::{AlleleFreqDist, CandidateMatrix, VariantCalls, VariantStatus};
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb};
 use bv::BitVec;
@@ -96,29 +96,29 @@ impl Likelihood {
         data: &Data,
         _cache: &mut Cache,
     ) -> LogProb {
-        let candidate_matrix: Vec<(Vec, BitVec)> =
+        let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
             data.candidate_matrix.values().cloned().collect();
         let variant_calls: Vec<AlleleFreqDist> = data
             .variant_calls
             .iter()
             .map(|(_, afd)| afd.clone())
             .collect();
-        candidate_matrix
+        let mut final_prob = LogProb::ln_one();
+        candidate_matrix_values
             .iter()
             .zip(variant_calls.iter())
-            .map(|((genotypes, covered), afd)| {
+            .for_each(|((genotypes, covered), afd)| {
                 let mut denom = NotNan::new(1.0).unwrap();
                 let mut vaf_sum = NotNan::new(0.0).unwrap();
                 event.iter().enumerate().for_each(|(i, fraction)| {
-                    if genotypes[i as u64] == VariantStatus::Present && covered[i as u64] {
+                    if genotypes[i] == VariantStatus::Present && covered[i as u64] {
                         vaf_sum += *fraction;
-                    } else if genotypes[i as u64] == VariantStatus::Unknown && covered[i as u64] {
-                        todo!();
-                    } else if genotypes[i as u64] == VariantStatus::Unknown
-                        && covered[i as u64] == false
-                    {
-                        todo!();
-                    } else if genotypes[i as u64] == VariantStatus::NotPresent
+                    } else if genotypes[i] == VariantStatus::Unknown {
+                        let mut fractions: Vec<AlleleFreq> = Vec::new();
+                        let upper_bond = fraction.clone();
+                        let afd = afd.clone();
+                        final_prob += recursive_vaf_query(0, &fractions, &upper_bond, &afd);
+                    } else if genotypes[i] == VariantStatus::NotPresent
                         && covered[i as u64] == false
                     {
                         denom -= *fraction;
@@ -132,12 +132,12 @@ impl Likelihood {
                 vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
                     / NotNan::new(100.0).unwrap();
                 if !afd.is_empty() {
-                    afd.vaf_query(&vaf_sum).unwrap()
+                    final_prob += afd.vaf_query(&vaf_sum).unwrap();
                 } else {
-                    LogProb::ln_one()
+                    final_prob += LogProb::ln_one();
                 }
-            })
-            .sum()
+            });
+        final_prob
         //LogProb::ln_one()
     }
 }
@@ -177,3 +177,42 @@ impl model::Posterior for Posterior {
 
 #[derive(Debug, Derefable, Default)]
 pub(crate) struct Cache(#[deref] HashMap<usize, HashMap<AlleleFreq, LogProb>>);
+
+fn recursive_vaf_query(
+    haplotype_index: usize,
+    fractions: &Vec<AlleleFreq>,
+    upper_bond: &NotNan<f64>,
+    afd: &AlleleFreqDist,
+) -> LogProb {
+    let n_haplotypes = 1;
+    let mut vaf_sum = NotNan::new(0.0).unwrap();
+    if haplotype_index == n_haplotypes {
+        vaf_sum += *fractions[0];
+        if !afd.is_empty() {
+            afd.vaf_query(&vaf_sum).unwrap()
+        } else {
+            LogProb::ln_one()
+        }
+    } else {
+        let fraction_upper_bound = *upper_bond - fractions.iter().sum::<NotNan<f64>>();
+        let mut density = |fraction| {
+            let mut fractions = fractions.clone();
+            fractions.push(fraction);
+            recursive_vaf_query(haplotype_index + 1, &mut fractions, upper_bond, afd)
+        };
+        if haplotype_index == n_haplotypes - 1 {
+            density(fraction_upper_bound)
+        } else {
+            if fraction_upper_bound == NotNan::new(0.0).unwrap() {
+                density(NotNan::new(0.0).unwrap())
+            } else {
+                adaptive_integration::ln_integrate_exp(
+                    density,
+                    NotNan::new(0.0).unwrap(),
+                    fraction_upper_bound,
+                    NotNan::new(0.05).unwrap(),
+                )
+            }
+        }
+    }
+}
