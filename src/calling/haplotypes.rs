@@ -468,7 +468,8 @@ impl HaplotypeVariants {
             }
             pseudohaplotypes_variants.insert(variants[variant_index].clone(), matrix_map);
         }
-        dbg!(&pseudohaplotypes_variants);
+        dbg!(&pseudohaplotypes_variants.len());
+        dbg!(&variant_calls.len());
         //make sure VariantCalls have the same variants
         let variant_calls: BTreeMap<VariantID, AlleleFreqDist> = variant_calls
             .iter()
@@ -476,7 +477,7 @@ impl HaplotypeVariants {
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
         let variant_calls = VariantCalls(variant_calls);
-
+        
         //model computation, only first round for now
         let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
         let candidate_matrix =

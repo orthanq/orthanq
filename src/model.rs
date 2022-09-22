@@ -38,19 +38,15 @@ impl Marginal {
                 fractions.push(fraction);
                 self.calc_marginal(data, haplotype_index + 1, &mut fractions, joint_prob)
             };
-            if haplotype_index == self.n_haplotypes - 1 {
-                density(fraction_upper_bound)
+            if fraction_upper_bound == NotNan::new(0.0).unwrap() {
+                density(NotNan::new(0.0).unwrap())
             } else {
-                if fraction_upper_bound == NotNan::new(0.0).unwrap() {
-                    density(NotNan::new(0.0).unwrap())
-                } else {
-                    adaptive_integration::ln_integrate_exp(
-                        density,
-                        NotNan::new(0.0).unwrap(),
-                        fraction_upper_bound,
-                        NotNan::new(0.1).unwrap(),
-                    )
-                }
+                adaptive_integration::ln_integrate_exp(
+                    density,
+                    NotNan::new(0.0).unwrap(),
+                    fraction_upper_bound,
+                    NotNan::new(0.1).unwrap(),
+                )
             }
         }
     }
@@ -116,7 +112,6 @@ impl Likelihood {
                     } else if genotypes[i] == VariantStatus::Unknown {
                         let mut fractions: Vec<AlleleFreq> = Vec::new();
                         let upper_bond = fraction.clone();
-                        let afd = afd.clone();
                         final_prob += recursive_vaf_query(0, &fractions, &upper_bond, &afd);
                     } else if genotypes[i] == VariantStatus::NotPresent
                         && covered[i as u64] == false
@@ -200,19 +195,15 @@ fn recursive_vaf_query(
             fractions.push(fraction);
             recursive_vaf_query(haplotype_index + 1, &mut fractions, upper_bond, afd)
         };
-        if haplotype_index == n_haplotypes - 1 {
-            density(fraction_upper_bound)
+        if fraction_upper_bound == NotNan::new(0.0).unwrap() {
+            density(NotNan::new(0.0).unwrap())
         } else {
-            if fraction_upper_bound == NotNan::new(0.0).unwrap() {
-                density(NotNan::new(0.0).unwrap())
-            } else {
-                adaptive_integration::ln_integrate_exp(
-                    density,
-                    NotNan::new(0.0).unwrap(),
-                    fraction_upper_bound,
-                    NotNan::new(0.05).unwrap(),
-                )
-            }
+            adaptive_integration::ln_integrate_exp(
+                density,
+                NotNan::new(0.0).unwrap(),
+                fraction_upper_bound,
+                NotNan::new(0.1).unwrap(),
+            )
         }
     }
 }
