@@ -38,15 +38,19 @@ impl Marginal {
                 fractions.push(fraction);
                 self.calc_marginal(data, haplotype_index + 1, &mut fractions, joint_prob)
             };
-            if fraction_upper_bound == NotNan::new(0.0).unwrap() {
-                density(NotNan::new(0.0).unwrap())
+            if haplotype_index == self.n_haplotypes - 1 {
+                density(fraction_upper_bound)
             } else {
-                adaptive_integration::ln_integrate_exp(
-                    density,
-                    NotNan::new(0.0).unwrap(),
-                    fraction_upper_bound,
-                    NotNan::new(0.1).unwrap(),
-                )
+                if fraction_upper_bound == NotNan::new(0.0).unwrap() {
+                    density(NotNan::new(0.0).unwrap())
+                } else {
+                    adaptive_integration::ln_integrate_exp(
+                        density,
+                        NotNan::new(0.0).unwrap(),
+                        fraction_upper_bound,
+                        NotNan::new(0.1).unwrap(),
+                    )
+                }
             }
         }
     }

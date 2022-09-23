@@ -240,8 +240,7 @@ impl HaplotypeVariants {
         let upper_bond = NotNan::new(1.0).unwrap();
         let (variants, pseudohaplotypes, haplotype_fractions) =
             self.cluster_and_run_model(variant_calls, max_haplotypes, &upper_bond)?;
-        dbg!(&pseudohaplotypes);
-        dbg!(&haplotype_fractions);
+
         //TODO: recursively cluster and run the model resulting in the actual combination of haplotypes.
         self.recursive_clustering(
             &variant_calls,
@@ -390,7 +389,7 @@ impl HaplotypeVariants {
                 }
             }
         }
-        //dbg!(&pseudohaplotypes);
+        dbg!(&pseudohaplotypes);
 
         //STEP 2: run the model
 
@@ -486,6 +485,11 @@ impl HaplotypeVariants {
         let computed_model =
             model.compute_from_marginal(&Marginal::new(max_haplotypes, *upper_bond), &data);
         let mut event_posteriors = computed_model.event_posteriors();
+        let mut event_posteriors_clone = computed_model.event_posteriors();
+        for (fractions, prob) in event_posteriors_clone {
+            dbg!(&fractions);
+            dbg!(&prob.exp());
+        }
         let (haplotype_fractions, _) = event_posteriors.next().unwrap();
         let variants: Vec<VariantID> = pseudohaplotypes_variants.keys().cloned().collect();
 
