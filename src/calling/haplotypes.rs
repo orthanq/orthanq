@@ -13,7 +13,11 @@ use ordered_float::NotNan;
 use rand::prelude::*;
 use rand_xoshiro::Xoshiro256Plus;
 use rust_htslib::bcf::{self, record::GenotypeAllele::Unphased, Read};
+use serde::Serialize;
+use serde_json::json;
 use std::collections::{BTreeMap, HashMap};
+use std::fs::File;
+use std::path::Path;
 use std::{path::PathBuf, str};
 
 #[derive(Builder)]
@@ -45,13 +49,87 @@ impl Caller {
             model.compute_from_marginal(&Marginal::new(self.max_haplotypes, upper_bond), &data);
         let event_posteriors = computed_model.event_posteriors();
 
+        //plotting
+        event_posteriors
+            .enumerate()
+            .for_each(|(event_i, (fractions, _))| {
+                let json = include_str!("../../templates/fractions_barchart.json");
+                let mut blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
+                let mut plot_data_variants = Vec::new();
+                let mut plot_data_haplotype_variants = Vec::new();
+                let mut plot_data_haplotype_fractions = Vec::new();
+
+                let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
+                    data.candidate_matrix.values().cloned().collect();
+                // let mut final_prob = LogProb::ln_one();
+                candidate_matrix_values
+                    .iter()
+                    .zip(data.variant_calls.iter())
+                    .for_each(|((genotypes, covered), (variant_id, (af, afd)))| {
+                        let mut denom = NotNan::new(1.0).unwrap();
+                        let mut vaf_sum = NotNan::new(0.0).unwrap();
+                        fractions
+                            .iter()
+                            .zip(haplotypes.iter())
+                            .enumerate()
+                            .for_each(|(i, (fraction, haplotype))| {
+                                if genotypes[i] == VariantStatus::Present && covered[i as u64] {
+                                    // vaf_sum += *fraction;
+                                    plot_data_haplotype_fractions.push(
+                                        dataset_haplotype_fractions {
+                                            haplotype: haplotype.clone(),
+                                            fraction: *fraction,
+                                        },
+                                    );
+                                    plot_data_haplotype_variants.push(dataset_haplotype_variants {
+                                        variant: *variant_id,
+                                        haplotype: haplotype.clone(),
+                                    });
+                                    plot_data_variants.push(dataset_variants {
+                                        variant: *variant_id,
+                                        vaf: *af,
+                                    });
+                                } else if genotypes[i] == VariantStatus::Unknown {
+                                    ()
+                                } else if genotypes[i] == VariantStatus::NotPresent
+                                    && covered[i as u64] == false
+                                {
+                                    denom -= *fraction;
+                                }
+                            });
+                        if denom > NotNan::new(0.0).unwrap() {
+                            vaf_sum /= denom;
+                        }
+                        //to overcome a bug that results in larger than 1.0 VAF. After around 10 - 15th decimal place, the value becomes larger.
+                        //In any case, for a direct query to the AFD VAFs (they contain 2 decimal places).
+                        vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round())
+                            .unwrap()
+                            / NotNan::new(100.0).unwrap();
+                    });
+                //for each event, a plot is generated.
+                let plot_data_variants = json!(plot_data_variants);
+                let plot_data_haplotype_variants = json!(plot_data_haplotype_variants);
+                let plot_data_haplotype_fractions = json!(plot_data_haplotype_fractions);
+
+                blueprint["datasets"]["variants"] = plot_data_variants;
+                blueprint["datasets"]["haplotype_variants"] = plot_data_haplotype_variants;
+                blueprint["datasets"]["haplotype_fractions"] = plot_data_haplotype_fractions;
+
+                let event_id = event_i.to_string();
+                let output = format!("{}{}{}", "event_", event_id, ".json");
+                let path = Path::new(&output);
+                let file = File::create(path).unwrap();
+                serde_json::to_writer(file, &blueprint);
+            });
+        //plotting
+
         //add variant query and probabilities to the outout table for each event
-        let variant_calls: Vec<AlleleFreqDist> = data
-            .variant_calls
-            .iter()
-            .map(|(_, afd)| afd.clone())
-            .collect();
-        let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
+        // let variant_calls: Vec<AlleleFreqDist> = data
+        //     .variant_calls
+        //     .iter()
+        //     .map(|(_, (_, afd))| afd.clone())
+        //     .collect();
+        // let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
         // event_posteriors.for_each(|(fractions, _)| {
         //     let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
         //     data.candidate_matrix
@@ -175,10 +253,26 @@ impl Caller {
     }
 }
 
-#[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, new)]
+#[derive(Serialize, Debug)]
+pub(crate) struct dataset_variants {
+    variant: VariantID,
+    vaf: f32,
+}
+#[derive(Serialize, Debug)]
+pub(crate) struct dataset_haplotype_variants {
+    variant: VariantID,
+    haplotype: Haplotype,
+}
+#[derive(Serialize, Debug)]
+pub(crate) struct dataset_haplotype_fractions {
+    haplotype: Haplotype,
+    fraction: AlleleFreq,
+}
+
+#[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub(crate) struct Haplotype(#[deref] String);
 
-#[derive(Derefable, Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, new)]
+#[derive(Derefable, Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize)]
 pub(crate) struct VariantID(#[deref] i32);
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd)]
@@ -294,11 +388,12 @@ impl HaplotypeVariants {
                         .collect();
                     let filtered_haplotype_variants =
                         HaplotypeVariants(filtered_haplotype_variants);
-                    let filtered_variant_calls: BTreeMap<VariantID, AlleleFreqDist> = variant_calls
-                        .iter()
-                        .filter(|&(k, _)| variants.contains(k))
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
+                    let filtered_variant_calls: BTreeMap<VariantID, (f32, AlleleFreqDist)> =
+                        variant_calls
+                            .iter()
+                            .filter(|&(k, (_, _))| variants.contains(k))
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect();
                     let filtered_variant_calls = VariantCalls(filtered_variant_calls);
 
                     let selected_haplotypes = haplotypes_in_cluster.clone();
@@ -470,13 +565,13 @@ impl HaplotypeVariants {
         dbg!(&pseudohaplotypes_variants.len());
         dbg!(&variant_calls.len());
         //make sure VariantCalls have the same variants
-        let variant_calls: BTreeMap<VariantID, AlleleFreqDist> = variant_calls
+        let variant_calls: BTreeMap<VariantID, (f32, AlleleFreqDist)> = variant_calls
             .iter()
-            .filter(|&(k, _)| pseudohaplotypes_variants.contains_key(k))
+            .filter(|&(k, (_, _))| pseudohaplotypes_variants.contains_key(k))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
         let variant_calls = VariantCalls(variant_calls);
-        
+
         //model computation, only first round for now
         let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
         let candidate_matrix =
@@ -564,7 +659,7 @@ impl CandidateMatrix {
 }
 
 #[derive(Derefable, DerefMut, Debug, Clone)]
-pub(crate) struct VariantCalls(#[deref] BTreeMap<VariantID, AlleleFreqDist>);
+pub(crate) struct VariantCalls(#[deref] BTreeMap<VariantID, (f32, AlleleFreqDist)>); //The place of f32 is maximum a posteriori estimate of AF.
 
 impl VariantCalls {
     pub(crate) fn new(variant_calls: &mut bcf::Reader) -> Result<Self> {
@@ -578,6 +673,8 @@ impl VariantCalls {
             if read_depths[0] != &[0] {
                 //because some afd strings are just "." and that throws an error while splitting below.
                 let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
+                let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
+                dbg!(&af);
                 let mut vaf_density = BTreeMap::new();
                 for pair in afd.split(',') {
                     if let Some((vaf, density)) = pair.split_once("=") {
@@ -586,7 +683,7 @@ impl VariantCalls {
                         vaf_density.insert(vaf, density);
                     }
                 }
-                calls.insert(VariantID(variant_id), AlleleFreqDist(vaf_density));
+                calls.insert(VariantID(variant_id), (af, AlleleFreqDist(vaf_density)));
             }
         }
         Ok(VariantCalls(calls))
