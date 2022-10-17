@@ -114,10 +114,14 @@ impl Likelihood {
                     if genotypes[i] == VariantStatus::Present && covered[i as u64] {
                         vaf_sum += *fraction;
                     } else if genotypes[i] == VariantStatus::Unknown {
-                        let mut fractions: Vec<AlleleFreq> = Vec::new();
-                        let upper_bond = fraction.clone();
-                        final_prob += recursive_vaf_query(0, &fractions, &upper_bond, &afd);
-                    } else if genotypes[i] == VariantStatus::NotPresent
+                        ()
+                        // let mut fractions: Vec<AlleleFreq> = Vec::new();
+                        // let upper_bond = fraction.clone();
+                        // final_prob += recursive_vaf_query(0, &fractions, &upper_bond, &afd);
+                    } else if covered[i as u64] {
+                        ()
+                    }
+                    else if genotypes[i] == VariantStatus::NotPresent
                         && covered[i as u64] == false
                     {
                         denom -= *fraction;

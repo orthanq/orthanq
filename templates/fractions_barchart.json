@@ -1,46 +1,61 @@
 {
   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "config": {
+    "axis": {"grid": true, "tickBand": "extent"}
+  },
   "datasets": {
     "variants": [],
     "haplotype_variants": [],
     "haplotype_fractions": []
   },
-  "layer": [
+  "vconcat":[
     {
-      "data": {"name": "haplotype_variants"},
-      "transform": [
+      "layer": [
         {
-          "lookup": "haplotype",
-          "from": {
-            "data": {"name": "haplotype_fractions"},
-            "key": "haplotype",
-            "fields": ["fraction"]
+          "data": {"name": "haplotype_variants"},
+          "transform": [
+            {
+              "lookup": "haplotype",
+              "from": {
+                "data": {"name": "haplotype_fractions"},
+                "key": "haplotype",
+                "fields": ["fraction"]
+              }
+            }
+          ],
+          "mark": "bar",
+          "encoding": {
+            "x": {"field": "variant", "type": "ordinal"},
+            "y": {"aggregate": "sum", "type": "quantitative", "field": "fraction"},
+            "color": {
+              "field": "haplotype",
+              "type": "nominal",
+              "scale": {"scheme": "category20"}
+            }
+          }
+        },
+        {
+          "data": {"name": "variants"},
+          "mark": "point",
+          "encoding": {
+            "x": {"field": "variant", "type": "ordinal"},
+            "y": {
+              "field": "vaf",
+              "type": "quantitative",
+              "scale": {"domain": [0, 1]}
+            },
+            "color": {"value": "black"}
           }
         }
-      ],
-      "mark": "bar",
-      "encoding": {
-        "x": {"field": "variant", "type": "ordinal"},
-        "y": {"aggregate": "sum", "type": "quantitative", "field": "fraction"},
-        "color": {
-          "field": "haplotype",
-          "type": "nominal",
-          "scale": {"scheme": "category20"}
-        }
-      }
-    },
-    {
-      "data": {"name": "variants"},
-      "mark": "point",
-      "encoding": {
-        "x": {"field": "variant", "type": "ordinal"},
-        "y": {
-          "field": "vaf",
-          "type": "quantitative",
-          "scale": {"domain": [0, 1]}
-        },
-        "color": {"value": "black"}
-      }
+      ]
+  },
+  {
+    "data": {"name": "haplotype_variants"},
+    "mark": "rect",
+    "encoding": {
+    "y": {"field": "haplotype", "type": "ordinal"},
+    "x": {"field": "variant", "type": "ordinal"}
     }
-  ]
+  }
+]
 }
