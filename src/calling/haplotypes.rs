@@ -37,10 +37,20 @@ impl Caller {
     pub fn call(&mut self) -> Result<()> {
         let variant_calls = VariantCalls::new(&mut self.variant_calls)?;
         let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
+        //dbg!(&variant_ids);
         let mut haplotype_variants =
             HaplotypeVariants::new(&mut self.haplotype_variants, &variant_ids)?;
+        let mut new_haplotype_variants: BTreeMap<VariantID,BTreeMap<Haplotype, (VariantStatus, bool)>> = BTreeMap::new();
+        // if you're only interested in seeing some haplotypes.
+        // haplotype_variants.iter().for_each(|(variant, haplotypes)| {
+        //     let filtered = haplotypes.iter().filter(|(haplotype, (variant_status, covered))|haplotype.to_string() == "A*03:01".to_string() || haplotype.to_string() == "A*24:02".to_string() || haplotype.to_string() == "A*03:36N".to_string()).map(|(haplotype,(variant_status, covered))|(haplotype.clone(), (variant_status.clone(),*covered))).collect::<BTreeMap<Haplotype, (VariantStatus, bool)>>();
+        //     new_haplotype_variants.insert(variant.clone(), filtered);
+        // });
+        // let new_haplotype_variants = HaplotypeVariants(new_haplotype_variants);
+
         // let haplotype_variants =
         //     haplotype_variants.find_plausible_haplotypes(&variant_calls, self.max_haplotypes)?;
+
         let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
         let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
         dbg!(&haplotypes);
@@ -673,10 +683,12 @@ impl VariantCalls {
         for record_result in variant_calls.records() {
             let mut record = record_result?;
             record.unpack();
+            let prob_absent = record.info(b"PROB_ABSENT").float().unwrap().unwrap()[0];
+            let prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
             let read_depths = record.format(b"DP").integer().unwrap();
-            if read_depths[0] != &[0] {
+            if read_depths[0] != &[0] && (&prob_absent_prob <= &Prob(0.05) || &prob_absent_prob >= &Prob(0.95)) {
                 //because some afd strings are just "." and that throws an error while splitting below.
                 let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
                 let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
@@ -703,16 +715,13 @@ fn linear_program(
 ) -> Result<(), Box<dyn Error>> {
     //first init the problem
     let mut problem = ProblemVariables::new();
-
+    dbg!(&haplotypes);
     //introduce variables
     let variables: Vec<Variable> =
         problem.add_vector(variable().min(0.0).max(1.0), haplotypes.len());
-    // let variables_prime: Vec<Variable> =
-    //     problem.add_vector(variable().min(0.0).max(1.0), haplotypes.len());
 
     //init the constraints
     let mut constraints: Vec<Expression> = Vec::new();
-    // let mut constraints_prime: Vec<Expression> = Vec::new();
 
     //execute the objective function to fill up the constraints
     objective_function(
@@ -720,65 +729,52 @@ fn linear_program(
         haplotypes,
         variant_calls,
         &variables,
-        // &variables_prime,
         &mut constraints,
-        // &mut constraints_prime
     );
 
     //define temporary variables
     let t_vars: Vec<Variable> = problem.add_vector(variable().min(0.0).max(1.0), constraints.len());
-    // let t_vars_prime: Vec<Variable> =
-    // problem.add_vector(variable().min(0.0).max(1.0), constraints_prime.len());
 
     //create the model to minimise the sum of temporary variables
     let mut sum_tvars = Expression::from_other_affine(0.);
     for t_var in t_vars.iter() {
-        //zip(t_vars_prime.iter())
-        // sum_tvars += (*t_var+p_t_var).into_expression();
         sum_tvars += t_var.into_expression();
     }
     let mut model = problem.minimise(sum_tvars.clone()).using(default_solver); // multiple solvers available
 
     //add a constraint to make sure variables sum up to 1.0.
     let mut sum = Expression::from_other_affine(0.);
-    // let mut sum_prime = Expression::from_other_affine(0.);
     for var in variables.iter() {
-        //zip(variables_prime.iter())
         sum += Expression::from_other_affine(var);
-        // sum_prime += Expression::from_other_affine(p_var);
     }
     model = model.with(constraint!(sum == 1.0));
-    //model = model.with(constraint!(sum_prime == 1.0));
 
     //add the constraints to the model
     for (c, t_var) in constraints.iter().zip(t_vars.iter()) {
         model = model.with(constraint!(t_var >= c.clone()));
         model = model.with(constraint!(t_var >= -c.clone()));
     }
-
-    // for (p_c, p_t_var) in constraints_prime.iter().zip(t_vars_prime.iter()) {
-    //     model = model.with(constraint!(p_t_var >= p_c.clone()));
-    //     model = model.with(constraint!(p_t_var >= -p_c.clone()));
-    // }
+    dbg!(&constraints);
 
     //make sure again each variable has nonnegative values.
     for variable in variables.iter() {
-        //zip(variables_prime.iter())
         model = model.with(constraint!(variable >= 0.0.into_expression()));
-        //model = model.with(constraint!(p_variable >= 0.0.into_expression()));
     }
 
     //solve the problem with the default solver, i.e. coin_cbc
     let solution = model.solve().unwrap();
 
+    let mut best_variables = Vec::new();
     //finally, print the variables and the sum
-    for var in variables.iter() {
-        //zip(variables_prime.iter())
-        println!("var={}", solution.value(*var));
-        // println!("p_var={}", solution.value(*p_var));
+    for (i,(var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
+        println!("v{}, {}={}",i,haplotype.to_string(),solution.value(*var));
+        best_variables.push(solution.value(var.clone()).clone());
     }
     println!("sum = {}", solution.eval(sum_tvars));
 
+    //plot the best result
+    dbg!(&best_variables.len());
+    plot_solution(&candidate_matrix, &haplotypes, &variant_calls, &best_variables);
     Ok(())
 }
 
@@ -787,9 +783,7 @@ fn objective_function(
     haplotypes: &Vec<Haplotype>,
     variant_calls: &VariantCalls,
     variables: &Vec<Variable>,
-    // variables_prime: &Vec<Variable>,
     constraints: &mut Vec<Expression>,
-    // constraints_prime: &mut Vec<Expression>
 ) -> Expression {
     let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
         candidate_matrix.values().cloned().collect();
@@ -799,8 +793,6 @@ fn objective_function(
     for ((genotype_matrix, coverage_matrix), (variant, (af, _))) in
         candidate_matrix_values.iter().zip(variant_calls.iter())
     {
-        // let mut denominator_check = false;
-        // let mut denom = Expression::from_other_affine(1.);
         let mut fraction_cont = Expression::from_other_affine(0.);
         let mut prime_fraction_cont = Expression::from_other_affine(0.);
         let mut vaf = Expression::from_other_affine(0.);
@@ -812,31 +804,92 @@ fn objective_function(
         }
         if counter == variables.len() {
             dbg!(&variant);
-            for (i, variable) in variables.iter().enumerate() {
-                //zip(variables_prime.iter())
+            for (i, (variable, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate(){
                 if genotype_matrix[i] == VariantStatus::Present {
                     fraction_cont += *variable;
-                    // prime_fraction_cont += *p_variable;
-                    // denominator_check = true;
                 }
             }
-
             let expr_to_add = fraction_cont - af.clone().into_expression();
-            // let expr_to_add_prime = prime_fraction_cont - af.clone().into_expression();
-
             dbg!(&expr_to_add);
             constraints.push(expr_to_add.clone());
-            // constraints_prime.push(expr_to_add_prime.clone());
-
             expr += expr_to_add;
-            //dbg!(&expr);
         }
-        // //denominator check makes sure denom is not 0.
-        // if denominator_check {
-        //     vaf = af.clone().into_expression()/denom;
-        // }
-        // let expr_to_add = fraction_cont - vaf;
     }
     dbg!(&expr);
     expr
 }
+
+fn plot_solution(
+    candidate_matrix: &CandidateMatrix,
+    haplotypes: &Vec<Haplotype>,
+    variant_calls: &VariantCalls,
+    best_variables: &Vec<f64>,
+) -> Result<()> {
+    let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
+        candidate_matrix.values().cloned().collect();
+
+    //variant-wise iteration
+    let mut expr = Expression::from_other_affine(0.); // A constant expression
+
+    //plot
+    let json = include_str!("../../templates/fractions_barchart.json");
+    let mut blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
+    let mut plot_data_variants = Vec::new();
+    let mut plot_data_haplotype_variants = Vec::new();
+    let mut plot_data_haplotype_fractions = Vec::new();
+
+    for ((genotype_matrix, coverage_matrix), (variant_id, (af, _))) in
+        candidate_matrix_values.iter().zip(variant_calls.iter())
+    {
+        let mut fraction_cont = Expression::from_other_affine(0.);
+        let mut prime_fraction_cont = Expression::from_other_affine(0.);
+        let mut vaf = Expression::from_other_affine(0.);
+        let mut counter = 0;
+        for (i, variable) in best_variables.iter().enumerate() {
+            if coverage_matrix[i as u64] {
+                counter += 1;
+            }
+        }
+        if counter == best_variables.len() {
+            for (i, (variable, haplotype)) in best_variables.iter().zip(haplotypes.iter()).enumerate(){
+                if genotype_matrix[i] == VariantStatus::Present {
+                    fraction_cont += *variable;
+                    plot_data_haplotype_fractions.push(
+                        dataset_haplotype_fractions {
+                            haplotype: haplotype.clone(),
+                            fraction: NotNan::new(*variable).unwrap(),
+                        },
+                    );
+                    plot_data_haplotype_variants.push(dataset_haplotype_variants {
+                        variant: *variant_id,
+                        haplotype: haplotype.clone(),
+                    });
+                    plot_data_variants.push(dataset_variants {
+                        variant: *variant_id,
+                        vaf: af.clone(),
+                    });
+                }
+            }
+            let expr_to_add = fraction_cont - af.clone().into_expression();
+            expr += expr_to_add;
+        }
+    }
+
+    //for each event, a plot is generated.
+    let plot_data_variants = json!(plot_data_variants);
+    let plot_data_haplotype_variants = json!(plot_data_haplotype_variants);
+    let plot_data_haplotype_fractions = json!(plot_data_haplotype_fractions);
+
+    blueprint["datasets"]["variants"] = plot_data_variants;
+    blueprint["datasets"]["haplotype_variants"] = plot_data_haplotype_variants;
+    blueprint["datasets"]["haplotype_fractions"] = plot_data_haplotype_fractions;
+
+    let event_id = "best_solution".to_string();
+    let output = format!("{}{}{}", "event_", event_id, ".json");
+    let path = Path::new(&output);
+    let file = File::create(path).unwrap();
+    serde_json::to_writer(file, &blueprint);
+
+    Ok(())
+}
+
