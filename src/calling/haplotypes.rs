@@ -40,7 +40,10 @@ impl Caller {
         //dbg!(&variant_ids);
         let mut haplotype_variants =
             HaplotypeVariants::new(&mut self.haplotype_variants, &variant_ids)?;
-        let mut new_haplotype_variants: BTreeMap<VariantID,BTreeMap<Haplotype, (VariantStatus, bool)>> = BTreeMap::new();
+        let mut new_haplotype_variants: BTreeMap<
+            VariantID,
+            BTreeMap<Haplotype, (VariantStatus, bool)>,
+        > = BTreeMap::new();
         // if you're only interested in seeing some haplotypes.
         // haplotype_variants.iter().for_each(|(variant, haplotypes)| {
         //     let filtered = haplotypes.iter().filter(|(haplotype, (variant_status, covered))|haplotype.to_string() == "A*03:01".to_string() || haplotype.to_string() == "A*24:02".to_string() || haplotype.to_string() == "A*03:36N".to_string()).map(|(haplotype,(variant_status, covered))|(haplotype.clone(), (variant_status.clone(),*covered))).collect::<BTreeMap<Haplotype, (VariantStatus, bool)>>();
@@ -688,7 +691,9 @@ impl VariantCalls {
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
             let read_depths = record.format(b"DP").integer().unwrap();
-            if read_depths[0] != &[0] && (&prob_absent_prob <= &Prob(0.05) || &prob_absent_prob >= &Prob(0.95)) {
+            if read_depths[0] != &[0]
+                && (&prob_absent_prob <= &Prob(0.05) || &prob_absent_prob >= &Prob(0.95))
+            {
                 //because some afd strings are just "." and that throws an error while splitting below.
                 let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
                 let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
@@ -766,15 +771,20 @@ fn linear_program(
 
     let mut best_variables = Vec::new();
     //finally, print the variables and the sum
-    for (i,(var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
-        println!("v{}, {}={}",i,haplotype.to_string(),solution.value(*var));
+    for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
+        println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
         best_variables.push(solution.value(var.clone()).clone());
     }
     println!("sum = {}", solution.eval(sum_tvars));
 
     //plot the best result
     dbg!(&best_variables.len());
-    plot_solution(&candidate_matrix, &haplotypes, &variant_calls, &best_variables);
+    plot_solution(
+        &candidate_matrix,
+        &haplotypes,
+        &variant_calls,
+        &best_variables,
+    );
     Ok(())
 }
 
@@ -804,7 +814,7 @@ fn objective_function(
         }
         if counter == variables.len() {
             dbg!(&variant);
-            for (i, (variable, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate(){
+            for (i, (variable, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
                 if genotype_matrix[i] == VariantStatus::Present {
                     fraction_cont += *variable;
                 }
@@ -851,15 +861,15 @@ fn plot_solution(
             }
         }
         if counter == best_variables.len() {
-            for (i, (variable, haplotype)) in best_variables.iter().zip(haplotypes.iter()).enumerate(){
+            for (i, (variable, haplotype)) in
+                best_variables.iter().zip(haplotypes.iter()).enumerate()
+            {
                 if genotype_matrix[i] == VariantStatus::Present {
                     fraction_cont += *variable;
-                    plot_data_haplotype_fractions.push(
-                        dataset_haplotype_fractions {
-                            haplotype: haplotype.clone(),
-                            fraction: NotNan::new(*variable).unwrap(),
-                        },
-                    );
+                    plot_data_haplotype_fractions.push(dataset_haplotype_fractions {
+                        haplotype: haplotype.clone(),
+                        fraction: NotNan::new(*variable).unwrap(),
+                    });
                     plot_data_haplotype_variants.push(dataset_haplotype_variants {
                         variant: *variant_id,
                         haplotype: haplotype.clone(),
@@ -892,4 +902,3 @@ fn plot_solution(
 
     Ok(())
 }
-

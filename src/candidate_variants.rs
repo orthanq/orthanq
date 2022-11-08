@@ -10,6 +10,8 @@ use polars::{
     prelude::{CsvWriter, IntoSeries, NamedFrom, SerWriter},
     series::Series,
 };
+use quick_xml::events::Event;
+use quick_xml::reader::Reader as xml_reader;
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 use rust_htslib::{bam, bam::ext::BamRecordExtensions, bam::record::Cigar, bam::Read, faidx};
 use std::collections::{BTreeMap, HashMap};
@@ -30,7 +32,17 @@ pub struct Caller {
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
-        self.alignment();
+        //prepare the map to look up which alleles are confirmed and unconfirmed
+        let allele_confirmation = confirmed_alleles().unwrap();
+        dbg!(&allele_confirmation);
+        let unconfirmed_alleles = allele_confirmation
+            .iter()
+            .filter(|(allele, confirmation)| confirmation == &"Unconfirmed")
+            .map(|(allele, confirmation)| allele.clone())
+            .collect::<Vec<String>>();
+
+        //align and sort
+        //self.alignment();
 
         //1) first read the hla alleles for the locus and the reference genome.
         //let mut sam = bam::Reader::from_path(&"first10.bam").unwrap(); //test sample
@@ -241,7 +253,15 @@ impl Caller {
             1,
             Series::new("ID", Vec::from_iter(0..loci_df.shape().0 as i64)),
         )?;
+        dbg!(&genotype_df.get_column_names());
+        dbg!(&genotype_df.get_column_names().len());
 
+        unconfirmed_alleles.iter().for_each(|unconf_allele| {
+            genotype_df.drop_in_place(unconf_allele);
+            loci_df.drop_in_place(unconf_allele);
+        });
+        dbg!(&genotype_df.get_column_names());
+        dbg!(&genotype_df.get_column_names().len());
         //Split up the variants per locus and depending on --wes samples, restrict the columns to protein level.
         //TODO: enable writing for wgs samples.
         if self.wes {
@@ -266,9 +286,15 @@ impl Caller {
             if splitted.len() < 2 {
                 //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
                 allele_digit_table.insert(id.to_string(), splitted[0].to_string());
-            } else {
+            } else if splitted.len() < 3 {
+                //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
                 allele_digit_table
                     .insert(id.to_string(), format!("{}:{}", splitted[0], splitted[1]));
+            } else {
+                allele_digit_table.insert(
+                    id.to_string(),
+                    format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]),
+                );
                 //first two
             }
         }
@@ -462,4 +488,51 @@ impl Caller {
         }
         Ok(())
     }
+}
+
+fn confirmed_alleles() -> Result<HashMap<String, String>> {
+    let mut reader = xml_reader::from_file(&"test-xml.xml")?;
+    reader.trim_text(true);
+    let mut count = 0;
+    let mut buf = Vec::new();
+    let mut alleles: Vec<String> = Vec::new();
+    let mut confirmed: Vec<String> = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
+            Ok(Event::Eof) => break,
+            Ok(Event::Start(e)) => match e.name().as_ref() {
+                b"allele" => alleles.push(
+                    e.attributes()
+                        .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
+                        .collect::<Vec<_>>()[0]
+                        .as_ref()
+                        .unwrap()
+                        .to_string(),
+                ), //index 0 holds the allele id
+                _ => (),
+            },
+            Ok(Event::Empty(e)) => match e.name().as_ref() {
+                b"releaseversions" => confirmed.push(
+                    e.attributes()
+                        .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
+                        .collect::<Vec<_>>()[4]
+                        .as_ref()
+                        .unwrap()
+                        .to_string(), //index 4 holds the Confirmed info
+                ),
+                _ => (),
+            },
+            _ => (),
+        }
+        // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
+        buf.clear();
+    }
+    assert_eq!(alleles.len(), confirmed.len());
+    let allele_confirmation = alleles
+        .iter()
+        .zip(confirmed.iter())
+        .map(|(allele, confirmed)| (format!("HLA:{}", allele.clone()), confirmed.clone()))
+        .collect::<HashMap<String, String>>();
+    Ok(allele_confirmation)
 }
