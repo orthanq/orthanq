@@ -16,7 +16,10 @@ use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 use rust_htslib::{bam, bam::ext::BamRecordExtensions, bam::record::Cigar, bam::Read, faidx};
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
+use std::error::Error;
+use std::io;
 use std::iter::FromIterator;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::{fs, fs::File};
@@ -32,20 +35,16 @@ pub struct Caller {
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
-        //prepare the map to look up which alleles are confirmed and unconfirmed
-        let allele_confirmation = confirmed_alleles().unwrap();
-        dbg!(&allele_confirmation);
-        let unconfirmed_alleles = allele_confirmation
-            .iter()
-            .filter(|(allele, confirmation)| confirmation == &"Unconfirmed")
-            .map(|(allele, confirmation)| allele.clone())
-            .collect::<Vec<String>>();
+        //prepare the map to look up which alleles are confirmed and unconfirmed and g codes available
+        let (confirmed_alleles, unconfirmed_alleles) = confirmed_alleles().unwrap();
+
+        //write loci to separate fasta files (Confirmed and alleles that have g codes available)
+        self.write_to_fasta(&confirmed_alleles)?;
 
         //align and sort
-        //self.alignment();
+        self.alignment();
 
         //1) first read the hla alleles for the locus and the reference genome.
-        //let mut sam = bam::Reader::from_path(&"first10.bam").unwrap(); //test sample
         let mut sam = bam::Reader::from_path(&"alignment_sorted.sam").unwrap();
         let reference_genome = faidx::Reader::from_path(&self.genome).unwrap();
 
@@ -253,15 +252,15 @@ impl Caller {
             1,
             Series::new("ID", Vec::from_iter(0..loci_df.shape().0 as i64)),
         )?;
-        dbg!(&genotype_df.get_column_names());
-        dbg!(&genotype_df.get_column_names().len());
 
+        //Unconfirmed alleles are removed from both dataframes
+        dbg!(&genotype_df.get_column_names().len());
         unconfirmed_alleles.iter().for_each(|unconf_allele| {
             genotype_df.drop_in_place(unconf_allele);
             loci_df.drop_in_place(unconf_allele);
         });
-        dbg!(&genotype_df.get_column_names());
         dbg!(&genotype_df.get_column_names().len());
+
         //Split up the variants per locus and depending on --wes samples, restrict the columns to protein level.
         //TODO: enable writing for wgs samples.
         if self.wes {
@@ -383,7 +382,7 @@ impl Caller {
         //     "DMA", "DQB1", "G", "TAP1", "DMB", "DRA", "HFE", "TAP2", "DOA", "DRB1", "T", "DOB",
         //     "DRB3", "MICA", "U", //all the non-pseudogenes
         // ]
-        for locus in vec!["A", "DQA1", "DQB1", "DRB1", "C"] {
+        for locus in vec!["DQA1"] {
             let mut locus_columns = vec!["Index", "ID"];
             for column_name in names.iter() {
                 let splitted = column_name.split("*").collect::<Vec<&str>>();
@@ -488,28 +487,71 @@ impl Caller {
         }
         Ok(())
     }
+    //Write_to_fasta() function collects confirmed allele list from confirmed_alleles() function.
+    //Then it generates Fasta files for those alleles for each loci (necessary for quantifications e.g. kallisto, salmon)
+    fn write_to_fasta(&self, confirmed_alleles: &Vec<String>) -> Result<()> {
+        for locus in vec!["A", "B", "DQA1", "DQB1", "C", "DRB1"] {
+            let file = fs::File::create(format!(
+                "{}.fasta",
+                self.output.as_ref().unwrap().join(locus).display()
+            ))
+            .unwrap();
+            let handle = io::BufWriter::new(file);
+            let mut writer = bio::io::fasta::Writer::new(handle);
+            for record in bio::io::fasta::Reader::from_file(&self.alleles)?.records() {
+                let record = record.unwrap();
+                let id = record.id();
+                let description = record.desc().unwrap();
+                if description.contains(locus) {
+                    if confirmed_alleles.contains(&id.to_string()) {
+                        writer
+                            .write_record(&record)
+                            .ok()
+                            .expect("Error writing record.");
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
-fn confirmed_alleles() -> Result<HashMap<String, String>> {
-    let mut reader = xml_reader::from_file(&"test-xml.xml")?;
+//Confirmed_alleles() function finds HLA alleles that are "Confirmed" and "Unconfirmed" and have no g_codes available.
+//At the same time, some alleles in the xml do not have any g_code tag at all,
+//In the end the unconfirmed vector contains
+//1) "Unconfirmed"
+//2) g_codes equal to "None"
+//3) no g_codes tag available
+//Confirmed vector contains all the rest.
+
+fn confirmed_alleles() -> Result<(Vec<String>, Vec<String>)> {
+    //let mut reader = xml_reader::from_file(&"test-xml.xml")?;
+    let mut reader = xml_reader::from_file(&"/vol/compute/hamdiyes_project/orthanq-evaluation/resources/HLA-alleles/IMGT-3.33.0/IMGTHLA-3.33.0-alpha/xml/hla.xml")?;
     reader.trim_text(true);
-    let mut count = 0;
     let mut buf = Vec::new();
     let mut alleles: Vec<String> = Vec::new();
     let mut confirmed: Vec<String> = Vec::new();
+    let mut hla_g_groups: HashMap<i32, String> = HashMap::new(); //some hla alleles dont have g groups information in the xml file.
+    let mut names_indices: Vec<i32> = Vec::new();
+    let mut groups_indices: Vec<i32> = Vec::new();
+    let mut counter = 0;
     loop {
         match reader.read_event_into(&mut buf) {
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
             Ok(Event::Eof) => break,
             Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"allele" => alleles.push(
-                    e.attributes()
-                        .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                        .collect::<Vec<_>>()[0]
-                        .as_ref()
-                        .unwrap()
-                        .to_string(),
-                ), //index 0 holds the allele id
+                b"allele" => {
+                    alleles.push(
+                        e.attributes()
+                            .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
+                            .collect::<Vec<_>>()[0]
+                            .as_ref()
+                            .unwrap()
+                            .to_string(),
+                    ); //index 0 holds the allele id
+                    names_indices.push(counter.clone());
+                    counter += 1;
+                }
                 _ => (),
             },
             Ok(Event::Empty(e)) => match e.name().as_ref() {
@@ -521,6 +563,18 @@ fn confirmed_alleles() -> Result<HashMap<String, String>> {
                         .unwrap()
                         .to_string(), //index 4 holds the Confirmed info
                 ),
+                b"hla_g_group" => {
+                    groups_indices.push(counter.clone());
+                    hla_g_groups.insert(
+                        counter.clone(),
+                        e.attributes()
+                            .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
+                            .collect::<Vec<_>>()[0]
+                            .as_ref()
+                            .unwrap()
+                            .to_string(), //index 0 holds the status info
+                    );
+                }
                 _ => (),
             },
             _ => (),
@@ -529,10 +583,32 @@ fn confirmed_alleles() -> Result<HashMap<String, String>> {
         buf.clear();
     }
     assert_eq!(alleles.len(), confirmed.len());
-    let allele_confirmation = alleles
+    dbg!(&names_indices.len());
+    dbg!(&groups_indices.len());
+
+    let mut filtered_alleles = Vec::new();
+    let mut filtered_confirmed = Vec::new();
+    hla_g_groups.iter().for_each(|(index, _)| {
+        filtered_alleles.push(alleles[*index as usize - 1].clone());
+        filtered_confirmed.push(confirmed[*index as usize - 1].clone());
+    });
+    assert_eq!(filtered_alleles.len(), filtered_confirmed.len());
+    assert_eq!(filtered_alleles.len(), hla_g_groups.len());
+    let g_names: Vec<String> = hla_g_groups.values().cloned().collect();
+    let unconfirmed_alleles = filtered_alleles
         .iter()
-        .zip(confirmed.iter())
-        .map(|(allele, confirmed)| (format!("HLA:{}", allele.clone()), confirmed.clone()))
-        .collect::<HashMap<String, String>>();
-    Ok(allele_confirmation)
+        .zip(filtered_confirmed.iter())
+        .zip(g_names.iter())
+        .filter(|((allele, c), g_group)| c == &"Unconfirmed" || g_group == &"None")
+        .map(|((allele, c), g_group)| format!("HLA:{}", allele.clone()))
+        .collect::<Vec<String>>();
+    //write confirmed alleles to file
+    let confirmed_alleles: Vec<String> = alleles
+        .iter()
+        .filter(|allele| !unconfirmed_alleles.contains(&format!("HLA:{}", allele)))
+        .map(|allele| format!("HLA:{}", allele.clone()))
+        .collect();
+    dbg!(&confirmed_alleles.len());
+    dbg!(&confirmed_alleles);
+    Ok((confirmed_alleles, unconfirmed_alleles))
 }

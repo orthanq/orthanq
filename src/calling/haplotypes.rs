@@ -761,11 +761,6 @@ fn linear_program(
     }
     dbg!(&constraints);
 
-    //make sure again each variable has nonnegative values.
-    for variable in variables.iter() {
-        model = model.with(constraint!(variable >= 0.0.into_expression()));
-    }
-
     //solve the problem with the default solver, i.e. coin_cbc
     let solution = model.solve().unwrap();
 
