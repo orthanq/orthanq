@@ -382,7 +382,7 @@ impl Caller {
         //     "DMA", "DQB1", "G", "TAP1", "DMB", "DRA", "HFE", "TAP2", "DOA", "DRB1", "T", "DOB",
         //     "DRB3", "MICA", "U", //all the non-pseudogenes
         // ]
-        for locus in vec!["DQA1"] {
+        for locus in vec!["A", "B", "DQA1", "DQB1", "C", "DRB1"] {
             let mut locus_columns = vec!["Index", "ID"];
             for column_name in names.iter() {
                 let splitted = column_name.split("*").collect::<Vec<&str>>();
@@ -502,7 +502,8 @@ impl Caller {
                 let record = record.unwrap();
                 let id = record.id();
                 let description = record.desc().unwrap();
-                if description.contains(locus) {
+                let splitted = description.split("*").collect::<Vec<&str>>();
+                if splitted[0] == locus {
                     if confirmed_alleles.contains(&id.to_string()) {
                         writer
                             .write_record(&record)
