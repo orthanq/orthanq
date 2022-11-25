@@ -289,12 +289,18 @@ impl Caller {
                 //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
                 allele_digit_table
                     .insert(id.to_string(), format!("{}:{}", splitted[0], splitted[1]));
-            } else {
+            } else if splitted.len() < 4 {
                 allele_digit_table.insert(
                     id.to_string(),
                     format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]),
                 );
                 //first two
+            }
+            else {
+                allele_digit_table.insert(
+                    id.to_string(),
+                    format!("{}:{}:{}:{}", splitted[0], splitted[1], splitted[2], splitted[3]),
+                );
             }
         }
 
@@ -383,12 +389,13 @@ impl Caller {
         //     "DRB3", "MICA", "U", //all the non-pseudogenes
         // ]
         for locus in vec!["A", "B", "DQA1", "DQB1", "C", "DRB1"] {
-            let mut locus_columns = vec!["Index", "ID"];
-            for column_name in names.iter() {
+            let mut locus_columns = vec!["Index".to_string(), "ID".to_string()];
+            for column_name in names.iter().skip(2) {
+                dbg!(&column_name);
                 let splitted = column_name.split("*").collect::<Vec<&str>>();
                 if splitted[0] == locus {
                     // just as an example locus for the start.
-                    locus_columns.push(column_name.clone());
+                    locus_columns.push(column_name.to_string());
                 }
             }
 
@@ -417,7 +424,7 @@ impl Caller {
             for sample_name in variant_table.get_column_names().iter().skip(2) {
                 header.push_sample(sample_name.as_bytes());
             }
-            fs::create_dir_all(self.output.as_ref().unwrap())?;
+            //fs::create_dir_all(self.output.as_ref().unwrap())?;
             let mut vcf = Writer::from_path(
                 format!(
                     "{}.vcf",
@@ -491,6 +498,7 @@ impl Caller {
     //Then it generates Fasta files for those alleles for each loci (necessary for quantifications e.g. kallisto, salmon)
     fn write_to_fasta(&self, confirmed_alleles: &Vec<String>) -> Result<()> {
         for locus in vec!["A", "B", "DQA1", "DQB1", "C", "DRB1"] {
+            fs::create_dir_all(self.output.as_ref().unwrap())?;
             let file = fs::File::create(format!(
                 "{}.fasta",
                 self.output.as_ref().unwrap().join(locus).display()
@@ -503,10 +511,14 @@ impl Caller {
                 let id = record.id();
                 let description = record.desc().unwrap();
                 let splitted = description.split("*").collect::<Vec<&str>>();
+                //dbg!(&splitted);
                 if splitted[0] == locus {
+                    //dbg!(&locus);
                     if confirmed_alleles.contains(&id.to_string()) {
+                        let new_record = bio::io::fasta::Record::with_attrs(description.split_whitespace().collect::<Vec<&str>>()[0].clone(), Some(id.clone()), record.seq());
+                        //dbg!(&new_record);
                         writer
-                            .write_record(&record)
+                            .write_record(&new_record)
                             .ok()
                             .expect("Error writing record.");
                     }
