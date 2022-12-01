@@ -295,11 +295,13 @@ impl Caller {
                     format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]),
                 );
                 //first two
-            }
-            else {
+            } else {
                 allele_digit_table.insert(
                     id.to_string(),
-                    format!("{}:{}:{}:{}", splitted[0], splitted[1], splitted[2], splitted[3]),
+                    format!(
+                        "{}:{}:{}:{}",
+                        splitted[0], splitted[1], splitted[2], splitted[3]
+                    ),
                 );
             }
         }
@@ -515,7 +517,11 @@ impl Caller {
                 if splitted[0] == locus {
                     //dbg!(&locus);
                     if confirmed_alleles.contains(&id.to_string()) {
-                        let new_record = bio::io::fasta::Record::with_attrs(description.split_whitespace().collect::<Vec<&str>>()[0].clone(), Some(id.clone()), record.seq());
+                        let new_record = bio::io::fasta::Record::with_attrs(
+                            description.split_whitespace().collect::<Vec<&str>>()[0].clone(),
+                            Some(id.clone()),
+                            record.seq(),
+                        );
                         //dbg!(&new_record);
                         writer
                             .write_record(&new_record)

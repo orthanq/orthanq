@@ -1,12 +1,14 @@
-use crate::calling::haplotypes::{AlleleFreqDist, CandidateMatrix, VariantCalls, VariantStatus, KallistoEstimate};
+use crate::calling::haplotypes::{
+    AlleleFreqDist, CandidateMatrix, KallistoEstimate, VariantCalls, VariantStatus,
+};
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb};
 use bv::BitVec;
 use derefable::Derefable;
 use derive_new::new;
 use ordered_float::NotNan;
-use std::collections::HashMap;
 use statrs::function::beta::ln_beta;
+use std::collections::HashMap;
 use std::mem;
 
 pub(crate) type AlleleFreq = NotNan<f64>;
@@ -77,7 +79,7 @@ impl model::Marginal for Marginal {
 pub(crate) struct Data {
     pub candidate_matrix: CandidateMatrix,
     pub variant_calls: VariantCalls,
-    pub kallisto_estimates: Vec<KallistoEstimate>
+    pub kallisto_estimates: Vec<KallistoEstimate>,
 }
 
 #[derive(Debug, new)]
@@ -88,7 +90,7 @@ impl model::Likelihood<Cache> for Likelihood {
     type Data = Data;
 
     fn compute(&self, event: &Self::Event, data: &Self::Data, payload: &mut Cache) -> LogProb {
-        //self.compute_kallisto(event, data, payload) + 
+        //self.compute_kallisto(event, data, payload) +
         self.compute_varlociraptor(event, data, payload)
     }
 }
@@ -124,7 +126,7 @@ impl Likelihood {
         _cache: &mut Cache,
     ) -> LogProb {
         let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
-        data.candidate_matrix.values().cloned().collect();
+            data.candidate_matrix.values().cloned().collect();
         let variant_calls: Vec<AlleleFreqDist> = data
             .variant_calls
             .iter()
@@ -144,8 +146,7 @@ impl Likelihood {
                         ()
                     } else if covered[i as u64] {
                         ()
-                    }
-                    else if genotypes[i] == VariantStatus::NotPresent
+                    } else if genotypes[i] == VariantStatus::NotPresent
                         && covered[i as u64] == false
                     {
                         denom -= *fraction;
