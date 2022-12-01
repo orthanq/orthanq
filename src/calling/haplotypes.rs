@@ -33,6 +33,7 @@ pub struct Caller {
     variant_calls: bcf::Reader,
     min_norm_counts: f64,
     max_haplotypes: i64,
+    use_evidence: String,
     outcsv: Option<PathBuf>,
 }
 
@@ -79,23 +80,21 @@ impl Caller {
         let kallisto_haplotypes: Vec<Haplotype> = kallisto_estimates.keys().cloned().collect();
         let haplotype_variants =
             haplotype_variants.find_plausible_haplotypes(&variant_calls, &kallisto_haplotypes)?;
-        dbg!(&haplotype_variants);
         let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
         let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
         dbg!(&final_haplotypes); //the final ranking of haplotypes
         let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
-        dbg!(&candidate_matrix);
 
         //model computation
         let upper_bond = NotNan::new(1.0).unwrap();
-        let model = Model::new(Likelihood::new(), Prior::new(), Posterior::new());
+        let model = Model::new(Likelihood::new(self.use_evidence.clone()), Prior::new(), Posterior::new());
         let data = Data::new(
             candidate_matrix,
             variant_calls,
             kallisto_estimates.values().cloned().collect(),
         );
         let computed_model =
-            model.compute_from_marginal(&Marginal::new(haplotypes.len(), upper_bond), &data);
+            model.compute_from_marginal(&Marginal::new(final_haplotypes.len(), upper_bond), &data);
         let mut event_posteriors = computed_model.event_posteriors();
         let (best_fractions, _) = event_posteriors.next().unwrap();
 
@@ -542,10 +541,7 @@ impl KallistoEstimates {
         let seq_length = hdf5_reader.dataset("aux/lengths")?.read_1d::<f64>()?; //these two variables arrays have the same length.
         let norm_counts = est_counts / seq_length;
         let mut filtered_haplotypes: Vec<String> = Vec::new();
-        dbg!(&min_norm_counts);
         for (num, id) in norm_counts.iter().zip(ids.iter()) {
-            dbg!(&num);
-            dbg!(&id);
             if num > &min_norm_counts {
                 filtered_haplotypes.push(id.to_string());
             }
