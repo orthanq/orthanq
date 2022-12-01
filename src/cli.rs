@@ -78,13 +78,13 @@ pub enum Orthanq {
         // )]
         // observations: PathBuf,
         #[structopt(
-            default_value = "0.01",
+            default_value = "0.0",
             long = "min-norm-counts",
             help = "Minimum value for normalized Kallisto counts."
         )]
         min_norm_counts: f64,
         #[structopt(
-            default_value = "2", //for ploidy = 2
+            default_value = "5",
             long = "max-haplotypes",
             help = "Expected maximum number of haplotype."
         )]

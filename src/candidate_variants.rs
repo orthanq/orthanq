@@ -171,7 +171,6 @@ impl Caller {
                 j += 1;
             }
         }
-        //dbg!(&candidate_variants);
         //construct the first array having the same number of rows and columns as candidate variants map and locate the genotypes for each haplotype.
         let mut genotypes_array = Array2::<i64>::zeros((candidate_variants.len(), j));
         candidate_variants
@@ -254,12 +253,10 @@ impl Caller {
         )?;
 
         //Unconfirmed alleles are removed from both dataframes
-        dbg!(&genotype_df.get_column_names().len());
         unconfirmed_alleles.iter().for_each(|unconf_allele| {
             genotype_df.drop_in_place(unconf_allele);
             loci_df.drop_in_place(unconf_allele);
         });
-        dbg!(&genotype_df.get_column_names().len());
 
         //Split up the variants per locus and depending on --wes samples, restrict the columns to protein level.
         //TODO: enable writing for wgs samples.
@@ -390,10 +387,9 @@ impl Caller {
         //     "DMA", "DQB1", "G", "TAP1", "DMB", "DRA", "HFE", "TAP2", "DOA", "DRB1", "T", "DOB",
         //     "DRB3", "MICA", "U", //all the non-pseudogenes
         // ]
-        for locus in vec!["A", "B", "DQA1", "DQB1", "C", "DRB1"] {
+        for locus in vec!["A", "B", "C", "DQA1", "DQB1"] {
             let mut locus_columns = vec!["Index".to_string(), "ID".to_string()];
             for column_name in names.iter().skip(2) {
-                dbg!(&column_name);
                 let splitted = column_name.split("*").collect::<Vec<&str>>();
                 if splitted[0] == locus {
                     // just as an example locus for the start.
@@ -499,7 +495,7 @@ impl Caller {
     //Write_to_fasta() function collects confirmed allele list from confirmed_alleles() function.
     //Then it generates Fasta files for those alleles for each loci (necessary for quantifications e.g. kallisto, salmon)
     fn write_to_fasta(&self, confirmed_alleles: &Vec<String>) -> Result<()> {
-        for locus in vec!["A", "B", "DQA1", "DQB1", "C", "DRB1"] {
+        for locus in vec!["A", "B", "C", "DQA1", "DQB1"] {
             fs::create_dir_all(self.output.as_ref().unwrap())?;
             let file = fs::File::create(format!(
                 "{}.fasta",
@@ -513,16 +509,13 @@ impl Caller {
                 let id = record.id();
                 let description = record.desc().unwrap();
                 let splitted = description.split("*").collect::<Vec<&str>>();
-                //dbg!(&splitted);
                 if splitted[0] == locus {
-                    //dbg!(&locus);
                     if confirmed_alleles.contains(&id.to_string()) {
                         let new_record = bio::io::fasta::Record::with_attrs(
                             description.split_whitespace().collect::<Vec<&str>>()[0].clone(),
                             Some(id.clone()),
                             record.seq(),
                         );
-                        //dbg!(&new_record);
                         writer
                             .write_record(&new_record)
                             .ok()
@@ -544,7 +537,7 @@ impl Caller {
 //Confirmed vector contains all the rest.
 
 fn confirmed_alleles() -> Result<(Vec<String>, Vec<String>)> {
-    //let mut reader = xml_reader::from_file(&"test-xml.xml")?;
+    //below line shouldn't be hardcoded.
     let mut reader = xml_reader::from_file(&"/vol/compute/hamdiyes_project/orthanq-evaluation/resources/HLA-alleles/IMGT-3.33.0/IMGTHLA-3.33.0-alpha/xml/hla.xml")?;
     reader.trim_text(true);
     let mut buf = Vec::new();
@@ -602,9 +595,6 @@ fn confirmed_alleles() -> Result<(Vec<String>, Vec<String>)> {
         buf.clear();
     }
     assert_eq!(alleles.len(), confirmed.len());
-    dbg!(&names_indices.len());
-    dbg!(&groups_indices.len());
-
     let mut filtered_alleles = Vec::new();
     let mut filtered_confirmed = Vec::new();
     hla_g_groups.iter().for_each(|(index, _)| {
@@ -627,7 +617,5 @@ fn confirmed_alleles() -> Result<(Vec<String>, Vec<String>)> {
         .filter(|allele| !unconfirmed_alleles.contains(&format!("HLA:{}", allele)))
         .map(|allele| format!("HLA:{}", allele.clone()))
         .collect();
-    dbg!(&confirmed_alleles.len());
-    dbg!(&confirmed_alleles);
     Ok((confirmed_alleles, unconfirmed_alleles))
 }
