@@ -52,7 +52,7 @@ impl Caller {
         //     BTreeMap<Haplotype, (VariantStatus, bool)>,
         // > = BTreeMap::new();
         // haplotype_variants.iter().for_each(|(variant, haplotypes)| {
-        //     let filtered = haplotypes.iter().filter(|(haplotype, (variant_status, covered))|haplotype.to_string() == "A*03:01".to_string() || haplotype.to_string() == "A*24:02".to_string() || haplotype.to_string() == "A*03:36N".to_string()).map(|(haplotype,(variant_status, covered))|(haplotype.clone(), (variant_status.clone(),*covered))).collect::<BTreeMap<Haplotype, (VariantStatus, bool)>>();
+        //     let filtered = haplotypes.iter().filter(|(haplotype, (variant_status, covered))|haplotype.to_string() == "A*25:01:01".to_string() || haplotype.to_string() == "A*11:01:01".to_string() || haplotype.to_string() == "A*11:01:79".to_string() || haplotype.to_string() == "A*11:03".to_string() || haplotype.to_string() == "A*66:01:01".to_string()).map(|(haplotype,(variant_status, covered))|(haplotype.clone(), (variant_status.clone(),*covered))).collect::<BTreeMap<Haplotype, (VariantStatus, bool)>>();
         //     new_haplotype_variants.insert(variant.clone(), filtered);
         // });
         // let new_haplotype_variants = HaplotypeVariants(new_haplotype_variants);
@@ -78,16 +78,67 @@ impl Caller {
             .unwrap();
         dbg!(&kallisto_estimates);
         let kallisto_haplotypes: Vec<Haplotype> = kallisto_estimates.keys().cloned().collect();
+        //change kallisto_haplotypes to lp_haplotypes the following part to remove kallisto
         let haplotype_variants =
-            haplotype_variants.find_plausible_haplotypes(&variant_calls, &kallisto_haplotypes)?;
+            haplotype_variants.find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?;
         let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
         let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
         dbg!(&final_haplotypes); //the final ranking of haplotypes
         let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
-        //model computation
+        //1-) model computation for diploid prior
         let upper_bond = NotNan::new(1.0).unwrap();
-        let model = Model::new(Likelihood::new(self.use_evidence.clone()), Prior::new(), Posterior::new());
+        let model = Model::new(
+            Likelihood::new(self.use_evidence.clone()),
+            Prior::new("diploid".to_string()),
+            Posterior::new(),
+        );
+        let data = Data::new(
+            candidate_matrix.clone(),
+            variant_calls.clone(),
+            kallisto_estimates.values().cloned().collect(),
+        );
+        let computed_model =
+            model.compute_from_marginal(&Marginal::new(final_haplotypes.len(), upper_bond), &data);
+        let mut event_posteriors = computed_model.event_posteriors();
+        let (best_fractions, _) = event_posteriors.next().unwrap();
+
+        //Step 2: plot the final solution
+        let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
+            data.candidate_matrix.values().cloned().collect();
+        let best_fractions = best_fractions
+            .iter()
+            .map(|f| NotNan::into_inner(*f))
+            .collect::<Vec<f64>>();
+        self.plot_solution(
+            &"final",
+            &candidate_matrix_values,
+            &final_haplotypes,
+            &data.variant_calls,
+            &best_fractions,
+        );
+
+        //Step 3: write to tsv both for uniform and diploid prior.
+        let mut event_posteriors = Vec::new();
+        computed_model
+            .event_posteriors()
+            .for_each(|(fractions, logprob)| {
+                event_posteriors.push((fractions.clone(), logprob.clone()));
+            });
+        self.write_results(
+            &data,
+            &event_posteriors,
+            &final_haplotypes,
+            "diploid".to_string(),
+        );
+
+        //2-) model computation for uniform prior
+        let upper_bond = NotNan::new(1.0).unwrap();
+        let model = Model::new(
+            Likelihood::new(self.use_evidence.clone()),
+            Prior::new("uniform".to_string()),
+            Posterior::new(),
+        );
         let data = Data::new(
             candidate_matrix,
             variant_calls,
@@ -113,15 +164,37 @@ impl Caller {
             &best_fractions,
         );
 
-        //Step 3: add variant query and probabilities to the outout table for each event
+        //Step 3: write to tsv both for uniform and diploid prior.
+        let mut event_posteriors = Vec::new();
+        computed_model
+            .event_posteriors()
+            .for_each(|(fractions, logprob)| {
+                event_posteriors.push((fractions.clone(), logprob.clone()));
+            });
+        self.write_results(
+            &data,
+            &event_posteriors,
+            &final_haplotypes,
+            "uniform".to_string(),
+        );
+        Ok(())
+    }
+    fn write_results(
+        &self,
+        data: &Data,
+        event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
+        final_haplotypes: &Vec<Haplotype>,
+        prior: String,
+    ) -> Result<()> {
+        //firstly add variant query and probabilities to the outout table for each event
         let variant_calls: Vec<AlleleFreqDist> = data
             .variant_calls
             .iter()
             .map(|(_, (_, afd))| afd.clone())
             .collect();
         let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
-        let event_posteriors = computed_model.event_posteriors();
-        event_posteriors.for_each(|(fractions, _)| {
+        // let event_posteriors = computed_model.event_posteriors();
+        event_posteriors.iter().for_each(|(fractions, _)| {
             let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
             data.candidate_matrix
                 .iter()
@@ -133,6 +206,7 @@ impl Caller {
                     fractions.iter().enumerate().for_each(|(i, fraction)| {
                         if genotypes[i] == VariantStatus::Present && covered[i as u64] {
                             vaf_sum += *fraction;
+                            counter += 1;
                         } else if genotypes[i] == VariantStatus::Unknown && covered[i as u64] {
                             todo!();
                         } else if genotypes[i] == VariantStatus::Unknown
@@ -159,15 +233,20 @@ impl Caller {
                 });
             event_queries.push(vaf_queries);
         });
-
-        // // Step 4: print TSV table with results
-        // // TODO use csv crate
-        // // Columns: posterior_prob, haplotype_a, haplotype_b, haplotype_c, ...
-        // // with each column after the first showing the fraction of the respective haplotype
-        let mut wtr = csv::Writer::from_path(self.outcsv.as_ref().unwrap())?;
+        // Then,print TSV table with results
+        // Columns: posterior_prob, haplotype_a, haplotype_b, haplotype_c, ...
+        // with each column after the first showing the fraction of the respective haplotype
+        let mut wtr = csv::Writer::from_path(format!(
+            "{}_{}",
+            prior,
+            self.outcsv.as_ref().unwrap().display()
+        ))?;
         let mut headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
-        let haplotypes_str: Vec<String> =
-            final_haplotypes.clone().iter().map(|h| h.to_string()).collect();
+        let haplotypes_str: Vec<String> = final_haplotypes
+            .clone()
+            .iter()
+            .map(|h| h.to_string())
+            .collect();
         headers.extend(haplotypes_str);
         let variant_names = event_queries[0]
             .keys()
@@ -178,8 +257,8 @@ impl Caller {
 
         //write best record on top
         let mut records = Vec::new();
-        let mut event_posteriors = computed_model.event_posteriors(); //compute a second time because event_posteriors can't be cloned from above.
-        let (haplotype_frequencies, best_density) = event_posteriors.next().unwrap();
+        // let mut event_posteriors = computed_model.event_posteriors(); //compute a second time because event_posteriors can't be cloned from above.
+        let (haplotype_frequencies, best_density) = event_posteriors.iter().next().unwrap();
         let best_odds = 1;
         let format_f64 = |number: f64, records: &mut Vec<String>| {
             if number <= 0.01 {
@@ -219,8 +298,12 @@ impl Caller {
         wtr.write_record(records)?;
 
         //write the rest of the records
-        event_posteriors.zip(event_queries.iter().skip(1)).for_each(
-            |((haplotype_frequencies, density), queries)| {
+        dbg!(&event_posteriors);
+        event_posteriors
+            .iter()
+            .skip(1)
+            .zip(event_queries.iter().skip(1))
+            .for_each(|((haplotype_frequencies, density), queries)| {
                 let mut records = Vec::new();
                 let odds = (density - best_density).exp();
                 format_f64(density.exp(), &mut records);
@@ -238,8 +321,7 @@ impl Caller {
                     }
                 });
                 wtr.write_record(records).unwrap();
-            },
-        );
+            });
         Ok(())
     }
     fn linear_program(
@@ -297,13 +379,13 @@ impl Caller {
 
         let mut best_variables = Vec::new();
         //finally, print the variables and the sum
-        let mut lp_haplotypes = Vec::new();
+        let mut lp_haplotypes = BTreeMap::new();
         for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
             println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
             best_variables.push(solution.value(var.clone()).clone());
-            if solution.value(*var) >= 0.01 {
+            if solution.value(*var) >= 0.1 {
                 //should be 0.01 not to miss hla types
-                lp_haplotypes.push(haplotype.clone());
+                lp_haplotypes.insert(haplotype.clone(), solution.value(*var).clone());
             }
         }
         println!("sum = {}", solution.eval(sum_tvars));
@@ -323,7 +405,7 @@ impl Caller {
         //extend haplotypes found by linear program
         //add haplotypes that have the same variants to the final list
         let mut extended_haplotypes = Vec::new();
-        let matching = lp_haplotypes.iter().for_each(|f_haplotype| {
+        let matching = lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
             let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
             haplotype_dict
                 .iter()
@@ -645,7 +727,7 @@ impl AlleleFreqDist {
     }
 }
 
-#[derive(Derefable, Debug)]
+#[derive(Derefable, Debug, Clone)]
 pub(crate) struct CandidateMatrix(#[deref] BTreeMap<VariantID, (Vec<VariantStatus>, BitVec)>);
 
 impl CandidateMatrix {

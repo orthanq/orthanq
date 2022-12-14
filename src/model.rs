@@ -2,7 +2,7 @@ use crate::calling::haplotypes::{
     AlleleFreqDist, CandidateMatrix, KallistoEstimate, VariantCalls, VariantStatus,
 };
 use bio::stats::probs::adaptive_integration;
-use bio::stats::{bayesian::model, LogProb};
+use bio::stats::{bayesian::model, LogProb, Prob};
 use bv::BitVec;
 use derefable::Derefable;
 use derive_new::new;
@@ -181,14 +181,31 @@ impl Likelihood {
 }
 
 #[derive(Debug, new)]
-pub(crate) struct Prior;
+pub(crate) struct Prior {
+    prior: String,
+}
 
 impl model::Prior for Prior {
     type Event = HaplotypeFractions;
 
-    fn compute(&self, _event: &Self::Event) -> LogProb {
-        // flat prior for now
-        LogProb::ln_one()
+    fn compute(&self, event: &Self::Event) -> LogProb {
+        if self.prior == "diploid" {
+            let mut prior_prob = LogProb::ln_one();
+            event.iter().for_each(|fraction| {
+                if *fraction == NotNan::new(0.0).unwrap() {
+                    prior_prob += LogProb::from(Prob(1.0 / 3.0))
+                } else if *fraction == NotNan::new(0.5).unwrap() {
+                    prior_prob += LogProb::from(Prob(1.0 / 3.0))
+                } else if *fraction == NotNan::new(1.0).unwrap() {
+                    prior_prob += LogProb::from(Prob(1.0 / 3.0))
+                } else {
+                    prior_prob += LogProb::ln_zero()
+                }
+            });
+            prior_prob
+        } else {
+            LogProb::ln_one()
+        }
     }
 }
 

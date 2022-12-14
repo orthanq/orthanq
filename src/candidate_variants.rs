@@ -39,7 +39,7 @@ impl Caller {
         let (confirmed_alleles, unconfirmed_alleles) = confirmed_alleles().unwrap();
 
         //write loci to separate fasta files (Confirmed and alleles that have g codes available)
-        self.write_to_fasta(&confirmed_alleles)?;
+        // self.write_to_fasta(&confirmed_alleles)?;
 
         //align and sort
         self.alignment();
@@ -286,21 +286,22 @@ impl Caller {
                 //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
                 allele_digit_table
                     .insert(id.to_string(), format!("{}:{}", splitted[0], splitted[1]));
-            } else if splitted.len() < 4 {
+            } else {
                 allele_digit_table.insert(
                     id.to_string(),
                     format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]),
                 );
                 //first two
-            } else {
-                allele_digit_table.insert(
-                    id.to_string(),
-                    format!(
-                        "{}:{}:{}:{}",
-                        splitted[0], splitted[1], splitted[2], splitted[3]
-                    ),
-                );
             }
+            // else {
+            //     allele_digit_table.insert(
+            //         id.to_string(),
+            //         format!(
+            //             "{}:{}:{}:{}",
+            //             splitted[0], splitted[1], splitted[2], splitted[3]
+            //         ),
+            //     );
+            // }
         }
 
         let mut new_df = DataFrame::new(vec![

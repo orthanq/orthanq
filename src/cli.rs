@@ -110,7 +110,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
             max_haplotypes,
             min_norm_counts,
             output,
-            use_evidence
+            use_evidence,
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
                 .hdf5_reader(hdf5::File::open(&haplotype_counts)?)
