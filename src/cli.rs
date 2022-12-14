@@ -96,6 +96,8 @@ pub enum Orthanq {
         output: Option<PathBuf>,
         #[structopt(long, help = "Use only kallisto evidence. (for debugging purposes)")]
         use_evidence: String,
+        #[structopt(long, help = "Choose uniform or diploid")]
+        prior: String,
     },
 }
 
@@ -111,6 +113,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
             min_norm_counts,
             output,
             use_evidence,
+            prior
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
                 .hdf5_reader(hdf5::File::open(&haplotype_counts)?)
@@ -121,6 +124,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 //.observations(bcf::Reader::from_path(observations)?)
                 .outcsv(output)
                 .use_evidence(use_evidence)
+                .prior(prior)
                 .build()
                 .unwrap();
             caller.call()?;

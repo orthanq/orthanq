@@ -35,6 +35,7 @@ pub struct Caller {
     max_haplotypes: i64,
     use_evidence: String,
     outcsv: Option<PathBuf>,
+    prior: String
 }
 
 impl Caller {
@@ -71,12 +72,12 @@ impl Caller {
         //prepare KallistoEstimates for only the haplotypes come from LP
         let kallisto_estimates =
             KallistoEstimates::new(&self.hdf5_reader, self.min_norm_counts, &lp_haplotypes)?;
-        dbg!(&kallisto_estimates);
+        // dbg!(&kallisto_estimates);
         //select top N haplotypes according to --max-haplotypes N.
         let kallisto_estimates = kallisto_estimates
             .select_haplotypes(self.max_haplotypes)
             .unwrap();
-        dbg!(&kallisto_estimates);
+        // dbg!(&kallisto_estimates);
         let kallisto_haplotypes: Vec<Haplotype> = kallisto_estimates.keys().cloned().collect();
         //change kallisto_haplotypes to lp_haplotypes the following part to remove kallisto
         let haplotype_variants =
@@ -86,11 +87,11 @@ impl Caller {
         dbg!(&final_haplotypes); //the final ranking of haplotypes
         let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
-        //1-) model computation for diploid prior
+        //1-) model computation for chosen prior
         let upper_bond = NotNan::new(1.0).unwrap();
         let model = Model::new(
             Likelihood::new(self.use_evidence.clone()),
-            Prior::new("diploid".to_string()),
+            Prior::new(self.prior.clone()),
             Posterior::new(),
         );
         let data = Data::new(
@@ -118,7 +119,7 @@ impl Caller {
             &best_fractions,
         );
 
-        //Step 3: write to tsv both for uniform and diploid prior.
+        //write to tsv 
         let mut event_posteriors = Vec::new();
         computed_model
             .event_posteriors()
@@ -129,53 +130,7 @@ impl Caller {
             &data,
             &event_posteriors,
             &final_haplotypes,
-            "diploid".to_string(),
-        );
-
-        //2-) model computation for uniform prior
-        let upper_bond = NotNan::new(1.0).unwrap();
-        let model = Model::new(
-            Likelihood::new(self.use_evidence.clone()),
-            Prior::new("uniform".to_string()),
-            Posterior::new(),
-        );
-        let data = Data::new(
-            candidate_matrix,
-            variant_calls,
-            kallisto_estimates.values().cloned().collect(),
-        );
-        let computed_model =
-            model.compute_from_marginal(&Marginal::new(final_haplotypes.len(), upper_bond), &data);
-        let mut event_posteriors = computed_model.event_posteriors();
-        let (best_fractions, _) = event_posteriors.next().unwrap();
-
-        //Step 2: plot the final solution
-        let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
-            data.candidate_matrix.values().cloned().collect();
-        let best_fractions = best_fractions
-            .iter()
-            .map(|f| NotNan::into_inner(*f))
-            .collect::<Vec<f64>>();
-        self.plot_solution(
-            &"final",
-            &candidate_matrix_values,
-            &final_haplotypes,
-            &data.variant_calls,
-            &best_fractions,
-        );
-
-        //Step 3: write to tsv both for uniform and diploid prior.
-        let mut event_posteriors = Vec::new();
-        computed_model
-            .event_posteriors()
-            .for_each(|(fractions, logprob)| {
-                event_posteriors.push((fractions.clone(), logprob.clone()));
-            });
-        self.write_results(
-            &data,
-            &event_posteriors,
-            &final_haplotypes,
-            "uniform".to_string(),
+            self.prior.clone(),
         );
         Ok(())
     }
@@ -236,11 +191,9 @@ impl Caller {
         // Then,print TSV table with results
         // Columns: posterior_prob, haplotype_a, haplotype_b, haplotype_c, ...
         // with each column after the first showing the fraction of the respective haplotype
-        let mut wtr = csv::Writer::from_path(format!(
-            "{}_{}",
-            prior,
-            self.outcsv.as_ref().unwrap().display()
-        ))?;
+        let mut wtr = csv::Writer::from_path(
+            self.outcsv.as_ref().unwrap()
+        )?;
         let mut headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
         let haplotypes_str: Vec<String> = final_haplotypes
             .clone()
