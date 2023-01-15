@@ -20,6 +20,7 @@ pub(crate) struct HaplotypeFractions(#[deref] Vec<AlleleFreq>);
 pub(crate) struct Marginal {
     n_haplotypes: usize,
     upper_bond: NotNan<f64>,
+    prior_info: String
 }
 
 impl Marginal {
@@ -30,7 +31,7 @@ impl Marginal {
         data: &Data,
         haplotype_index: usize,
         fractions: &mut Vec<AlleleFreq>,
-        joint_prob: &mut F,
+        joint_prob: &mut F
     ) -> LogProb {
         if haplotype_index == self.n_haplotypes {
             let event = HaplotypeFractions(fractions.to_vec());
@@ -43,17 +44,39 @@ impl Marginal {
                 self.calc_marginal(data, haplotype_index + 1, &mut fractions, joint_prob)
             };
             if haplotype_index == self.n_haplotypes - 1 {
-                density(fraction_upper_bound)
+                let second_if = density(fraction_upper_bound);
+                second_if
             } else {
                 if fraction_upper_bound == NotNan::new(0.0).unwrap() {
-                    density(NotNan::new(0.0).unwrap())
+                    let last_if = density(NotNan::new(0.0).unwrap());
+                    last_if
                 } else {
-                    adaptive_integration::ln_integrate_exp(
-                        density,
-                        NotNan::new(0.0).unwrap(),
-                        fraction_upper_bound,
-                        NotNan::new(0.1).unwrap(),
-                    )
+                    //check prior info
+                    if self.prior_info == "diploid" {
+                        //sum 0.0, 0.5 and 1.0
+                        let mut probs = Vec::new();
+                        let mut diploid_points = |point, probs: &mut Vec<_>| {
+                            let mut fractions = fractions.clone();
+                            if fractions.iter().sum::<NotNan<f64>>() + point <= NotNan::new(1.0).unwrap() {// this check is necessary to avoid combinations that sum up to more than 1.0.
+                                probs.push(density(point));
+                            } else {
+                                ()
+                            }
+                        };
+                        diploid_points(NotNan::new(0.0).unwrap(), &mut probs);
+                        diploid_points(NotNan::new(0.5).unwrap(), &mut probs);
+                        diploid_points(NotNan::new(1.0).unwrap(), &mut probs);
+                        LogProb::ln_sum_exp(&probs)
+                    } else if self.prior_info == "uniform" {
+                        adaptive_integration::ln_integrate_exp(
+                            density,
+                            NotNan::new(0.0).unwrap(),
+                            fraction_upper_bound,
+                            NotNan::new(0.1).unwrap(),
+                        )              
+                    } else {
+                        panic!("uniform or prior should be selected")
+                    }
                 }
             }
         }

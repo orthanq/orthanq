@@ -100,7 +100,7 @@ impl Caller {
             kallisto_estimates.values().cloned().collect(),
         );
         let computed_model =
-            model.compute_from_marginal(&Marginal::new(final_haplotypes.len(), upper_bond), &data);
+            model.compute_from_marginal(&Marginal::new(final_haplotypes.len(), upper_bond, self.prior.clone()), &data);
         let mut event_posteriors = computed_model.event_posteriors();
         let (best_fractions, _) = event_posteriors.next().unwrap();
 
