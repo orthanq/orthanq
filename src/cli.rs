@@ -9,9 +9,9 @@ use structopt::StructOpt;
 #[structopt(
     name = "orthanq",
     about = "A haplotype caller for HLA typing and/or viral strain quantification.",
-    usage = "orthanq --haplotype-counts counts.hdf5 --haplotype-variants variants.vcf \
-     --haplotype-calls calls.bcf --min-norm-counts 0.01 \
-     --max-haplotypes 3 --use-evidence both --output results.tsv",
+    usage = "orthanq --haplotype-variants variants.vcf \
+     --haplotype-calls calls.bcf --max-haplotypes 3 \
+     --use-evidence both --output results.tsv",
     setting = structopt::clap::AppSettings::ColoredHelp,
 )]
 pub enum Orthanq {
@@ -33,6 +33,12 @@ pub enum Orthanq {
             help = "All the alleles that exist for the gene of interest (e.g. HLA00001, HLA00002 .. for HLAs)"
         )]
         alleles: PathBuf,
+        #[structopt(
+            long = "xml",
+            required = true,
+            help = "xml file that is acquired from IMGT/HLA for the corresponding version"
+        )]
+        xml: PathBuf,
         #[structopt(long = "wes", help = "Specify the sample type.")]
         wes: bool,
         #[structopt(long = "wgs", help = "Specify the sample type (default).")]
@@ -49,13 +55,6 @@ pub enum Orthanq {
         setting = structopt::clap::AppSettings::ColoredHelp,
     )]
     Call {
-        #[structopt(
-            parse(from_os_str),
-            long = "haplotype-counts",
-            required = true,
-            help = "HDF5 haplotype counts calculated by Kallisto."
-        )]
-        haplotype_counts: PathBuf,
         #[structopt(
             parse(from_os_str),
             long = "haplotype-variants",
@@ -78,12 +77,6 @@ pub enum Orthanq {
         // )]
         // observations: PathBuf,
         #[structopt(
-            default_value = "0.0",
-            long = "min-norm-counts",
-            help = "Minimum value for normalized Kallisto counts."
-        )]
-        min_norm_counts: f64,
-        #[structopt(
             default_value = "5",
             long = "max-haplotypes",
             help = "Expected maximum number of haplotype."
@@ -105,23 +98,17 @@ pub fn run(opt: Orthanq) -> Result<()> {
     let opt_clone = opt.clone();
     match opt_clone {
         Orthanq::Call {
-            haplotype_counts,
             haplotype_variants,
             variant_calls,
-            //observations,
             max_haplotypes,
-            min_norm_counts,
             output,
             use_evidence,
             prior
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
-                .hdf5_reader(hdf5::File::open(&haplotype_counts)?)
                 .haplotype_variants(bcf::Reader::from_path(&haplotype_variants)?)
                 .variant_calls(bcf::Reader::from_path(&variant_calls)?)
                 .max_haplotypes(max_haplotypes)
-                .min_norm_counts(min_norm_counts)
-                //.observations(bcf::Reader::from_path(observations)?)
                 .outcsv(output)
                 .use_evidence(use_evidence)
                 .prior(prior)
@@ -133,6 +120,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
         Orthanq::Candidates {
             alleles,
             genome,
+            xml,
             wes,
             wgs,
             output,
@@ -140,6 +128,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
             let caller = candidate_variants::CallerBuilder::default()
                 .alleles(alleles)
                 .genome(genome)
+                .xml(xml)
                 .wes(wes)
                 .wgs(wgs)
                 .output(output)

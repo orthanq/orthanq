@@ -29,6 +29,7 @@ use std::{fs, fs::File};
 pub struct Caller {
     alleles: PathBuf,
     genome: PathBuf,
+    xml: PathBuf,
     wes: bool,
     wgs: bool,
     output: Option<PathBuf>,
@@ -36,7 +37,8 @@ pub struct Caller {
 impl Caller {
     pub fn call(&self) -> Result<()> {
         //prepare the map to look up which alleles are confirmed and unconfirmed and g codes available
-        let (confirmed_alleles, unconfirmed_alleles) = confirmed_alleles().unwrap();
+        //IMGT/HLA version for xml file is 3.35, set this to the same version in the evaluation workflow
+        let (confirmed_alleles, unconfirmed_alleles) = confirmed_alleles(&self.xml).unwrap();
 
         //write loci to separate fasta files (Confirmed and alleles that have g codes available)
         // self.write_to_fasta(&confirmed_alleles)?;
@@ -537,9 +539,9 @@ impl Caller {
 //3) no g_codes tag available
 //Confirmed vector contains all the rest.
 
-fn confirmed_alleles() -> Result<(Vec<String>, Vec<String>)> {
+fn confirmed_alleles(xml_path: &PathBuf) -> Result<(Vec<String>, Vec<String>)> {
     //below line shouldn't be hardcoded.
-    let mut reader = xml_reader::from_file(&"/vol/compute/hamdiyes_project/orthanq-evaluation/resources/HLA-alleles/IMGT-3.33.0/IMGTHLA-3.33.0-alpha/xml/hla.xml")?;
+    let mut reader = xml_reader::from_file(&xml_path)?;
     reader.trim_text(true);
     let mut buf = Vec::new();
     let mut alleles: Vec<String> = Vec::new();

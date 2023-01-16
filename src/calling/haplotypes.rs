@@ -28,7 +28,6 @@ use std::{path::PathBuf, str};
 #[derive(Builder)]
 #[builder(pattern = "owned")]
 pub struct Caller {
-    hdf5_reader: hdf5::File,
     haplotype_variants: bcf::Reader,
     variant_calls: bcf::Reader,
     min_norm_counts: f64,
@@ -46,40 +45,12 @@ impl Caller {
         //dbg!(&variant_ids);
         let mut haplotype_variants =
             HaplotypeVariants::new(&mut self.haplotype_variants, &variant_ids)?;
-
-        // if you're only interested in seeing some haplotypes, uncomment below.
-        // let mut new_haplotype_variants: BTreeMap<
-        //     VariantID,
-        //     BTreeMap<Haplotype, (VariantStatus, bool)>,
-        // > = BTreeMap::new();
-        // haplotype_variants.iter().for_each(|(variant, haplotypes)| {
-        //     let filtered = haplotypes.iter().filter(|(haplotype, (variant_status, covered))|haplotype.to_string() == "A*25:01:01".to_string() || haplotype.to_string() == "A*11:01:01".to_string() || haplotype.to_string() == "A*11:01:79".to_string() || haplotype.to_string() == "A*11:03".to_string() || haplotype.to_string() == "A*66:01:01".to_string()).map(|(haplotype,(variant_status, covered))|(haplotype.clone(), (variant_status.clone(),*covered))).collect::<BTreeMap<Haplotype, (VariantStatus, bool)>>();
-        //     new_haplotype_variants.insert(variant.clone(), filtered);
-        // });
-        // let new_haplotype_variants = HaplotypeVariants(new_haplotype_variants);
-
-        // let haplotype_variants =
-        //     haplotype_variants.find_plausible_haplotypes(&variant_calls, self.max_haplotypes)?;
-
         let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
         let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
         dbg!(&haplotypes);
         let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
         let lp_haplotypes = self.linear_program(&candidate_matrix, &haplotypes, &variant_calls)?;
         dbg!(&lp_haplotypes);
-
-        //kallisto experimentation
-        //prepare KallistoEstimates for only the haplotypes come from LP
-        let kallisto_estimates =
-            KallistoEstimates::new(&self.hdf5_reader, self.min_norm_counts, &lp_haplotypes)?;
-        // dbg!(&kallisto_estimates);
-        //select top N haplotypes according to --max-haplotypes N.
-        let kallisto_estimates = kallisto_estimates
-            .select_haplotypes(self.max_haplotypes)
-            .unwrap();
-        // dbg!(&kallisto_estimates);
-        let kallisto_haplotypes: Vec<Haplotype> = kallisto_estimates.keys().cloned().collect();
-        //change kallisto_haplotypes to lp_haplotypes the following part to remove kallisto
         let haplotype_variants =
             haplotype_variants.find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?;
         let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
@@ -97,7 +68,6 @@ impl Caller {
         let data = Data::new(
             candidate_matrix.clone(),
             variant_calls.clone(),
-            kallisto_estimates.values().cloned().collect(),
         );
         let computed_model =
             model.compute_from_marginal(&Marginal::new(final_haplotypes.len(), upper_bond, self.prior.clone()), &data);
