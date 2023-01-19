@@ -87,8 +87,6 @@ pub enum Orthanq {
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
         )]
         output: Option<PathBuf>,
-        #[structopt(long, help = "Use only kallisto evidence. (for debugging purposes)")]
-        use_evidence: String,
         #[structopt(long, help = "Choose uniform or diploid")]
         prior: String,
     },
@@ -102,7 +100,6 @@ pub fn run(opt: Orthanq) -> Result<()> {
             variant_calls,
             max_haplotypes,
             output,
-            use_evidence,
             prior
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
@@ -110,7 +107,6 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 .variant_calls(bcf::Reader::from_path(&variant_calls)?)
                 .max_haplotypes(max_haplotypes)
                 .outcsv(output)
-                .use_evidence(use_evidence)
                 .prior(prior)
                 .build()
                 .unwrap();

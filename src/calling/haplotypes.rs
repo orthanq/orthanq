@@ -30,9 +30,7 @@ use std::{path::PathBuf, str};
 pub struct Caller {
     haplotype_variants: bcf::Reader,
     variant_calls: bcf::Reader,
-    min_norm_counts: f64,
     max_haplotypes: i64,
-    use_evidence: String,
     outcsv: Option<PathBuf>,
     prior: String
 }
@@ -61,7 +59,7 @@ impl Caller {
         //1-) model computation for chosen prior
         let upper_bond = NotNan::new(1.0).unwrap();
         let model = Model::new(
-            Likelihood::new(self.use_evidence.clone()),
+            Likelihood::new(),
             Prior::new(self.prior.clone()),
             Posterior::new(),
         );

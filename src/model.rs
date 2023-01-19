@@ -105,9 +105,7 @@ pub(crate) struct Data {
 }
 
 #[derive(Debug, new)]
-pub(crate) struct Likelihood {
-    use_evidence: String,
-}
+pub(crate) struct Likelihood;
 
 impl model::Likelihood<Cache> for Likelihood {
     type Event = HaplotypeFractions;
