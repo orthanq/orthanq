@@ -13,6 +13,8 @@ use linfa::prelude::*;
 use linfa_clustering::KMeans;
 use ndarray::prelude::*;
 use ordered_float::NotNan;
+use quick_xml::events::Event;
+use quick_xml::reader::Reader as xml_reader;
 use rand::prelude::*;
 use rand_xoshiro::Xoshiro256Plus;
 use rust_htslib::bcf::{self, record::GenotypeAllele::Unphased, Read};
@@ -30,9 +32,10 @@ use std::{path::PathBuf, str};
 pub struct Caller {
     haplotype_variants: bcf::Reader,
     variant_calls: bcf::Reader,
+    xml: PathBuf,
     max_haplotypes: i64,
     outcsv: Option<PathBuf>,
-    prior: String
+    prior: String,
 }
 
 impl Caller {
@@ -63,12 +66,11 @@ impl Caller {
             Prior::new(self.prior.clone()),
             Posterior::new(),
         );
-        let data = Data::new(
-            candidate_matrix.clone(),
-            variant_calls.clone(),
+        let data = Data::new(candidate_matrix.clone(), variant_calls.clone());
+        let computed_model = model.compute_from_marginal(
+            &Marginal::new(final_haplotypes.len(), upper_bond, self.prior.clone()),
+            &data,
         );
-        let computed_model =
-            model.compute_from_marginal(&Marginal::new(final_haplotypes.len(), upper_bond, self.prior.clone()), &data);
         let mut event_posteriors = computed_model.event_posteriors();
         let (best_fractions, _) = event_posteriors.next().unwrap();
 
@@ -87,23 +89,52 @@ impl Caller {
             &best_fractions,
         );
 
-        //write to tsv 
+        //write to tsv
         let mut event_posteriors = Vec::new();
         computed_model
             .event_posteriors()
             .for_each(|(fractions, logprob)| {
                 event_posteriors.push((fractions.clone(), logprob.clone()));
             });
+        //first: 3-field
         self.write_results(
+            self.outcsv.as_ref().unwrap().clone(),
             &data,
             &event_posteriors,
             &final_haplotypes,
+            self.prior.clone(),
+        );
+        //second: convert to G groups
+        let mut converted_name = PathBuf::from(self.outcsv.as_ref().unwrap().parent().unwrap());
+        converted_name.push("G_groups.tsv");
+        let allele_to_g_groups = self.convert_to_g().unwrap();
+        let mut final_haplotypes_converted: Vec<Haplotype> = Vec::new();
+        final_haplotypes.iter().for_each(|haplotype| {
+            let mut conv_haplotype = Vec::new();
+            allele_to_g_groups.iter().for_each(|(allele, g_group)| {
+                if allele.starts_with(&haplotype.to_string()) {
+                    conv_haplotype.push(g_group.to_string());
+                }
+            });
+            if conv_haplotype.is_empty() {
+                conv_haplotype.push(haplotype.to_string());
+            }
+            let conv_haplotype = Haplotype(conv_haplotype[0].clone());
+            final_haplotypes_converted.push(conv_haplotype);
+        });
+
+        self.write_results(
+            converted_name,
+            &data,
+            &event_posteriors,
+            &final_haplotypes_converted,
             self.prior.clone(),
         );
         Ok(())
     }
     fn write_results(
         &self,
+        out: PathBuf,
         data: &Data,
         event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
         final_haplotypes: &Vec<Haplotype>,
@@ -159,9 +190,7 @@ impl Caller {
         // Then,print TSV table with results
         // Columns: posterior_prob, haplotype_a, haplotype_b, haplotype_c, ...
         // with each column after the first showing the fraction of the respective haplotype
-        let mut wtr = csv::Writer::from_path(
-            self.outcsv.as_ref().unwrap()
-        )?;
+        let mut wtr = csv::Writer::from_path(out)?;
         let mut headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
         let haplotypes_str: Vec<String> = final_haplotypes
             .clone()
@@ -304,8 +333,8 @@ impl Caller {
         for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
             println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
             best_variables.push(solution.value(var.clone()).clone());
-            if solution.value(*var) >= 0.1 {
-                //should be 0.01 not to miss hla types
+            if solution.value(*var) >= 0.01 {
+                //the speed of fraction exploration is managable in case of diploid priors
                 lp_haplotypes.insert(haplotype.clone(), solution.value(*var).clone());
             }
         }
@@ -428,6 +457,88 @@ impl Caller {
         let file = fs::File::create(parent.join(file_name)).unwrap();
         serde_json::to_writer(file, &blueprint);
         Ok(())
+    }
+    pub fn convert_to_g(&self) -> Result<BTreeMap<String, String>> {
+        let mut reader = xml_reader::from_file(&self.xml)?;
+        reader.trim_text(true);
+        let mut buf = Vec::new();
+        let mut alleles: Vec<String> = Vec::new();
+        let mut confirmed: Vec<String> = Vec::new();
+        let mut hla_g_groups: HashMap<i32, String> = HashMap::new(); //some hla alleles dont have g groups information in the xml file.
+        let mut names_indices: Vec<i32> = Vec::new();
+        let mut groups_indices: Vec<i32> = Vec::new();
+        let mut counter = 0;
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
+                Ok(Event::Eof) => break,
+                Ok(Event::Start(e)) => match e.name().as_ref() {
+                    b"allele" => {
+                        alleles.push(
+                            e.attributes()
+                                .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
+                                .collect::<Vec<_>>()[1]
+                                .as_ref()
+                                .unwrap()
+                                .split("-") //"HLA-" don't take the HLA prefix
+                                .collect::<Vec<&str>>()[1]
+                                .to_string(),
+                        ); //allele_name is held in index 1, note: don't use expanded_name.
+                        names_indices.push(counter.clone());
+                        counter += 1;
+                    }
+                    _ => (),
+                },
+                Ok(Event::Empty(e)) => match e.name().as_ref() {
+                    b"releaseversions" => confirmed.push(
+                        e.attributes()
+                            .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
+                            .collect::<Vec<_>>()[4]
+                            .as_ref()
+                            .unwrap()
+                            .to_string(), //index 4 holds the Confirmed info
+                    ),
+                    b"hla_g_group" => {
+                        groups_indices.push(counter.clone());
+                        hla_g_groups.insert(
+                            counter.clone(),
+                            e.attributes()
+                                .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
+                                .collect::<Vec<_>>()[0]
+                                .as_ref()
+                                .unwrap()
+                                .to_string(), //index 0 holds the status info
+                        );
+                    }
+                    _ => (),
+                },
+                _ => (),
+            }
+            // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
+            buf.clear();
+        }
+        assert_eq!(alleles.len(), confirmed.len());
+        let mut filtered_alleles = Vec::new();
+        let mut filtered_confirmed = Vec::new();
+        hla_g_groups.iter().for_each(|(index, _)| {
+            filtered_alleles.push(alleles[*index as usize - 1].clone());
+            filtered_confirmed.push(confirmed[*index as usize - 1].clone());
+        });
+        assert_eq!(filtered_alleles.len(), filtered_confirmed.len());
+        assert_eq!(filtered_alleles.len(), hla_g_groups.len());
+
+        let mut g_to_alleles: BTreeMap<String, String> = BTreeMap::new();
+        let g_names: Vec<String> = hla_g_groups.values().cloned().collect();
+        let unconfirmed_alleles = filtered_alleles
+            .iter()
+            .zip(filtered_confirmed.iter())
+            .zip(g_names.iter())
+            .filter(|((allele, c), g_group)| c == &"Confirmed")
+            .for_each(|((allele, c), g_group)| {
+                g_to_alleles.insert(allele.clone(), g_group.to_string());
+            });
+        dbg!(&g_to_alleles);
+        Ok(g_to_alleles)
     }
 }
 

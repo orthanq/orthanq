@@ -39,6 +39,12 @@ pub enum Orthanq {
             help = "xml file that is acquired from IMGT/HLA for the corresponding version"
         )]
         xml: PathBuf,
+        #[structopt(
+            long = "allele-freq",
+            required = true,
+            help = "allele frequencies for filterin purposes"
+        )]
+        allele_freq: PathBuf,
         #[structopt(long = "wes", help = "Specify the sample type.")]
         wes: bool,
         #[structopt(long = "wgs", help = "Specify the sample type (default).")]
@@ -69,6 +75,12 @@ pub enum Orthanq {
             help = "Haplotype calls"
         )]
         variant_calls: PathBuf,
+        #[structopt(
+            long = "xml",
+            required = true,
+            help = "xml file that is acquired from IMGT/HLA for the corresponding version"
+        )]
+        xml: PathBuf,
         // #[structopt(
         //     parse(from_os_str),
         //     long = "observations",
@@ -98,13 +110,15 @@ pub fn run(opt: Orthanq) -> Result<()> {
         Orthanq::Call {
             haplotype_variants,
             variant_calls,
+            xml,
             max_haplotypes,
             output,
-            prior
+            prior,
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
                 .haplotype_variants(bcf::Reader::from_path(&haplotype_variants)?)
                 .variant_calls(bcf::Reader::from_path(&variant_calls)?)
+                .xml(xml)
                 .max_haplotypes(max_haplotypes)
                 .outcsv(output)
                 .prior(prior)
@@ -117,6 +131,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
             alleles,
             genome,
             xml,
+            allele_freq,
             wes,
             wgs,
             output,
@@ -125,6 +140,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 .alleles(alleles)
                 .genome(genome)
                 .xml(xml)
+                .allele_freq(allele_freq)
                 .wes(wes)
                 .wgs(wgs)
                 .output(output)

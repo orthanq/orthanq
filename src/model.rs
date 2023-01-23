@@ -20,7 +20,7 @@ pub(crate) struct HaplotypeFractions(#[deref] Vec<AlleleFreq>);
 pub(crate) struct Marginal {
     n_haplotypes: usize,
     upper_bond: NotNan<f64>,
-    prior_info: String
+    prior_info: String,
 }
 
 impl Marginal {
@@ -31,7 +31,7 @@ impl Marginal {
         data: &Data,
         haplotype_index: usize,
         fractions: &mut Vec<AlleleFreq>,
-        joint_prob: &mut F
+        joint_prob: &mut F,
     ) -> LogProb {
         if haplotype_index == self.n_haplotypes {
             let event = HaplotypeFractions(fractions.to_vec());
@@ -57,7 +57,10 @@ impl Marginal {
                         let mut probs = Vec::new();
                         let mut diploid_points = |point, probs: &mut Vec<_>| {
                             let mut fractions = fractions.clone();
-                            if fractions.iter().sum::<NotNan<f64>>() + point <= NotNan::new(1.0).unwrap() {// this check is necessary to avoid combinations that sum up to more than 1.0.
+                            if fractions.iter().sum::<NotNan<f64>>() + point
+                                <= NotNan::new(1.0).unwrap()
+                            {
+                                // this check is necessary to avoid combinations that sum up to more than 1.0.
                                 probs.push(density(point));
                             } else {
                                 ()
@@ -73,7 +76,7 @@ impl Marginal {
                             NotNan::new(0.0).unwrap(),
                             fraction_upper_bound,
                             NotNan::new(0.1).unwrap(),
-                        )              
+                        )
                     } else {
                         panic!("uniform or prior should be selected")
                     }
@@ -101,7 +104,7 @@ impl model::Marginal for Marginal {
 #[derive(Debug, new)]
 pub(crate) struct Data {
     pub candidate_matrix: CandidateMatrix,
-    pub variant_calls: VariantCalls
+    pub variant_calls: VariantCalls,
 }
 
 #[derive(Debug, new)]
