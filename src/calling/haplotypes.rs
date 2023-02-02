@@ -352,10 +352,10 @@ impl Caller {
             &best_variables,
         );
 
-        //extend haplotypes found by linear program
-        //add haplotypes that have the same variants to the final list
+        //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list
+        //and optionally, sort by hamming distance, take the closest x additional alleles according to 'permitted'
         let mut extended_haplotypes = Vec::new();
-        let matching = lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
+        lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
             let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
             haplotype_dict
                 .iter()
@@ -363,7 +363,20 @@ impl Caller {
                     if &variants == haplotype_variants {
                         extended_haplotypes.push(haplotype.clone());
                     }
+                    // else {
+                    //     let permitted: i64 = 3;
+                    //     let mut difference = vec![];
+                    //     for i in haplotype_variants.iter() {
+                    //         if !variants.contains(&i) {
+                    //             difference.push(i);
+                    //         }
+                    //     }
+                    //     if (difference.len() as i64 <= permitted) && ((variants.len() as i64-haplotype_variants.len() as i64).abs() <= permitted) {
+                    //         extended_haplotypes.push(haplotype.clone());
+                    //     }
+                    // }
                 });
+
         });
         dbg!(&lp_haplotypes);
         dbg!(&extended_haplotypes);

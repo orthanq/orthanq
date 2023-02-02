@@ -43,7 +43,6 @@ impl Caller {
         //prepare the map to look up which alleles are confirmed and unconfirmed and g codes available
         //IMGT/HLA version for xml file is 3.35, set this to the same version in the evaluation workflow
         //and only include alleles that have AF >0.05
-        let af_path = "allele_frequencies.csv".to_string();
         let (confirmed_alleles, unconfirmed_alleles) =
             confirmed_alleles(&self.xml, &self.allele_freq).unwrap();
 

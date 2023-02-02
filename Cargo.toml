@@ -40,3 +40,12 @@ serde_json = "1.0.85"
 serde = "1.0.145"
 good_lp = { version = "*", features = ["coin_cbc"], default-features = false }
 quick-xml = "0.26.0"
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+
+[profile.develop]
+codegen-units = 128
+inherits = "release"
+lto = false
