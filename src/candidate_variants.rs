@@ -50,7 +50,7 @@ impl Caller {
         // self.write_to_fasta(&confirmed_alleles)?;
 
         //align and sort
-        self.alignment(); //copied from exclude folder to include folder so i commented this out for a short while.
+        // self.alignment(); //copied from exclude folder to include folder so i commented this out for a short while.
 
         //1) first read the hla alleles for the locus and the reference genome.
         let mut sam = bam::Reader::from_path(&"alignment_sorted.sam").unwrap();
@@ -179,6 +179,251 @@ impl Caller {
                 j += 1;
             }
         }
+        dbg!(&candidate_variants.len());
+        dbg!(&candidate_variants);
+        //add MNV encoding: encode all variants, closer than x bases to each other (x=2,3 etc.)
+        // let candidate_variants_clone = candidate_variants.clone();
+        let mut mnv_variants = BTreeMap::new();
+        let window_length = 2;
+        candidate_variants
+            .iter()
+            .for_each(|((chrom, pos, ref_base, alt_base), haplotypes)| {
+                // dbg!(&chrom, &pos, &ref_base, &alt_base);
+                for haplotype in haplotypes {
+                    let mut mnv_variants_window = BTreeMap::new();
+                    if ref_base.len() == 1 && alt_base.len() == 1 {
+                        //we don't want to evaluate indels
+                        //left window
+                        for ((q_chr, q_pos, q_ref, q_alt), q_haplotypes) in candidate_variants
+                            .range(
+                                ..(
+                                    chrom.to_string(),
+                                    *pos,
+                                    ref_base.to_string(),
+                                    alt_base.to_string(),
+                                ),
+                            )
+                        {
+                            if q_ref.len() == 1 && q_alt.len() == 1 {
+                                if q_pos < &(pos - window_length) {
+                                    //only iterate within the window length
+                                    //we don't want to evaluate indels
+                                    break;
+                                } else if q_pos != pos && q_haplotypes.contains(haplotype) {
+                                    mnv_variants_window.insert(
+                                        (
+                                            q_chr.clone(),
+                                            q_pos.clone(),
+                                            q_ref.clone(),
+                                            q_alt.clone(),
+                                        ),
+                                        haplotype.clone(),
+                                    );
+                                }
+                            }
+                        }
+                        //insert the queried variant in the middle
+                        mnv_variants_window.insert(
+                            (chrom.clone(), *pos, ref_base.clone(), alt_base.clone()),
+                            haplotype.clone(),
+                        );
+
+                        //right window
+                        for ((q_chr, q_pos, q_ref, q_alt), q_haplotypes) in candidate_variants
+                            .range(
+                                (
+                                    chrom.to_string(),
+                                    *pos,
+                                    ref_base.to_string(),
+                                    alt_base.to_string(),
+                                )..,
+                            )
+                        {
+                            if q_ref.len() == 1 && q_alt.len() == 1 {
+                                if q_pos > &(pos + window_length) {
+                                    //we don't want to evaluate indels
+                                    break;
+                                } else if q_pos != pos && q_haplotypes.contains(haplotype) {
+                                    mnv_variants_window.insert(
+                                        (
+                                            q_chr.clone(),
+                                            q_pos.clone(),
+                                            q_ref.clone(),
+                                            q_alt.clone(),
+                                        ),
+                                        haplotype.clone(),
+                                    );
+                                }
+                            }
+                        }
+                        //combine individual variants from both left and right windows into a single mnv, if the size is greater than 1
+                        // dbg!(&mnv_variants_window);
+                        let mut ref_base_collected = "".to_string();
+                        let mut alt_base_collected = "".to_string();
+                        let ((_, mut last_base, _, _), _) =
+                            mnv_variants_window.iter().next().unwrap();
+                        if mnv_variants_window.len() > 1 {
+                            mnv_variants_window.iter().for_each(
+                                |((chrom, start_pos, ref_base, alt_base), _)| {
+                                    //always from smaller pos to greater pos
+                                    let base_number_between = start_pos - last_base;
+                                    if base_number_between > 1 {
+                                        ref_base_collected.push_str(
+                                            &reference_genome
+                                                .fetch_seq_string(
+                                                    chrom,
+                                                    (last_base + 1) - 1,
+                                                    (last_base + base_number_between - 1) - 1,
+                                                )
+                                                .unwrap(),
+                                        ); //we have -1 at the end of both start and end because it's 0 based.
+                                        alt_base_collected.push_str(
+                                            &reference_genome
+                                                .fetch_seq_string(
+                                                    chrom,
+                                                    (last_base + 1) - 1,
+                                                    (last_base + base_number_between - 1) - 1,
+                                                )
+                                                .unwrap(),
+                                        );
+                                    }
+                                    ref_base_collected.push_str(&ref_base);
+                                    alt_base_collected.push_str(&alt_base);
+                                    //fill the nuclotide gap between locations
+                                    last_base = start_pos.clone();
+                                },
+                            );
+                            let ((_, start_pos, _, _), _) =
+                                mnv_variants_window.iter().next().unwrap();
+                            mnv_variants
+                                .entry((
+                                    chrom.clone(),
+                                    start_pos.clone(),
+                                    ref_base_collected.clone(),
+                                    alt_base_collected.clone(),
+                                ))
+                                .or_insert(vec![]);
+                            let mut haplotypes = mnv_variants
+                                .get(&(
+                                    chrom.to_string(),
+                                    start_pos.clone(),
+                                    ref_base_collected.clone(),
+                                    alt_base_collected.clone(),
+                                ))
+                                .unwrap()
+                                .clone();
+                            haplotypes.push(haplotype.clone());
+                            mnv_variants.insert(
+                                (
+                                    chrom.to_string(),
+                                    start_pos.clone(),
+                                    ref_base_collected,
+                                    alt_base_collected,
+                                ),
+                                haplotypes,
+                            );
+                        }
+                    }
+                }
+            });
+        // dbg!(&mnv_variants);
+        // dbg!(&mnv_variants.len());
+        //smaller mnvs inside bigger mnvs that are present in the same set of haplotypes have to be removed
+        //11 130108342 ATA TGG: 0, 1, 2
+        //11 130108343 TA GG: 0, 1, 2 -> this one should be removed.
+        let mut mnv_variants_clone = mnv_variants.clone();
+        mnv_variants
+            .iter()
+            .for_each(|((chrom, pos, ref_seq, alt_seq), haplotypes)| {
+                for ((q_chr, q_pos, q_ref_seq, q_alt_seq), q_haplotypes) in mnv_variants.range(
+                    ..(
+                        chrom.to_string(),
+                        *pos,
+                        ref_seq.to_string(),
+                        alt_seq.to_string(),
+                    ),
+                ) {
+                    let matching = haplotypes
+                        .iter()
+                        .zip(q_haplotypes)
+                        .filter(|&(a, b)| a == b)
+                        .count();
+                    if q_pos < &(pos - window_length) {
+                        break;
+                    } else if (alt_seq.len() > q_alt_seq.len())
+                        && alt_seq.contains(q_alt_seq)
+                        && matching == haplotypes.len()
+                    {
+                        mnv_variants_clone.remove(&(
+                            q_chr.clone(),
+                            q_pos.clone(),
+                            q_ref_seq.clone(),
+                            q_alt_seq.clone(),
+                        ));
+                    }
+                }
+                for ((q_chr, q_pos, q_ref_seq, q_alt_seq), q_haplotypes) in mnv_variants.range(
+                    (
+                        chrom.to_string(),
+                        *pos,
+                        ref_seq.to_string(),
+                        alt_seq.to_string(),
+                    )..,
+                ) {
+                    let matching = haplotypes
+                        .iter()
+                        .zip(q_haplotypes)
+                        .filter(|&(a, b)| a == b)
+                        .count();
+                    if q_pos > &(pos + window_length) {
+                        break;
+                    } else if (alt_seq.len() > q_alt_seq.len())
+                        && alt_seq.contains(q_alt_seq)
+                        && matching == haplotypes.len()
+                    {
+                        mnv_variants_clone.remove(&(
+                            q_chr.clone(),
+                            q_pos.clone(),
+                            q_ref_seq.clone(),
+                            q_alt_seq.clone(),
+                        ));
+                    }
+                }
+                //Remove the individual SNVs that are included in an MNV from candidate_variants
+                //11 130108342 ATA TGG: 0,1,2 -- mnv_variants
+                //11 130108342 A T: 0,1,2 -- candidate_variants -> to be removed
+                let mut counter = 0;
+                let mut query_pos = pos.clone();
+                for (r, a) in ref_seq.chars().zip(alt_seq.chars()) {
+                    if let Some(queried_haplotypes) = candidate_variants.get(&(
+                        chrom.to_string(),
+                        query_pos,
+                        r.to_string(),
+                        a.to_string(),
+                    )) {
+                        let matching = haplotypes
+                            .iter()
+                            .zip(queried_haplotypes)
+                            .filter(|&(a, b)| a == b)
+                            .count();
+                        if matching == queried_haplotypes.len() {
+                            candidate_variants.remove(&(
+                                chrom.clone(),
+                                *pos,
+                                r.to_string(),
+                                a.to_string(),
+                            ));
+                        }
+                    }
+                    query_pos = pos + counter;
+                    counter += 1;
+                }
+            });
+        dbg!(&mnv_variants_clone.len());
+        dbg!(&mnv_variants_clone);
+        dbg!(&candidate_variants.len());
+        dbg!(&candidate_variants);
+        //todo: remove the trailing variant: "11 130108342, "ATA", "TGG" \\ "11",130108343 "TA","GG",
         //construct the first array having the same number of rows and columns as candidate variants map and locate the genotypes for each haplotype.
         let mut genotypes_array = Array2::<i64>::zeros((candidate_variants.len(), j));
         candidate_variants
@@ -637,47 +882,47 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
     let mut unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
     dbg!(&unconfirmed_alleles.len());
     dbg!(&confirmed_alleles.len());
-    let mut confirmed_alleles_clone = confirmed_alleles.clone();
-    let mut allele_freq_rdr = CsvReader::from_path(af_path)?;
-    let mut to_be_included = Vec::new();
-    dbg!(confirmed_alleles_clone.len());
-    confirmed_alleles_clone.retain(|&_, y| {
-        y.starts_with("A")
-            || y.starts_with("B")
-            || y.starts_with("C")
-            || y.starts_with("DQA1")
-            || y.starts_with("DQB1")
-    });
-    dbg!(confirmed_alleles_clone.len());
+    // let mut confirmed_alleles_clone = confirmed_alleles.clone();
+    // let mut allele_freq_rdr = CsvReader::from_path(af_path)?;
+    // let mut to_be_included = Vec::new();
+    // dbg!(confirmed_alleles_clone.len());
+    // confirmed_alleles_clone.retain(|&_, y| {
+    //     y.starts_with("A")
+    //         || y.starts_with("B")
+    //         || y.starts_with("C")
+    //         || y.starts_with("DQA1")
+    //         || y.starts_with("DQB1")
+    // });
+    // dbg!(confirmed_alleles_clone.len());
 
-    allele_freq_rdr.deserialize().for_each(|result| {
-        let record: Record = result.unwrap();
-        confirmed_alleles_clone.iter().for_each(|(id, name)| {
-            let splitted = name.split(":").collect::<Vec<&str>>(); //DQB1*05:02:01 is alone not an allele name, but DQB1*05:02:01:01, DQB1*05:02:01:02.. are.
-            let first_two = format!("{}:{}", splitted[0], splitted[1]);
-            //B*39:06:01 is below 0.05 but 39:06 not and this allele is one of the true genotypes of a sample in the ground truths so we should include following lines. a direct match is not preferred by the authors in the ground truth.
-            //they include alleles that do not have a direct name match, rather the ones starting with the first two fields.
-            if &record.var == name {
-                if record.frequency > NotNan::new(0.05).unwrap() {
-                    to_be_included.push(id.clone());
-                }
-            } else if &record.var == &first_two && record.frequency > NotNan::new(0.05).unwrap() {
-                to_be_included.push(id.clone());
-            }
-        });
-    });
-    dbg!(&to_be_included.len());
-    dbg!(&to_be_included);
-    let below_criterium: Vec<String> = confirmed_alleles_clone
-        .iter()
-        .filter(|(id, _)| !to_be_included.contains(id))
-        .map(|(id, _)| id.clone())
-        .collect();
-    dbg!(&below_criterium.len());
-    dbg!(&below_criterium);
+    // allele_freq_rdr.deserialize().for_each(|result| {
+    //     let record: Record = result.unwrap();
+    //     confirmed_alleles_clone.iter().for_each(|(id, name)| {
+    //         let splitted = name.split(":").collect::<Vec<&str>>(); //DQB1*05:02:01 is alone not an allele name, but DQB1*05:02:01:01, DQB1*05:02:01:02.. are.
+    //         let first_two = format!("{}:{}", splitted[0], splitted[1]);
+    //         //B*39:06:01 is below 0.05 but 39:06 not and this allele is one of the true genotypes of a sample in the ground truths so we should include following lines. a direct match is not preferred by the authors in the ground truth.
+    //         //they include alleles that do not have a direct name match, rather the ones starting with the first two fields.
+    //         if &record.var == name {
+    //             if record.frequency > NotNan::new(0.05).unwrap() {
+    //                 to_be_included.push(id.clone());
+    //             }
+    //         } else if &record.var == &first_two && record.frequency > NotNan::new(0.05).unwrap() {
+    //             to_be_included.push(id.clone());
+    //         }
+    //     });
+    // });
+    // dbg!(&to_be_included.len());
+    // dbg!(&to_be_included);
+    // let below_criterium: Vec<String> = confirmed_alleles_clone
+    //     .iter()
+    //     .filter(|(id, _)| !to_be_included.contains(id))
+    //     .map(|(id, _)| id.clone())
+    //     .collect();
+    // dbg!(&below_criterium.len());
+    // dbg!(&below_criterium);
     //todo: confirmed_alleles
     let confirmed_alleles = confirmed_alleles.keys().cloned().collect::<Vec<String>>();
-    unconfirmed_alleles.extend(below_criterium);
+    // unconfirmed_alleles.extend(below_criterium);
     dbg!(&unconfirmed_alleles.len());
     dbg!(&confirmed_alleles.len());
     Ok((confirmed_alleles, unconfirmed_alleles))
