@@ -376,7 +376,6 @@ impl Caller {
                     //     }
                     // }
                 });
-
         });
         dbg!(&lp_haplotypes);
         dbg!(&extended_haplotypes);

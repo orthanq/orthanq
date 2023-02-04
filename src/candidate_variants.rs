@@ -326,15 +326,17 @@ impl Caller {
                     }
                 }
             });
-        // dbg!(&mnv_variants);
-        // dbg!(&mnv_variants.len());
+        dbg!(&mnv_variants);
+        dbg!(&mnv_variants.len());
         //smaller mnvs inside bigger mnvs that are present in the same set of haplotypes have to be removed
         //11 130108342 ATA TGG: 0, 1, 2
         //11 130108343 TA GG: 0, 1, 2 -> this one should be removed.
         let mut mnv_variants_clone = mnv_variants.clone();
+        let mut modified_candidate_variants = candidate_variants.clone();
         mnv_variants
             .iter()
             .for_each(|((chrom, pos, ref_seq, alt_seq), haplotypes)| {
+                dbg!(&chrom, &pos, &ref_seq, &alt_seq, &haplotypes);
                 for ((q_chr, q_pos, q_ref_seq, q_alt_seq), q_haplotypes) in mnv_variants.range(
                     ..(
                         chrom.to_string(),
@@ -392,9 +394,16 @@ impl Caller {
                 //Remove the individual SNVs that are included in an MNV from candidate_variants
                 //11 130108342 ATA TGG: 0,1,2 -- mnv_variants
                 //11 130108342 A T: 0,1,2 -- candidate_variants -> to be removed
+                //Also,
+                //Encode the subset of MNVs still in the same way:
+                //If this exists: 11 130108342 ATA TGG: 1,2,3 together with the following SNV
+                //11 130108343 T G: 5
+                //then it should be converted to the following (the length should be the same length with the MNV):
+                //11 130108342 ATA AGA: 5
                 let mut counter = 0;
                 let mut query_pos = pos.clone();
-                for (r, a) in ref_seq.chars().zip(alt_seq.chars()) {
+                for (i,(r, a)) in ref_seq.chars().zip(alt_seq.chars()).enumerate() {//enumeration is required to access ref bases
+                    // dbg!(&r,&a);
                     if let Some(queried_haplotypes) = candidate_variants.get(&(
                         chrom.to_string(),
                         query_pos,
@@ -407,12 +416,45 @@ impl Caller {
                             .filter(|&(a, b)| a == b)
                             .count();
                         if matching == queried_haplotypes.len() {
-                            candidate_variants.remove(&(
+                            modified_candidate_variants.remove(&(
                                 chrom.clone(),
                                 *pos,
                                 r.to_string(),
                                 a.to_string(),
                             ));
+                        } else { //the haplotypes are not the same
+                            // dbg!(&queried_haplotypes);
+                            modified_candidate_variants.remove(&(
+                                chrom.clone(),
+                                query_pos.clone(),
+                                r.to_string(),
+                                a.to_string(),
+                            ));//first, remove the SNV -> 11 130108343 T G: 5
+                            //second, encode the correct MNV -> 11 130108342 ATA AGA: 5
+                            let ref_seq_combined = &reference_genome
+                                    .fetch_seq_string(
+                                        chrom,
+                                        (pos) - 1,
+                                        (pos + ref_seq.len() - 1) - 1,
+                                    )
+                                    .unwrap();
+                            let mut alt_seq_combined = String::new();
+                            ref_seq_combined.chars().enumerate().for_each(|(ref_char_i, ref_char)|{
+                                if ref_char_i == i {
+                                    alt_seq_combined.push_str(a.to_string().as_str());
+                                } else {
+                                    alt_seq_combined.push_str(ref_char.to_string().as_str());
+                                }
+                            });
+                            // dbg!(&ref_seq_combined);
+                            // dbg!(&alt_seq_combined);
+                            modified_candidate_variants.insert(
+                                (chrom.clone(),
+                                pos.clone(),
+                                ref_seq_combined.clone(),
+                                alt_seq_combined),
+                                queried_haplotypes.clone()
+                            );
                         }
                     }
                     query_pos = pos + counter;
@@ -421,12 +463,12 @@ impl Caller {
             });
         dbg!(&mnv_variants_clone.len());
         dbg!(&mnv_variants_clone);
-        dbg!(&candidate_variants.len());
-        dbg!(&candidate_variants);
-        //todo: remove the trailing variant: "11 130108342, "ATA", "TGG" \\ "11",130108343 "TA","GG",
+        dbg!(&modified_candidate_variants.len());
+        dbg!(&modified_candidate_variants);
+        modified_candidate_variants.extend(mnv_variants);
         //construct the first array having the same number of rows and columns as candidate variants map and locate the genotypes for each haplotype.
-        let mut genotypes_array = Array2::<i64>::zeros((candidate_variants.len(), j));
-        candidate_variants
+        let mut genotypes_array = Array2::<i64>::zeros((modified_candidate_variants.len(), j));
+        modified_candidate_variants
             .iter()
             .enumerate()
             .for_each(|(i, (_, haplotype_indices))| {
@@ -436,8 +478,8 @@ impl Caller {
             });
 
         //construct the second array and locate the loci information of variants for each haplotype
-        let mut loci_array = Array2::<i64>::zeros((candidate_variants.len(), j));
-        candidate_variants.iter().enumerate().for_each(
+        let mut loci_array = Array2::<i64>::zeros((modified_candidate_variants.len(), j));
+        modified_candidate_variants.iter().enumerate().for_each(
             |(i, ((chrom_candidates, pos, _, _), _))| {
                 locations
                     .iter()
@@ -882,47 +924,45 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
     let mut unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
     dbg!(&unconfirmed_alleles.len());
     dbg!(&confirmed_alleles.len());
-    // let mut confirmed_alleles_clone = confirmed_alleles.clone();
-    // let mut allele_freq_rdr = CsvReader::from_path(af_path)?;
-    // let mut to_be_included = Vec::new();
-    // dbg!(confirmed_alleles_clone.len());
-    // confirmed_alleles_clone.retain(|&_, y| {
-    //     y.starts_with("A")
-    //         || y.starts_with("B")
-    //         || y.starts_with("C")
-    //         || y.starts_with("DQA1")
-    //         || y.starts_with("DQB1")
-    // });
-    // dbg!(confirmed_alleles_clone.len());
+    let mut confirmed_alleles_clone = confirmed_alleles.clone();
+    let mut allele_freq_rdr = CsvReader::from_path(af_path)?;
+    let mut to_be_included = Vec::new();
+    dbg!(confirmed_alleles_clone.len());
+    confirmed_alleles_clone.retain(|&_, y| {
+        y.starts_with("A")
+            || y.starts_with("B")
+            || y.starts_with("C")
+            || y.starts_with("DQA1")
+            || y.starts_with("DQB1")
+    });
+    dbg!(confirmed_alleles_clone.len());
 
-    // allele_freq_rdr.deserialize().for_each(|result| {
-    //     let record: Record = result.unwrap();
-    //     confirmed_alleles_clone.iter().for_each(|(id, name)| {
-    //         let splitted = name.split(":").collect::<Vec<&str>>(); //DQB1*05:02:01 is alone not an allele name, but DQB1*05:02:01:01, DQB1*05:02:01:02.. are.
-    //         let first_two = format!("{}:{}", splitted[0], splitted[1]);
-    //         //B*39:06:01 is below 0.05 but 39:06 not and this allele is one of the true genotypes of a sample in the ground truths so we should include following lines. a direct match is not preferred by the authors in the ground truth.
-    //         //they include alleles that do not have a direct name match, rather the ones starting with the first two fields.
-    //         if &record.var == name {
-    //             if record.frequency > NotNan::new(0.05).unwrap() {
-    //                 to_be_included.push(id.clone());
-    //             }
-    //         } else if &record.var == &first_two && record.frequency > NotNan::new(0.05).unwrap() {
-    //             to_be_included.push(id.clone());
-    //         }
-    //     });
-    // });
-    // dbg!(&to_be_included.len());
-    // dbg!(&to_be_included);
-    // let below_criterium: Vec<String> = confirmed_alleles_clone
-    //     .iter()
-    //     .filter(|(id, _)| !to_be_included.contains(id))
-    //     .map(|(id, _)| id.clone())
-    //     .collect();
-    // dbg!(&below_criterium.len());
-    // dbg!(&below_criterium);
+    allele_freq_rdr.deserialize().for_each(|result| {
+        let record: Record = result.unwrap();
+        confirmed_alleles_clone.iter().for_each(|(id, name)| {
+            let splitted = name.split(":").collect::<Vec<&str>>(); //DQB1*05:02:01 is alone not an allele name, but DQB1*05:02:01:01, DQB1*05:02:01:02.. are.
+            let first_two = format!("{}:{}", splitted[0], splitted[1]);
+            //B*39:06:01 is below 0.05 but 39:06 not and this allele is one of the true genotypes of a sample in the ground truths so we should include following lines. a direct match is not preferred by the authors in the ground truth.
+            //they include alleles that do not have a direct name match, rather the ones starting with the first two fields.
+            if &record.var == name {
+                if record.frequency > NotNan::new(0.01).unwrap() {
+                    to_be_included.push(id.clone());
+                }
+            } else if &record.var == &first_two && record.frequency > NotNan::new(0.05).unwrap() {
+                to_be_included.push(id.clone());
+            }
+        });
+    });
+    dbg!(&to_be_included.len());
+    let below_criterium: Vec<String> = confirmed_alleles_clone
+        .iter()
+        .filter(|(id, _)| !to_be_included.contains(id))
+        .map(|(id, _)| id.clone())
+        .collect();
+    dbg!(&below_criterium.len());
     //todo: confirmed_alleles
     let confirmed_alleles = confirmed_alleles.keys().cloned().collect::<Vec<String>>();
-    // unconfirmed_alleles.extend(below_criterium);
+    unconfirmed_alleles.extend(below_criterium);
     dbg!(&unconfirmed_alleles.len());
     dbg!(&confirmed_alleles.len());
     Ok((confirmed_alleles, unconfirmed_alleles))
