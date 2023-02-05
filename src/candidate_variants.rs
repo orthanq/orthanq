@@ -402,7 +402,8 @@ impl Caller {
                 //11 130108342 ATA AGA: 5
                 let mut counter = 0;
                 let mut query_pos = pos.clone();
-                for (i,(r, a)) in ref_seq.chars().zip(alt_seq.chars()).enumerate() {//enumeration is required to access ref bases
+                for (i, (r, a)) in ref_seq.chars().zip(alt_seq.chars()).enumerate() {
+                    //enumeration is required to access ref bases
                     // dbg!(&r,&a);
                     if let Some(queried_haplotypes) = candidate_variants.get(&(
                         chrom.to_string(),
@@ -422,38 +423,39 @@ impl Caller {
                                 r.to_string(),
                                 a.to_string(),
                             ));
-                        } else { //the haplotypes are not the same
+                        } else {
+                            //the haplotypes are not the same
                             // dbg!(&queried_haplotypes);
                             modified_candidate_variants.remove(&(
                                 chrom.clone(),
                                 query_pos.clone(),
                                 r.to_string(),
                                 a.to_string(),
-                            ));//first, remove the SNV -> 11 130108343 T G: 5
-                            //second, encode the correct MNV -> 11 130108342 ATA AGA: 5
+                            )); //first, remove the SNV -> 11 130108343 T G: 5
+                                //second, encode the correct MNV -> 11 130108342 ATA AGA: 5
                             let ref_seq_combined = &reference_genome
-                                    .fetch_seq_string(
-                                        chrom,
-                                        (pos) - 1,
-                                        (pos + ref_seq.len() - 1) - 1,
-                                    )
-                                    .unwrap();
+                                .fetch_seq_string(chrom, (pos) - 1, (pos + ref_seq.len() - 1) - 1)
+                                .unwrap();
                             let mut alt_seq_combined = String::new();
-                            ref_seq_combined.chars().enumerate().for_each(|(ref_char_i, ref_char)|{
-                                if ref_char_i == i {
-                                    alt_seq_combined.push_str(a.to_string().as_str());
-                                } else {
-                                    alt_seq_combined.push_str(ref_char.to_string().as_str());
-                                }
-                            });
+                            ref_seq_combined.chars().enumerate().for_each(
+                                |(ref_char_i, ref_char)| {
+                                    if ref_char_i == i {
+                                        alt_seq_combined.push_str(a.to_string().as_str());
+                                    } else {
+                                        alt_seq_combined.push_str(ref_char.to_string().as_str());
+                                    }
+                                },
+                            );
                             // dbg!(&ref_seq_combined);
                             // dbg!(&alt_seq_combined);
                             modified_candidate_variants.insert(
-                                (chrom.clone(),
-                                pos.clone(),
-                                ref_seq_combined.clone(),
-                                alt_seq_combined),
-                                queried_haplotypes.clone()
+                                (
+                                    chrom.clone(),
+                                    pos.clone(),
+                                    ref_seq_combined.clone(),
+                                    alt_seq_combined,
+                                ),
+                                queried_haplotypes.clone(),
                             );
                         }
                     }
@@ -493,7 +495,7 @@ impl Caller {
 
         //convert genotype and loci arrays to dataframe.
         //first initialize the dataframes with index columns which contain variant information.
-        let mut genotype_df: DataFrame = df!("Index" => candidate_variants
+        let mut genotype_df: DataFrame = df!("Index" => modified_candidate_variants
         .iter()
         .map(|((chrom, pos, ref_base, alt_base), _)| {
             format!(
@@ -945,7 +947,7 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
             //B*39:06:01 is below 0.05 but 39:06 not and this allele is one of the true genotypes of a sample in the ground truths so we should include following lines. a direct match is not preferred by the authors in the ground truth.
             //they include alleles that do not have a direct name match, rather the ones starting with the first two fields.
             if &record.var == name {
-                if record.frequency > NotNan::new(0.01).unwrap() {
+                if record.frequency > NotNan::new(0.05).unwrap() {
                     to_be_included.push(id.clone());
                 }
             } else if &record.var == &first_two && record.frequency > NotNan::new(0.05).unwrap() {
