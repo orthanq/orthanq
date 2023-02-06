@@ -363,18 +363,18 @@ impl Caller {
                     if &variants == haplotype_variants {
                         extended_haplotypes.push(haplotype.clone());
                     }
-                    // else {
-                    //     let permitted: i64 = 3;
-                    //     let mut difference = vec![];
-                    //     for i in haplotype_variants.iter() {
-                    //         if !variants.contains(&i) {
-                    //             difference.push(i);
-                    //         }
-                    //     }
-                    //     if (difference.len() as i64 <= permitted) && ((variants.len() as i64-haplotype_variants.len() as i64).abs() <= permitted) {
-                    //         extended_haplotypes.push(haplotype.clone());
-                    //     }
-                    // }
+                    else {
+                        let permitted: i64 = 3; //this number should be discussed.
+                        let mut difference = vec![];
+                        for i in haplotype_variants.iter() {
+                            if !variants.contains(&i) {
+                                difference.push(i);
+                            }
+                        }
+                        if (difference.len() as i64 <= permitted) && ((variants.len() as i64-haplotype_variants.len() as i64).abs() <= permitted) {
+                            extended_haplotypes.push(haplotype.clone());
+                        }
+                    }
                 });
         });
         dbg!(&lp_haplotypes);

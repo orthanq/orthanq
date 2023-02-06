@@ -50,7 +50,7 @@ impl Caller {
         // self.write_to_fasta(&confirmed_alleles)?;
 
         //align and sort
-        // self.alignment(); //copied from exclude folder to include folder so i commented this out for a short while.
+        // self.alignment()?;
 
         //1) first read the hla alleles for the locus and the reference genome.
         let mut sam = bam::Reader::from_path(&"alignment_sorted.sam").unwrap();
@@ -400,7 +400,7 @@ impl Caller {
                 //11 130108343 T G: 5
                 //then it should be converted to the following (the length should be the same length with the MNV):
                 //11 130108342 ATA AGA: 5
-                let mut counter = 0;
+                let mut counter = 0; //31356226 TC	AG
                 let mut query_pos = pos.clone();
                 for (i, (r, a)) in ref_seq.chars().zip(alt_seq.chars()).enumerate() {
                     //enumeration is required to access ref bases
@@ -416,6 +416,7 @@ impl Caller {
                             .zip(queried_haplotypes)
                             .filter(|&(a, b)| a == b)
                             .count();
+                        let not_matching: Vec<usize> = queried_haplotypes.iter().filter(|h|!haplotypes.contains(h)).map(|h|h.clone()).collect(); //find the haplotype that is not involved in the mnv.
                         if matching == queried_haplotypes.len() {
                             modified_candidate_variants.remove(&(
                                 chrom.clone(),
@@ -455,7 +456,7 @@ impl Caller {
                                     ref_seq_combined.clone(),
                                     alt_seq_combined,
                                 ),
-                                queried_haplotypes.clone(),
+                                not_matching.clone(),
                             );
                         }
                     }
@@ -928,7 +929,7 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
     dbg!(&confirmed_alleles.len());
     let mut confirmed_alleles_clone = confirmed_alleles.clone();
     let mut allele_freq_rdr = CsvReader::from_path(af_path)?;
-    let mut to_be_included = Vec::new();
+    // let mut to_be_included = Vec::new();
     dbg!(confirmed_alleles_clone.len());
     confirmed_alleles_clone.retain(|&_, y| {
         y.starts_with("A")
@@ -939,32 +940,32 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
     });
     dbg!(confirmed_alleles_clone.len());
 
-    allele_freq_rdr.deserialize().for_each(|result| {
-        let record: Record = result.unwrap();
-        confirmed_alleles_clone.iter().for_each(|(id, name)| {
-            let splitted = name.split(":").collect::<Vec<&str>>(); //DQB1*05:02:01 is alone not an allele name, but DQB1*05:02:01:01, DQB1*05:02:01:02.. are.
-            let first_two = format!("{}:{}", splitted[0], splitted[1]);
-            //B*39:06:01 is below 0.05 but 39:06 not and this allele is one of the true genotypes of a sample in the ground truths so we should include following lines. a direct match is not preferred by the authors in the ground truth.
-            //they include alleles that do not have a direct name match, rather the ones starting with the first two fields.
-            if &record.var == name {
-                if record.frequency > NotNan::new(0.05).unwrap() {
-                    to_be_included.push(id.clone());
-                }
-            } else if &record.var == &first_two && record.frequency > NotNan::new(0.05).unwrap() {
-                to_be_included.push(id.clone());
-            }
-        });
-    });
-    dbg!(&to_be_included.len());
-    let below_criterium: Vec<String> = confirmed_alleles_clone
-        .iter()
-        .filter(|(id, _)| !to_be_included.contains(id))
-        .map(|(id, _)| id.clone())
-        .collect();
-    dbg!(&below_criterium.len());
+    // allele_freq_rdr.deserialize().for_each(|result| {
+    //     let record: Record = result.unwrap();
+    //     confirmed_alleles_clone.iter().for_each(|(id, name)| {
+    //         let splitted = name.split(":").collect::<Vec<&str>>(); //DQB1*05:02:01 is alone not an allele name, but DQB1*05:02:01:01, DQB1*05:02:01:02.. are.
+    //         let first_two = format!("{}:{}", splitted[0], splitted[1]);
+    //         //B*39:06:01 is below 0.05 but 39:06 not and this allele is one of the true genotypes of a sample in the ground truths so we should include following lines. a direct match is not preferred by the authors in the ground truth.
+    //         //they include alleles that do not have a direct name match, rather the ones starting with the first two fields.
+    //         if &record.var == name {
+    //             if record.frequency > NotNan::new(0.05).unwrap() {
+    //                 to_be_included.push(id.clone());
+    //             }
+    //         } else if &record.var == &first_two && record.frequency > NotNan::new(0.05).unwrap() {
+    //             to_be_included.push(id.clone());
+    //         }
+    //     });
+    // });
+    // dbg!(&to_be_included.len());
+    // let below_criterium: Vec<String> = confirmed_alleles_clone
+    //     .iter()
+    //     .filter(|(id, _)| !to_be_included.contains(id))
+    //     .map(|(id, _)| id.clone())
+    //     .collect();
+    // dbg!(&below_criterium.len());
     //todo: confirmed_alleles
     let confirmed_alleles = confirmed_alleles.keys().cloned().collect::<Vec<String>>();
-    unconfirmed_alleles.extend(below_criterium);
+    // unconfirmed_alleles.extend(below_criterium);
     dbg!(&unconfirmed_alleles.len());
     dbg!(&confirmed_alleles.len());
     Ok((confirmed_alleles, unconfirmed_alleles))
