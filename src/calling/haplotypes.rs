@@ -397,6 +397,7 @@ impl Caller {
         let mut plot_data_variants = Vec::new();
         let mut plot_data_haplotype_variants = Vec::new();
         let mut plot_data_haplotype_fractions = Vec::new();
+        let mut plot_data_covered_variants = Vec::new();
 
         if &solution == &"lp" {
             for ((genotype_matrix, coverage_matrix), (variant_id, (af, _))) in
@@ -453,18 +454,32 @@ impl Caller {
                                     variant: *variant_id,
                                     vaf: *af,
                                 });
+                                //addition of one more rect plot for coverage matrix in addition to genotype matrix
+                                //create the plot_data_covered_variants using only the variants that have GT:1 for at least one haplotype.
+                                for (j,haplotype) in haplotypes.iter().enumerate(){
+                                    if covered[j as u64]{
+                                        plot_data_covered_variants.push(dataset_haplotype_variants {
+                                            variant: *variant_id,
+                                            haplotype: haplotype.to_string(),
+                                        });
+                                    }
+                                }
                             }
-                        });
+                        }); 
                 });
             file_name.push_str("final_solution.json");
         }
         let plot_data_variants = json!(plot_data_variants);
         let plot_data_haplotype_variants = json!(plot_data_haplotype_variants);
         let plot_data_haplotype_fractions = json!(plot_data_haplotype_fractions);
+        let plot_data_covered_variants = json!(plot_data_covered_variants);
 
+        
         blueprint["datasets"]["variants"] = plot_data_variants;
         blueprint["datasets"]["haplotype_variants"] = plot_data_haplotype_variants;
         blueprint["datasets"]["haplotype_fractions"] = plot_data_haplotype_fractions;
+        blueprint["datasets"]["covered_variants"] = plot_data_covered_variants;
+
         let mut parent = self.outcsv.clone().unwrap();
         parent.pop();
         fs::create_dir_all(&parent)?;

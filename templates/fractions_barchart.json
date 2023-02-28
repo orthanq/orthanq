@@ -7,7 +7,8 @@
   "datasets": {
     "variants": [],
     "haplotype_variants": [],
-    "haplotype_fractions": []
+    "haplotype_fractions": [],
+    "covered_variants": []
   },
   "vconcat":[
     {
@@ -54,6 +55,18 @@
   },
   {
     "data": {"name": "haplotype_variants"},
+    "mark": "rect",
+    "encoding": {
+    "y": {"field": "haplotype", "type": "ordinal", "axis": {"titleFontSize": 20, "labelFontSize": 16}},
+    "x": {"field": "variant", "type": "ordinal", "axis": {"titleFontSize": 20, "labels": true}},
+    "color": {
+      "field": "haplotype",
+      "scale": {"scheme": "category20"}
+    }
+    }
+  },
+  {
+    "data": {"name": "covered_variants"},
     "mark": "rect",
     "encoding": {
     "y": {"field": "haplotype", "type": "ordinal", "axis": {"titleFontSize": 20, "labelFontSize": 16}},
