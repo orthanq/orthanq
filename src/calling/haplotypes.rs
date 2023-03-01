@@ -456,16 +456,18 @@ impl Caller {
                                 });
                                 //addition of one more rect plot for coverage matrix in addition to genotype matrix
                                 //create the plot_data_covered_variants using only the variants that have GT:1 for at least one haplotype.
-                                for (j,haplotype) in haplotypes.iter().enumerate(){
-                                    if covered[j as u64]{
-                                        plot_data_covered_variants.push(dataset_haplotype_variants {
-                                            variant: *variant_id,
-                                            haplotype: haplotype.to_string(),
-                                        });
+                                for (j, haplotype) in haplotypes.iter().enumerate() {
+                                    if covered[j as u64] {
+                                        plot_data_covered_variants.push(
+                                            dataset_haplotype_variants {
+                                                variant: *variant_id,
+                                                haplotype: haplotype.to_string(),
+                                            },
+                                        );
                                     }
                                 }
                             }
-                        }); 
+                        });
                 });
             file_name.push_str("final_solution.json");
         }
@@ -474,7 +476,6 @@ impl Caller {
         let plot_data_haplotype_fractions = json!(plot_data_haplotype_fractions);
         let plot_data_covered_variants = json!(plot_data_covered_variants);
 
-        
         blueprint["datasets"]["variants"] = plot_data_variants;
         blueprint["datasets"]["haplotype_variants"] = plot_data_haplotype_variants;
         blueprint["datasets"]["haplotype_fractions"] = plot_data_haplotype_fractions;
