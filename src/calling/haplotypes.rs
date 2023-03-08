@@ -17,7 +17,7 @@ use quick_xml::events::Event;
 use quick_xml::reader::Reader as xml_reader;
 use rand::prelude::*;
 use rand_xoshiro::Xoshiro256Plus;
-use rust_htslib::bcf::{self, record::GenotypeAllele::Unphased, Read};
+use rust_htslib::bcf::{self, record::GenotypeAllele::{Unphased, Phased}, Read};
 use serde::Serialize;
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap};
@@ -727,8 +727,9 @@ impl HaplotypeVariants {
                 let mut matrices = BTreeMap::new();
                 for (index, haplotype) in header.samples().iter().enumerate() {
                     let haplotype = Haplotype(str::from_utf8(haplotype).unwrap().to_string());
-                    for gta in gts.get(index).iter() {
-                        if *gta == Unphased(1) {
+                    //generate phased genotypes.
+                    for gta in gts.get(index).iter().skip(1) {//maternal and paternal gts will be the same in the vcf i.e. 0|0 and 1|1
+                        if *gta == Unphased(1) || *gta == Phased(1){
                             matrices.insert(
                                 haplotype.clone(),
                                 (VariantStatus::Present, loci[index] == &[1]),

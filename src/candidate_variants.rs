@@ -757,15 +757,15 @@ impl Caller {
             //Create VCF header
             let mut header = Header::new();
             //push contig names to the header.
-            header.push_record(br#"##contig=<ID=1>"#);
-            header.push_record(br#"##contig=<ID=6>"#);
-            header.push_record(br#"##contig=<ID=7>"#);
-            header.push_record(br#"##contig=<ID=8>"#);
-            header.push_record(br#"##contig=<ID=9>"#);
-            header.push_record(br#"##contig=<ID=11>"#);
-            header.push_record(br#"##contig=<ID=16>"#);
-            header.push_record(br#"##contig=<ID=X>"#);
-
+            header.push_record(br#"##contig=<ID=chr1>"#);
+            header.push_record(br#"##contig=<ID=chr6>"#);
+            header.push_record(br#"##contig=<ID=chr7>"#);
+            header.push_record(br#"##contig=<ID=chr8>"#);
+            header.push_record(br#"##contig=<ID=chr9>"#);
+            header.push_record(br#"##contig=<ID=chr11>"#);
+            header.push_record(br#"##contig=<ID=chr16>"#);
+            header.push_record(br#"##contig=<ID=chrX>"#);
+            
             //push field names to the header.
             let header_gt_line = r#"##FORMAT=<ID=GT,Number=1,Type=String,Description="Variant is present in the haplotype (1) or not (0).">"#;
             header.push_record(header_gt_line.as_bytes());
