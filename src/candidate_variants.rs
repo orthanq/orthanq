@@ -776,7 +776,7 @@ impl Caller {
             for sample_name in variant_table.get_column_names().iter().skip(2) {
                 header.push_sample(sample_name.as_bytes());
             }
-            //fs::create_dir_all(self.output.as_ref().unwrap())?;
+            fs::create_dir_all(self.output.as_ref().unwrap())?;
             let mut vcf = Writer::from_path(
                 format!(
                     "{}.vcf",
@@ -822,7 +822,9 @@ impl Caller {
                         .nth(row_index)
                         .unwrap()
                         .unwrap();
-                    let gt = GenotypeAllele::Unphased(gt.try_into().unwrap());
+                    let gt = GenotypeAllele::Phased(gt.try_into().unwrap());
+                    //vg requires the candidate variants phased, so make 0 -> 0/0 and 1 -> 0/1
+                    all_gt.push(gt);
                     all_gt.push(gt);
                 }
                 record.push_genotypes(&all_gt).unwrap();
