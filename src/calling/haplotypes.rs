@@ -398,6 +398,7 @@ impl Caller {
         let mut plot_data_haplotype_variants = Vec::new();
         let mut plot_data_haplotype_fractions = Vec::new();
         let mut plot_data_covered_variants = Vec::new();
+        let mut plot_data_dataset_afd = Vec::new();
 
         if &solution == &"lp" {
             for ((genotype_matrix, coverage_matrix), (variant_id, (af, _))) in
@@ -466,6 +467,17 @@ impl Caller {
                                         );
                                     }
                                 }
+
+                                //also add the heatmap for afd below the covered panels
+                                for (allele_freq, prob) in afd.iter(){
+                                    plot_data_dataset_afd.push(
+                                        dataset_afd {
+                                            variant: *variant_id,
+                                            allele_freq: *allele_freq,
+                                            probability: prob.clone()
+                                        }
+                                    )
+                                }
                             }
                         });
                 });
@@ -475,11 +487,13 @@ impl Caller {
         let plot_data_haplotype_variants = json!(plot_data_haplotype_variants);
         let plot_data_haplotype_fractions = json!(plot_data_haplotype_fractions);
         let plot_data_covered_variants = json!(plot_data_covered_variants);
+        let plot_data_dataset_afd = json!(plot_data_dataset_afd);
 
         blueprint["datasets"]["variants"] = plot_data_variants;
         blueprint["datasets"]["haplotype_variants"] = plot_data_haplotype_variants;
         blueprint["datasets"]["haplotype_fractions"] = plot_data_haplotype_fractions;
         blueprint["datasets"]["covered_variants"] = plot_data_covered_variants;
+        blueprint["datasets"]["allele_frequency_distribution"] = plot_data_dataset_afd;
 
         let mut parent = self.outcsv.clone().unwrap();
         parent.pop();
@@ -586,6 +600,13 @@ pub(crate) struct dataset_haplotype_variants {
 pub(crate) struct dataset_haplotype_fractions {
     haplotype: String,
     fraction: AlleleFreq,
+}
+
+#[derive(Serialize, Debug)]
+pub(crate) struct dataset_afd {
+    variant: VariantID,
+    allele_freq: AlleleFreq,
+    probability: f64,
 }
 
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]

@@ -400,6 +400,8 @@ impl Caller {
                 //11 130108343 T G: 5
                 //then it should be converted to the following (the length should be the same length with the MNV):
                 //11 130108342 ATA AGA: 5
+                //a bug: 6 31356181 T G AND 6 31356181 TTG GTC -> 6 31356181 T G is not removed
+                //here only the haplotypes that are not common with the MNV should stay
                 let mut counter = 0; //31356226 TC	AG
                 let mut query_pos = pos.clone();
                 for (i, (r, a)) in ref_seq.chars().zip(alt_seq.chars()).enumerate() {
@@ -437,7 +439,7 @@ impl Caller {
                                 r.to_string(),
                                 a.to_string(),
                             )); //first, remove the SNV -> 11 130108343 T G: 5
-                                //second, encode the correct MNV -> 11 130108342 ATA AGA: 5
+                                //second, encode the correct MNV -> 11 130108342 ATA AGA: 5 !FOR! only the differing (nonmatching) haplotypes that have the SNV. 
                             let ref_seq_combined = &reference_genome
                                 .fetch_seq_string(chrom, (pos) - 1, (pos + ref_seq.len() - 1) - 1)
                                 .unwrap();
@@ -459,7 +461,7 @@ impl Caller {
                                     ref_seq_combined.clone(),
                                     alt_seq_combined.clone(),
                                 ),
-                                queried_haplotypes.clone(),
+                                not_matching.clone(),
                             );
                         }
                     }

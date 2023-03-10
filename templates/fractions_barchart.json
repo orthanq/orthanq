@@ -8,7 +8,8 @@
     "variants": [],
     "haplotype_variants": [],
     "haplotype_fractions": [],
-    "covered_variants": []
+    "covered_variants": [],
+    "allele_frequency_distribution": []
   },
   "vconcat":[
     {
@@ -75,6 +76,29 @@
       "field": "haplotype",
       "scale": {"scheme": "category20"}
     }
+    }
+  },
+  {
+    "data": {"name": "allele_frequency_distribution"},
+    "mark": "rect",
+    "encoding": {
+      "x": {
+        "field": "variant",
+        "type": "ordinal",
+        "title": "Variant"
+      },
+      "y": {
+        "field": "allele_freq",
+        "type": "ordinal",
+        "title": "Allele frequency"
+      },
+      "color": {
+        "field": "probability",
+        "type": "quantitative",
+        "legend": {
+          "title": null
+        }
+      }
     }
   }
 ]
