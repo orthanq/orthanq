@@ -402,6 +402,9 @@ impl Caller {
                 //11 130108342 ATA AGA: 5
                 //a bug: 6 31356181 T G AND 6 31356181 TTG GTC -> 6 31356181 T G is not removed
                 //here only the haplotypes that are not common with the MNV should stay
+                //a bug: chr6	31356864	3974	TGG	AGG
+                //       chr6	31356864	3975	TGG	AGT
+                //variant 3974 should be encoded only for the  
                 let mut counter = 0; //31356226 TC	AG
                 let mut query_pos = pos.clone();
                 for (i, (r, a)) in ref_seq.chars().zip(alt_seq.chars()).enumerate() {
@@ -453,16 +456,40 @@ impl Caller {
                                     }
                                 },
                             );
-
-                            modified_candidate_variants.insert(
-                                (
-                                    chrom.clone(),
-                                    pos.clone(),
-                                    ref_seq_combined.clone(),
-                                    alt_seq_combined.clone(),
-                                ),
-                                not_matching.clone(),
-                            );
+                            //if the mnv is already encoded because another mnv was already processed in the current iteration .e.g:
+                            //chr6	31356864	3973	TGG	AGC (1)
+                            //chr6	31356864	3974	TGG	AGG (2)
+                            //because of (1), (2) was already created with the not-matching haplotypes
+                            //chr6	31356864	3975	TGG	AGT (3)
+                            //when the (3) is then processed, the (2) would be recreated and inserted, to only contain
+                            //the common ones of (2).
+                            let mut not_matching_clone = not_matching.clone();
+                            if let Some(already_inserted_haplotypes) = modified_candidate_variants.get(&(chrom.to_string(),
+                            *pos,
+                            ref_seq_combined.to_string(),
+                            alt_seq_combined.to_string())) {
+                                not_matching_clone.retain(|&h| already_inserted_haplotypes.contains(&h));
+                            }
+                            if !not_matching_clone.is_empty(){//there are cases where there are many mnvs in the same location, and the encoded MNV in the previous iterations do not belong to the mnv anymore.
+                                modified_candidate_variants.insert(
+                                    (
+                                        chrom.clone(),
+                                        pos.clone(),
+                                        ref_seq_combined.clone(),
+                                        alt_seq_combined.clone(),
+                                    ),
+                                    not_matching_clone.clone(),
+                                );
+                            } else { //remove the MNV that no haplotype contains.
+                                modified_candidate_variants.remove(
+                                    &(
+                                        chrom.clone(),
+                                        pos.clone(),
+                                        ref_seq_combined.clone(),
+                                        alt_seq_combined.clone(),
+                                    )
+                                );
+                            }
                         }
                     }
                     query_pos = pos + counter;
@@ -641,22 +668,22 @@ impl Caller {
                 //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
                 allele_digit_table
                     .insert(id.to_string(), format!("{}:{}", splitted[0], splitted[1]));
-            } else {
+            } else if splitted.len() < 4 {
                 allele_digit_table.insert(
                     id.to_string(),
                     format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]),
                 );
                 //first two
             }
-            // else {
-            //     allele_digit_table.insert(
-            //         id.to_string(),
-            //         format!(
-            //             "{}:{}:{}:{}",
-            //             splitted[0], splitted[1], splitted[2], splitted[3]
-            //         ),
-            //     );
-            // }
+            else {
+                allele_digit_table.insert(
+                    id.to_string(),
+                    format!(
+                        "{}:{}:{}:{}",
+                        splitted[0], splitted[1], splitted[2], splitted[3]
+                    ),
+                );
+            }
         }
 
         let mut new_df = DataFrame::new(vec![
