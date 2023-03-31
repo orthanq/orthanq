@@ -26,14 +26,17 @@ use std::error::Error;
 use std::path::Path;
 use std::{fs, fs::File};
 use std::{path::PathBuf, str};
+use hdf5;
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
 pub struct Caller {
     haplotype_variants: bcf::Reader,
     variant_calls: bcf::Reader,
+    hdf5_reader: hdf5::File,
     xml: PathBuf,
     max_haplotypes: i64,
+    min_norm_counts: f64,
     outcsv: Option<PathBuf>,
     prior: String,
 }
@@ -59,6 +62,22 @@ impl Caller {
         dbg!(&final_haplotypes); //the final ranking of haplotypes
         let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
+        // //kallisto experimentation
+        // //prepare KallistoEstimates for only the haplotypes come from LP
+        // let kallisto_estimates = KallistoEstimates::new(&self.hdf5_reader, self.min_norm_counts, &final_haplotypes)?;
+        // dbg!(&kallisto_estimates);
+        // let kallisto_estimates = kallisto_estimates
+        //  .select_haplotypes(4)
+        //  .unwrap();
+        // dbg!(&kallisto_estimates);
+        // let kallisto_haplotypes = kallisto_estimates.keys().cloned().collect();
+        // let haplotype_variants =
+        // haplotype_variants.find_plausible_haplotypes(&variant_calls, &kallisto_haplotypes)?;
+        // let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
+        // let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
+        // dbg!(&final_haplotypes); //the final ranking of haplotypes
+        // let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
+
         //1-) model computation for chosen prior
         let upper_bond = NotNan::new(1.0).unwrap();
         let model = Model::new(
@@ -66,6 +85,7 @@ impl Caller {
             Prior::new(self.prior.clone()),
             Posterior::new(),
         );
+        // let data = Data::new(candidate_matrix.clone(), variant_calls.clone(), kallisto_estimates.values().cloned().collect());
         let data = Data::new(candidate_matrix.clone(), variant_calls.clone());
         let computed_model = model.compute_from_marginal(
             &Marginal::new(final_haplotypes.len(), upper_bond, self.prior.clone()),

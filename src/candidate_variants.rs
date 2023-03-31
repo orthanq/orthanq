@@ -50,7 +50,7 @@ impl Caller {
         // self.write_to_fasta(&confirmed_alleles)?;
 
         //align and sort
-        // self.alignment()?;
+        self.alignment()?;
 
         //1) first read the hla alleles for the locus and the reference genome.
         let mut sam = bam::Reader::from_path(&"alignment_sorted.sam").unwrap();
@@ -554,7 +554,7 @@ impl Caller {
         //construct the first array having the same number of rows and columns as candidate variants map and locate the genotypes for each haplotype.
         let mut genotypes_array =
             Array2::<i64>::zeros((modified_candidate_variants_final.len(), j));
-        modified_candidate_variants_final
+            modified_candidate_variants_final
             .iter()
             .enumerate()
             .for_each(|(i, (_, haplotype_indices))| {
@@ -786,14 +786,14 @@ impl Caller {
             //Create VCF header
             let mut header = Header::new();
             //push contig names to the header.
-            header.push_record(br#"##contig=<ID=chr1>"#);
-            header.push_record(br#"##contig=<ID=chr6>"#);
-            header.push_record(br#"##contig=<ID=chr7>"#);
-            header.push_record(br#"##contig=<ID=chr8>"#);
-            header.push_record(br#"##contig=<ID=chr9>"#);
-            header.push_record(br#"##contig=<ID=chr11>"#);
-            header.push_record(br#"##contig=<ID=chr16>"#);
-            header.push_record(br#"##contig=<ID=chrX>"#);
+            header.push_record(br#"##contig=<ID=1>"#);
+            header.push_record(br#"##contig=<ID=6>"#);
+            header.push_record(br#"##contig=<ID=7>"#);
+            header.push_record(br#"##contig=<ID=8>"#);
+            header.push_record(br#"##contig=<ID=9>"#);
+            header.push_record(br#"##contig=<ID=11>"#);
+            header.push_record(br#"##contig=<ID=16>"#);
+            header.push_record(br#"##contig=<ID=X>"#);
             
             //push field names to the header.
             let header_gt_line = r#"##FORMAT=<ID=GT,Number=1,Type=String,Description="Variant is present in the haplotype (1) or not (0).">"#;
@@ -936,6 +936,9 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
     let mut alleles_indices: Vec<i32> = Vec::new();
     let mut groups_indices: Vec<i32> = Vec::new();
     let mut counter = 0;
+    // let mut txt = Vec::new();
+    // let mut start_end = Vec::new();
+    // let mut feature_names = Vec::new();
     loop {
         match reader.read_event_into(&mut buf) {
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
@@ -962,7 +965,17 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                     ); //index 1 holds the allele name
                     alleles_indices.push(counter.clone());
                     counter += 1;
-                }
+                },
+                // b"feature" => {
+                //     feature_names.push(
+                //         e.attributes()
+                //             .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
+                //             .collect::<Vec<_>>()[2]
+                //             .as_ref()
+                //             .unwrap()
+                //             .to_string(),
+                //     ); //index 0 holds the allele id
+                // }
                 _ => (),
             },
             Ok(Event::Empty(e)) => match e.name().as_ref() {
@@ -986,13 +999,40 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                             .to_string(), //index 0 holds the status info
                     );
                 }
+                // b"SequenceCoordinates" => {
+                //     let start = start_end.push((e.attributes()
+                //             .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
+                //             .collect::<Vec<_>>()[0]
+                //             .as_ref()
+                //             .unwrap()
+                //             .to_string(),
+                //             e.attributes()
+                //             .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
+                //             .collect::<Vec<_>>()[1]
+                //             .as_ref()
+                //             .unwrap()
+                //             .to_string()
+                //     ));
+                // }
+
                 _ => (),
             },
+            // Ok(Event::Text(e)) => {
+            //     let text_name = e.unescape().unwrap().into_owned();
+            //     txt.push(text_name);
+            // }
+            
             _ => (),
         }
         // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
         buf.clear();
     }
+    // let only_seq = txt.iter().filter(|&t|t.len()>1000).map(|t|t.clone()).collect::<Vec<String>>();
+    // dbg!(&txt);
+    // dbg!(&start_end.len());
+    // dbg!(&feature_names.len());
+    // dbg!(&only_seq.len());
+
     assert_eq!(alleles.len(), confirmed.len());
     //create a map for allele ids and allele names
     let mut unconfirmed_alleles = alleles

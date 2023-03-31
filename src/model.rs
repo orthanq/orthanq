@@ -9,7 +9,7 @@ use derive_new::new;
 use ordered_float::NotNan;
 use statrs::function::beta::ln_beta;
 use std::collections::HashMap;
-use std::mem;
+use std::mem;   
 
 pub(crate) type AlleleFreq = NotNan<f64>;
 
@@ -105,6 +105,7 @@ impl model::Marginal for Marginal {
 pub(crate) struct Data {
     pub candidate_matrix: CandidateMatrix,
     pub variant_calls: VariantCalls,
+    // pub kallisto_estimates: Vec<KallistoEstimate>
 }
 
 #[derive(Debug, new)]
@@ -115,33 +116,35 @@ impl model::Likelihood<Cache> for Likelihood {
     type Data = Data;
 
     fn compute(&self, event: &Self::Event, data: &Self::Data, payload: &mut Cache) -> LogProb {
+        // self.compute_kallisto(event, data, payload) + //comment it out for now
         self.compute_varlociraptor(event, data, payload)
     }
 }
 
 impl Likelihood {
-    // fn compute_kallisto(
-    //     &self,
-    //     event: &HaplotypeFractions,
-    //     data: &Data,
-    //     _cache: &mut Cache,
-    // ) -> LogProb {
-    //     // TODO compute likelihood using neg_binom on the counts and dispersion
-    //     // in the data and the fractions in the events.
-    //     //Later: use the cache to avoid redundant computations.
-    //     event
-    //         .iter()
-    //         .zip(data.kallisto_estimates.iter())
-    //         .map(|(fraction, estimate)| {
-    //             neg_binom(
-    //                 *estimate.count,
-    //                 NotNan::into_inner(*fraction),
-    //                 *estimate.dispersion,
-    //             )
-    //         })
-    //         .sum()
-    //     //LogProb::ln_one()
-    // }
+    fn compute_kallisto(
+        &self,
+        event: &HaplotypeFractions,
+        data: &Data,
+        _cache: &mut Cache,
+    ) -> LogProb {
+        // TODO compute likelihood using neg_binom on the counts and dispersion
+        // in the data and the fractions in the events.
+        //Later: use the cache to avoid redundant computations.
+        // event
+        //     .iter()
+        //     .zip(data.kallisto_estimates.iter())
+        //     .map(|(fraction, estimate)| {
+        //         dbg!(&estimate, &fraction);
+        //         neg_binom(
+        //             *estimate.count,
+        //             NotNan::into_inner(*fraction),
+        //             *estimate.dispersion,
+        //         )
+        //     })
+        //     .sum();
+        LogProb::ln_one()
+    }
 
     fn compute_varlociraptor(
         &self,
@@ -290,6 +293,6 @@ pub(crate) fn neg_binom(x: f64, mu: f64, theta: f64) -> LogProb {
     let b = ln_beta(x + 1.0, n);
     if p1 < p2 {
         mem::swap(&mut p1, &mut p2);
-    }
+    }    
     LogProb((p1 - b + p2) - (x + n).ln())
 }
