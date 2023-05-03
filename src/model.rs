@@ -1,5 +1,5 @@
 use crate::calling::haplotypes::{
-    AlleleFreqDist, CandidateMatrix, KallistoEstimate, VariantCalls, VariantStatus,
+    AlleleFreqDist, CandidateMatrix, KallistoEstimate, PriorTypes, VariantCalls, VariantStatus,
 };
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb, Prob};
@@ -9,7 +9,7 @@ use derive_new::new;
 use ordered_float::NotNan;
 use statrs::function::beta::ln_beta;
 use std::collections::HashMap;
-use std::mem;   
+use std::mem;
 
 pub(crate) type AlleleFreq = NotNan<f64>;
 
@@ -20,7 +20,7 @@ pub(crate) struct HaplotypeFractions(#[deref] Vec<AlleleFreq>);
 pub(crate) struct Marginal {
     n_haplotypes: usize,
     upper_bond: NotNan<f64>,
-    prior_info: String,
+    prior_info: PriorTypes,
 }
 
 impl Marginal {
@@ -52,7 +52,7 @@ impl Marginal {
                     last_if
                 } else {
                     //check prior info
-                    if self.prior_info == "diploid" {
+                    if self.prior_info == PriorTypes::Diploid {
                         //sum 0.0, 0.5 and 1.0
                         let mut probs = Vec::new();
                         let mut diploid_points = |point, probs: &mut Vec<_>| {
@@ -70,7 +70,9 @@ impl Marginal {
                         diploid_points(NotNan::new(0.5).unwrap(), &mut probs);
                         diploid_points(NotNan::new(1.0).unwrap(), &mut probs);
                         LogProb::ln_sum_exp(&probs)
-                    } else if self.prior_info == "uniform" {
+                    } else if self.prior_info == PriorTypes::Uniform
+                        || self.prior_info == PriorTypes::DiploidSubclonal
+                    {
                         adaptive_integration::ln_integrate_exp(
                             density,
                             NotNan::new(0.0).unwrap(),
@@ -78,7 +80,7 @@ impl Marginal {
                             NotNan::new(0.1).unwrap(),
                         )
                     } else {
-                        panic!("uniform or prior should be selected")
+                        panic!("uniform, prior or diploid-subclonal must be selected")
                     }
                 }
             }
@@ -199,14 +201,14 @@ impl Likelihood {
 
 #[derive(Debug, new)]
 pub(crate) struct Prior {
-    prior: String,
+    prior: PriorTypes,
 }
 
 impl model::Prior for Prior {
     type Event = HaplotypeFractions;
 
     fn compute(&self, event: &Self::Event) -> LogProb {
-        if self.prior == "diploid" {
+        if self.prior == PriorTypes::Diploid {
             let mut prior_prob = LogProb::ln_one();
             event.iter().for_each(|fraction| {
                 if *fraction == NotNan::new(0.0).unwrap() {
@@ -220,6 +222,18 @@ impl model::Prior for Prior {
                 }
             });
             prior_prob
+        } else if self.prior == PriorTypes::DiploidSubclonal {
+            //diploid subclonal prior: don't allow for more than 4 fractions bearing greater than 0.0
+            if event
+                .iter()
+                .filter(|&n| n > &NotNan::new(0.0).unwrap())
+                .count()
+                > 4
+            {
+                LogProb::ln_one()
+            } else {
+                LogProb::ln_zero()
+            }
         } else {
             LogProb::ln_one()
         }
@@ -293,6 +307,6 @@ pub(crate) fn neg_binom(x: f64, mu: f64, theta: f64) -> LogProb {
     let b = ln_beta(x + 1.0, n);
     if p1 < p2 {
         mem::swap(&mut p1, &mut p2);
-    }    
+    }
     LogProb((p1 - b + p2) - (x + n).ln())
 }

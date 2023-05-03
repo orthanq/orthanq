@@ -9,24 +9,30 @@ use derive_new::new;
 use good_lp::IntoAffineExpression;
 use good_lp::*;
 use good_lp::{variable, Expression};
+use hdf5;
 use linfa::prelude::*;
 use linfa_clustering::KMeans;
 use ndarray::prelude::*;
 use ordered_float::NotNan;
+use ordered_float::OrderedFloat;
 use quick_xml::events::Event;
 use quick_xml::reader::Reader as xml_reader;
 use rand::prelude::*;
 use rand_xoshiro::Xoshiro256Plus;
-use rust_htslib::bcf::{self, record::GenotypeAllele::{Unphased, Phased}, Read};
+use rust_htslib::bcf::{
+    self,
+    record::GenotypeAllele::{Phased, Unphased},
+    Read,
+};
 use serde::Serialize;
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::error::Error;
 use std::path::Path;
+use std::str::FromStr;
 use std::{fs, fs::File};
 use std::{path::PathBuf, str};
-use hdf5;
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
@@ -39,6 +45,26 @@ pub struct Caller {
     min_norm_counts: f64,
     outcsv: Option<PathBuf>,
     prior: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum PriorTypes {
+    Diploid,
+    DiploidSubclonal,
+    Uniform,
+}
+
+impl FromStr for PriorTypes {
+    type Err = ();
+
+    fn from_str(input: &str) -> Result<PriorTypes, Self::Err> {
+        match input {
+            "uniform" => Ok(PriorTypes::Uniform),
+            "diploid" => Ok(PriorTypes::Diploid),
+            "diploid-subclonal" => Ok(PriorTypes::DiploidSubclonal),
+            _ => Err(()),
+        }
+    }
 }
 
 impl Caller {
@@ -62,6 +88,10 @@ impl Caller {
         dbg!(&final_haplotypes); //the final ranking of haplotypes
         let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
+        //for diploid-subclonal priors, max N number of haplotypes should be selected
+        // let final_haplotypes = final_haplotypes[0..5].to_vec();
+        //
+
         // //kallisto experimentation
         // //prepare KallistoEstimates for only the haplotypes come from LP
         // let kallisto_estimates = KallistoEstimates::new(&self.hdf5_reader, self.min_norm_counts, &final_haplotypes)?;
@@ -79,16 +109,17 @@ impl Caller {
         // let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
         //1-) model computation for chosen prior
+        let prior = PriorTypes::from_str(&self.prior).unwrap();
         let upper_bond = NotNan::new(1.0).unwrap();
         let model = Model::new(
             Likelihood::new(),
-            Prior::new(self.prior.clone()),
+            Prior::new(prior.clone()),
             Posterior::new(),
         );
         // let data = Data::new(candidate_matrix.clone(), variant_calls.clone(), kallisto_estimates.values().cloned().collect());
         let data = Data::new(candidate_matrix.clone(), variant_calls.clone());
         let computed_model = model.compute_from_marginal(
-            &Marginal::new(final_haplotypes.len(), upper_bond, self.prior.clone()),
+            &Marginal::new(final_haplotypes.len(), upper_bond, prior),
             &data,
         );
         let mut event_posteriors = computed_model.event_posteriors();
@@ -374,34 +405,51 @@ impl Caller {
 
         //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list
         //and optionally, sort by hamming distance, take the closest x additional alleles according to 'permitted'
-        let mut extended_haplotypes = Vec::new();
-        lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
-            let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
-            haplotype_dict
-                .iter()
-                .for_each(|(haplotype, haplotype_variants)| {
-                    if &variants == haplotype_variants {
-                        extended_haplotypes.push(haplotype.clone());
-                    } else {
-                        let permitted: i64 = 3; //this number should be discussed.
-                        let mut difference = vec![];
-                        for i in haplotype_variants.iter() {
-                            if !variants.contains(&i) {
-                                difference.push(i);
-                            }
-                        }
-                        if (difference.len() as i64 <= permitted)
-                            && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
-                                <= permitted)
-                        {
-                            extended_haplotypes.push(haplotype.clone());
-                        }
-                    }
-                });
-        });
-        dbg!(&lp_haplotypes);
-        dbg!(&extended_haplotypes);
-        Ok(extended_haplotypes)
+        // let mut extended_haplotypes = Vec::new();
+        // lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
+        //     let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
+        //     haplotype_dict
+        //         .iter()
+        //         .for_each(|(haplotype, haplotype_variants)| {
+        //             if &variants == haplotype_variants {
+        //                 extended_haplotypes.push(haplotype.clone());
+        //             } else {
+        //                 let permitted: i64 = 3; //this number should be discussed.
+        //                 let mut difference = vec![];
+        //                 for i in haplotype_variants.iter() {
+        //                     if !variants.contains(&i) {
+        //                         difference.push(i);
+        //                     }
+        //                 }
+        //                 if (difference.len() as i64 <= permitted)
+        //                     && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
+        //                         <= permitted)
+        //                 {
+        //                     extended_haplotypes.push(haplotype.clone());
+        //                 }
+        //             }
+        //         });
+        // });
+        //diploid-subclonal max N haplotypes
+        let max_haplotypes = 5;
+        let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
+        let lp_values_original: Vec<_> = lp_haplotypes.values().cloned().collect();
+        let mut lp_values: Vec<_> = lp_haplotypes.values().cloned().collect();
+        lp_values.sort_by(|a, b| OrderedFloat(*b).cmp(&OrderedFloat(*a)));
+        let mut selected_haplotypes = Vec::new();
+        dbg!(&lp_values);
+        for x in lp_values.iter() {
+            for (i, y) in lp_values_original.iter().enumerate() {
+                if x == y {
+                    selected_haplotypes.push(lp_keys[i].clone());
+                }
+            }
+        }
+        selected_haplotypes = selected_haplotypes[0..max_haplotypes].to_vec();
+        dbg!(&selected_haplotypes);
+
+        // dbg!(&extended_haplotypes);
+        Ok(selected_haplotypes)
     }
     fn plot_solution(
         &self,
@@ -489,14 +537,12 @@ impl Caller {
                                 }
 
                                 //also add the heatmap for afd below the covered panels
-                                for (allele_freq, prob) in afd.iter(){
-                                    plot_data_dataset_afd.push(
-                                        dataset_afd {
-                                            variant: *variant_id,
-                                            allele_freq: *allele_freq,
-                                            probability: prob.clone()
-                                        }
-                                    )
+                                for (allele_freq, prob) in afd.iter() {
+                                    plot_data_dataset_afd.push(dataset_afd {
+                                        variant: *variant_id,
+                                        allele_freq: *allele_freq,
+                                        probability: prob.clone(),
+                                    })
                                 }
                             }
                         });
@@ -769,8 +815,9 @@ impl HaplotypeVariants {
                 for (index, haplotype) in header.samples().iter().enumerate() {
                     let haplotype = Haplotype(str::from_utf8(haplotype).unwrap().to_string());
                     //generate phased genotypes.
-                    for gta in gts.get(index).iter().skip(1) {//maternal and paternal gts will be the same in the vcf i.e. 0|0 and 1|1
-                        if *gta == Unphased(1) || *gta == Phased(1){
+                    for gta in gts.get(index).iter().skip(1) {
+                        //maternal and paternal gts will be the same in the vcf i.e. 0|0 and 1|1
+                        if *gta == Unphased(1) || *gta == Phased(1) {
                             matrices.insert(
                                 haplotype.clone(),
                                 (VariantStatus::Present, loci[index] == &[1]),

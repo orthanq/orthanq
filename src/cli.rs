@@ -112,7 +112,7 @@ pub enum Orthanq {
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
         )]
         output: Option<PathBuf>,
-        #[structopt(long, help = "Choose uniform or diploid")]
+        #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
         prior: String,
     },
 }
