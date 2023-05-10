@@ -445,7 +445,9 @@ impl Caller {
                 }
             }
         }
-        selected_haplotypes = selected_haplotypes[0..max_haplotypes].to_vec();
+        if max_haplotypes < selected_haplotypes.len(){
+            selected_haplotypes = selected_haplotypes[0..max_haplotypes].to_vec();
+        }
         dbg!(&selected_haplotypes);
 
         // dbg!(&extended_haplotypes);

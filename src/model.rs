@@ -230,9 +230,9 @@ impl model::Prior for Prior {
                 .count()
                 > 4
             {
-                LogProb::ln_one()
-            } else {
                 LogProb::ln_zero()
+            } else {
+                LogProb::ln_one()
             }
         } else {
             LogProb::ln_one()
