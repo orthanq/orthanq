@@ -405,31 +405,32 @@ impl Caller {
 
         //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list
         //and optionally, sort by hamming distance, take the closest x additional alleles according to 'permitted'
-        // let mut extended_haplotypes = Vec::new();
-        // lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
-        //     let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
-        //     haplotype_dict
-        //         .iter()
-        //         .for_each(|(haplotype, haplotype_variants)| {
-        //             if &variants == haplotype_variants {
-        //                 extended_haplotypes.push(haplotype.clone());
-        //             } else {
-        //                 let permitted: i64 = 3; //this number should be discussed.
-        //                 let mut difference = vec![];
-        //                 for i in haplotype_variants.iter() {
-        //                     if !variants.contains(&i) {
-        //                         difference.push(i);
-        //                     }
-        //                 }
-        //                 if (difference.len() as i64 <= permitted)
-        //                     && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
-        //                         <= permitted)
-        //                 {
-        //                     extended_haplotypes.push(haplotype.clone());
-        //                 }
-        //             }
-        //         });
-        // });
+        let mut extended_haplotypes = Vec::new();
+        lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
+            let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
+            haplotype_dict
+                .iter()
+                .for_each(|(haplotype, haplotype_variants)| {
+                    if &variants == haplotype_variants {
+                        extended_haplotypes.push(haplotype.clone());
+                    } else {
+                        let permitted: i64 = 3; //this number should be discussed.
+                        let mut difference = vec![];
+                        for i in haplotype_variants.iter() {
+                            if !variants.contains(&i) {
+                                difference.push(i);
+                            }
+                        }
+                        if (difference.len() as i64 <= permitted)
+                            && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
+                                <= permitted)
+                        {
+                            extended_haplotypes.push(haplotype.clone());
+                        }
+                    }
+                });
+        });
+        dbg!(&lp_haplotypes);
         //diploid-subclonal max N haplotypes
         let max_haplotypes = 5;
         let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
@@ -437,7 +438,6 @@ impl Caller {
         let mut lp_values: Vec<_> = lp_haplotypes.values().cloned().collect();
         lp_values.sort_by(|a, b| OrderedFloat(*b).cmp(&OrderedFloat(*a)));
         let mut selected_haplotypes = Vec::new();
-        dbg!(&lp_values);
         for x in lp_values.iter() {
             for (i, y) in lp_values_original.iter().enumerate() {
                 if x == y {
@@ -448,10 +448,10 @@ impl Caller {
         if max_haplotypes < selected_haplotypes.len(){
             selected_haplotypes = selected_haplotypes[0..max_haplotypes].to_vec();
         }
-        dbg!(&selected_haplotypes);
+        // dbg!(&selected_haplotypes);
 
         // dbg!(&extended_haplotypes);
-        Ok(selected_haplotypes)
+        Ok(lp_keys)
     }
     fn plot_solution(
         &self,

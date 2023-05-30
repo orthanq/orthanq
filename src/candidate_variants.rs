@@ -552,7 +552,7 @@ impl Caller {
         // dbg!(&modified_candidate_variants_final);
 
         //construct the first array having the same number of rows and columns as candidate variants map and locate the genotypes for each haplotype.
-        let mut genotypes_array = Array2::<i64>::zeros((candidate_variants.len(), j));
+        let mut genotypes_array = Array2::<i32>::zeros((candidate_variants.len(), j));
         candidate_variants
             .iter()
             .enumerate()
@@ -563,7 +563,7 @@ impl Caller {
             });
 
         //construct the second array and locate the loci information of variants for each haplotype
-        let mut loci_array = Array2::<i64>::zeros((candidate_variants.len(), j));
+        let mut loci_array = Array2::<i32>::zeros((candidate_variants.len(), j));
         candidate_variants.iter().enumerate().for_each(
             |(i, ((chrom_candidates, pos, _, _), _))| {
                 locations
@@ -662,22 +662,33 @@ impl Caller {
             if splitted.len() < 2 {
                 //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
                 allele_digit_table.insert(id.to_string(), splitted[0].to_string());
-            } else if splitted.len() < 3 {
-                //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
-                allele_digit_table
-                    .insert(id.to_string(), format!("{}:{}", splitted[0], splitted[1]));
-            } else if splitted.len() < 4 {
-                allele_digit_table.insert(
-                    id.to_string(),
-                    format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]),
-                );
-                //first two
-            } else {
+            } 
+            // else if splitted.len() < 3 {
+            //     //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
+            //     allele_digit_table
+            //         .insert(id.to_string(), format!("{}:{}", splitted[0], splitted[1]));
+            // } 
+            // else if splitted.len() < 4 {
+            //     allele_digit_table.insert(
+            //         id.to_string(),
+            //         format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]),
+            //     );
+            //     //first two
+            // } else {
+            //     allele_digit_table.insert(
+            //         id.to_string(),
+            //         format!(
+            //             "{}:{}:{}:{}",
+            //             splitted[0], splitted[1], splitted[2], splitted[3]
+            //         ),
+            //     );
+            // }
+            else {
                 allele_digit_table.insert(
                     id.to_string(),
                     format!(
-                        "{}:{}:{}:{}",
-                        splitted[0], splitted[1], splitted[2], splitted[3]
+                        "{}:{}",
+                        splitted[0], splitted[1]
                     ),
                 );
             }
@@ -693,22 +704,40 @@ impl Caller {
             let protein_level = &allele_digit_table[&column_name.to_string()];
             if new_df.get_column_names().contains(&protein_level.as_str()) {
                 let existing_column = &new_df[protein_level.as_str()];
-                let updated_column = existing_column + &variant_table[*column_name];
-                new_df.with_column(updated_column)?;
+                //take the union of existing and new column
+                // let updated_column = existing_column + &variant_table[*column_name];
+                // dbg!(&updated_column);
+                //instead of getting the union of existing column and updated column, take the intersection
+                let new_haplotype = &variant_table[*column_name];
+                let mut intersection = existing_column.i32()
+                    .unwrap()
+                    .into_iter()
+                    .zip(new_haplotype.i32().unwrap().into_iter())
+                    .map(|(existing, new)| {
+                        if existing == new {
+                            existing.unwrap()
+                        } else {
+                            0
+                        }
+                    })
+                    .collect::<Series>();
+                intersection.rename(&protein_level);
+                dbg!(&intersection);
+                new_df.with_column(intersection)?;
             } else {
                 new_df.replace_or_add(&protein_level, variant_table[*column_name].clone())?;
             }
         }
-        let names: Vec<String> = new_df.get_column_names_owned().iter().cloned().collect();
-        for (column_index, column_name) in names.iter().enumerate().skip(2) {
-            let corrected_column = new_df[column_index]
-                .i64()
-                .unwrap()
-                .into_iter()
-                .map(|num| if num > Some(1) { Some(1) } else { num })
-                .collect::<Series>();
-            new_df.replace_or_add(column_name, corrected_column)?;
-        }
+        // let names: Vec<String> = new_df.get_column_names_owned().iter().cloned().collect();
+        // for (column_index, column_name) in names.iter().enumerate().skip(2) {
+        //     let corrected_column = new_df[column_index]
+        //         .i32()
+        //         .unwrap()
+        //         .into_iter()
+        //         .map(|num| if num > Some(1) { Some(1) } else { num })
+        //         .collect::<Series>();
+        //     new_df.replace_or_add(column_name, corrected_column)?;
+        // }
         Ok(new_df)
     }
 
@@ -842,7 +871,7 @@ impl Caller {
                 let mut all_gt = Vec::new();
                 for column_index in 2..variant_table.width() {
                     let gt = variant_table[column_index]
-                        .i64()
+                        .i32()
                         .unwrap()
                         .into_iter()
                         .nth(row_index)
@@ -860,7 +889,7 @@ impl Caller {
                 for column_index in 2..loci_table.width() {
                     //it doesnt have the ID column so that it starts from 1
                     let c = loci_table[column_index]
-                        .i64()
+                        .i32()
                         .unwrap()
                         .into_iter()
                         .nth(row_index)
