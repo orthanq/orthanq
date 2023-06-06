@@ -662,19 +662,18 @@ impl Caller {
             if splitted.len() < 2 {
                 //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
                 allele_digit_table.insert(id.to_string(), splitted[0].to_string());
-            } 
-            // else if splitted.len() < 3 {
-            //     //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
-            //     allele_digit_table
-            //         .insert(id.to_string(), format!("{}:{}", splitted[0], splitted[1]));
-            // } 
-            // else if splitted.len() < 4 {
-            //     allele_digit_table.insert(
-            //         id.to_string(),
-            //         format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]),
-            //     );
-            //     //first two
-            // } else {
+            } else if splitted.len() < 3 {
+                //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
+                allele_digit_table
+                    .insert(id.to_string(), format!("{}:{}", splitted[0], splitted[1]));
+            } else {
+                allele_digit_table.insert(
+                    id.to_string(),
+                    format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]),
+                );
+                //first two
+            }
+            // else {
             //     allele_digit_table.insert(
             //         id.to_string(),
             //         format!(
@@ -683,15 +682,26 @@ impl Caller {
             //         ),
             //     );
             // }
-            else {
-                allele_digit_table.insert(
-                    id.to_string(),
-                    format!(
-                        "{}:{}",
-                        splitted[0], splitted[1]
-                    ),
-                );
-            }
+            //for two field info
+            // else {
+            //     allele_digit_table.insert(
+            //         id.to_string(),
+            //         format!(
+            //             "{}:{}",
+            //             splitted[0], splitted[1]
+            //         ),
+            //     );
+            // }
+            //for three field info
+            // else {
+            //     allele_digit_table.insert(
+            //         id.to_string(),
+            //         format!(
+            //             "{}:{}:{}",
+            //             splitted[0], splitted[1], splitted[2]
+            //         ),
+            //     );
+            // }
         }
 
         let mut new_df = DataFrame::new(vec![
@@ -709,7 +719,8 @@ impl Caller {
                 // dbg!(&updated_column);
                 //instead of getting the union of existing column and updated column, take the intersection
                 let new_haplotype = &variant_table[*column_name];
-                let mut intersection = existing_column.i32()
+                let mut intersection = existing_column
+                    .i32()
                     .unwrap()
                     .into_iter()
                     .zip(new_haplotype.i32().unwrap().into_iter())

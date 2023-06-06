@@ -45,6 +45,7 @@ pub struct Caller {
     min_norm_counts: f64,
     outcsv: Option<PathBuf>,
     prior: String,
+    common_variants: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -70,7 +71,7 @@ impl FromStr for PriorTypes {
 impl Caller {
     pub fn call(&mut self) -> Result<()> {
         //Step 1: Prepare data and compute the model
-        let variant_calls = VariantCalls::new(&mut self.variant_calls)?;
+        let mut variant_calls = VariantCalls::new(&mut self.variant_calls)?;
         let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
         //dbg!(&variant_ids);
         let mut haplotype_variants =
@@ -79,13 +80,32 @@ impl Caller {
         let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
         dbg!(&haplotypes);
         let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
+        //find the haplotypes to prioritize
         let lp_haplotypes = self.linear_program(&candidate_matrix, &haplotypes, &variant_calls)?;
         dbg!(&lp_haplotypes);
+        //
         let haplotype_variants =
-            haplotype_variants.find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?;
+            haplotype_variants.find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?; //fix: find_plausible haplotypes should only contain the list of "haplotypes" given as parameter
+        dbg!(&haplotype_variants);
+        //find lp_haplotypes sorted the same as in haplotype_variants
         let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
         let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-        dbg!(&final_haplotypes); //the final ranking of haplotypes
+        dbg!(&final_haplotypes);
+
+        if self.common_variants {
+            //include only common variants if common_variants is true
+            //this happens by first finding the common variants and then filtering
+            //haplotype_variants and variant_calls to only contain those variants
+            let common_variants =
+                haplotype_variants.find_common_variants(&variant_calls, &final_haplotypes)?;
+            let mut haplotype_variants =
+                haplotype_variants.filter_haplotype_variants(&common_variants)?;
+            let variant_calls = variant_calls.filter_variant_calls(&common_variants)?;
+            dbg!(&common_variants);
+            dbg!(&haplotype_variants);
+            dbg!(&variant_calls);
+        }
+        //construct candidate matrix
         let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
         //for diploid-subclonal priors, max N number of haplotypes should be selected
@@ -411,7 +431,8 @@ impl Caller {
             haplotype_dict
                 .iter()
                 .for_each(|(haplotype, haplotype_variants)| {
-                    if &variants == haplotype_variants {
+                    if &variants == haplotype_variants && !extended_haplotypes.contains(haplotype) {
+                        //fix: the last operand '&&' is required to avoid duplicate additions
                         extended_haplotypes.push(haplotype.clone());
                     } else {
                         let permitted: i64 = 3; //this number should be discussed.
@@ -424,6 +445,8 @@ impl Caller {
                         if (difference.len() as i64 <= permitted)
                             && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
                                 <= permitted)
+                            && !extended_haplotypes.contains(&haplotype)
+                        //fix: the last operand '&&' is required to avoid duplicate additions
                         {
                             extended_haplotypes.push(haplotype.clone());
                         }
@@ -445,13 +468,13 @@ impl Caller {
                 }
             }
         }
-        if max_haplotypes < selected_haplotypes.len(){
+        if max_haplotypes < selected_haplotypes.len() {
             selected_haplotypes = selected_haplotypes[0..max_haplotypes].to_vec();
         }
         // dbg!(&selected_haplotypes);
 
-        // dbg!(&extended_haplotypes);
-        Ok(lp_keys)
+        dbg!(&extended_haplotypes);
+        Ok(extended_haplotypes)
     }
     fn plot_solution(
         &self,
@@ -793,7 +816,7 @@ pub enum VariantStatus {
     Unknown,
 }
 
-#[derive(Derefable, Debug, Clone, PartialEq, Eq, PartialOrd)]
+#[derive(Derefable, Debug, Clone, PartialEq, Eq, PartialOrd, DerefMut)]
 pub(crate) struct HaplotypeVariants(
     #[deref] BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>,
 );
@@ -843,24 +866,60 @@ impl HaplotypeVariants {
         variant_calls: &VariantCalls,
         haplotypes: &Vec<Haplotype>,
     ) -> Result<Self> {
-        let (vrnt, initial_map) = self.iter().next().unwrap();
         let mut new_haplotype_variants: BTreeMap<
             VariantID,
             BTreeMap<Haplotype, (VariantStatus, bool)>,
         > = BTreeMap::new();
         for (variant, matrix_map) in self.iter() {
             let mut new_matrix_map = BTreeMap::new();
-            for haplotype in haplotypes.iter() {
-                for (haplotype_m, (variant_status, af)) in matrix_map {
-                    if haplotype_m == &Haplotype(haplotype.to_string()) {
-                        new_matrix_map
-                            .insert(haplotype_m.clone(), (variant_status.clone(), af.clone()));
-                    }
+            for (haplotype_m, (variant_status, coverage_status)) in matrix_map {
+                if haplotypes.contains(&haplotype_m) {
+                    //fix: filter for haplotypes in the haplotypes list
+                    new_matrix_map.insert(
+                        haplotype_m.clone(),
+                        (variant_status.clone(), coverage_status.clone()),
+                    );
                 }
             }
             new_haplotype_variants.insert(variant.clone(), new_matrix_map);
         }
         Ok(HaplotypeVariants(new_haplotype_variants))
+    }
+
+    fn find_common_variants(
+        &self,
+        variant_calls: &VariantCalls,
+        haplotypes: &Vec<Haplotype>,
+    ) -> Result<Vec<VariantID>> {
+        let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> = CandidateMatrix::new(self)
+            .unwrap()
+            .values()
+            .cloned()
+            .collect();
+        let mut common_variants = Vec::new();
+        for ((genotype_matrix, coverage_matrix), (variant, (af, _))) in
+            candidate_matrix_values.iter().zip(variant_calls.iter())
+        {
+            let mut counter = 0;
+            for (i, haplotype) in haplotypes.iter().enumerate() {
+                if coverage_matrix[i as u64] {
+                    counter += 1;
+                }
+            }
+            if counter == haplotypes.len() {
+                common_variants.push(variant.clone());
+            }
+        }
+        Ok(common_variants)
+    }
+    fn filter_haplotype_variants(&self, variants: &Vec<VariantID>) -> Result<Self> {
+        let mut haplotype_variants_filtered = self.clone();
+        for (v, _) in self.iter() {
+            if !variants.contains(&v) {
+                haplotype_variants_filtered.remove_entry(&v);
+            }
+        }
+        Ok(haplotype_variants_filtered)
     }
 }
 #[derive(Debug, Clone, Derefable)]
@@ -935,6 +994,15 @@ impl VariantCalls {
             }
         }
         Ok(VariantCalls(calls))
+    }
+    fn filter_variant_calls(&self, variants: &Vec<VariantID>) -> Result<Self> {
+        let mut variant_calls_filtered = self.clone();
+        for (v, _) in self.iter() {
+            if !variants.contains(&v) {
+                variant_calls_filtered.remove_entry(&v);
+            }
+        }
+        Ok(variant_calls_filtered)
     }
 }
 

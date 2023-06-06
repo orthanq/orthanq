@@ -114,6 +114,11 @@ pub enum Orthanq {
         output: Option<PathBuf>,
         #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
         prior: String,
+        #[structopt(
+            long,
+            help = "If true, only common variants of considered haplotypes will be used in the model."
+        )]
+        common_variants: bool,
     },
 }
 
@@ -129,6 +134,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
             min_norm_counts,
             output,
             prior,
+            common_variants,
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
                 .hdf5_reader(hdf5::File::open(&haplotype_counts)?)
@@ -139,6 +145,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 .min_norm_counts(min_norm_counts)
                 .outcsv(output)
                 .prior(prior)
+                .common_variants(common_variants)
                 .build()
                 .unwrap();
             caller.call()?;
