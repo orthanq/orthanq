@@ -71,33 +71,22 @@ impl FromStr for PriorTypes {
 impl Caller {
     pub fn call(&mut self) -> Result<()> {
         //Step 1: Prepare data and compute the model
+        //initially prepare haplotype_variants and variant_calls
         let mut variant_calls = VariantCalls::new(&mut self.variant_calls)?;
         let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
-        //dbg!(&variant_ids);
         let mut haplotype_variants =
             HaplotypeVariants::new(&mut self.haplotype_variants, &variant_ids)?;
         let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
         let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
         dbg!(&haplotypes);
-        let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
-        //find the haplotypes to prioritize
-        let lp_haplotypes = self.linear_program(&candidate_matrix, &haplotypes, &variant_calls)?;
-        dbg!(&lp_haplotypes);
-        //
-        let haplotype_variants =
-            haplotype_variants.find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?; //fix: find_plausible haplotypes should only contain the list of "haplotypes" given as parameter
-        dbg!(&haplotype_variants);
-        //find lp_haplotypes sorted the same as in haplotype_variants
-        let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
-        let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-        dbg!(&final_haplotypes);
 
+        //check if common_variants is true, if yes use only common variants both for lp and model
         if self.common_variants {
             //include only common variants if common_variants is true
             //this happens by first finding the common variants and then filtering
             //haplotype_variants and variant_calls to only contain those variants
             let common_variants =
-                haplotype_variants.find_common_variants(&variant_calls, &final_haplotypes)?;
+                haplotype_variants.find_common_variants(&variant_calls, &haplotypes)?;
             let mut haplotype_variants =
                 haplotype_variants.filter_haplotype_variants(&common_variants)?;
             let variant_calls = variant_calls.filter_variant_calls(&common_variants)?;
@@ -105,6 +94,21 @@ impl Caller {
             dbg!(&haplotype_variants);
             dbg!(&variant_calls);
         }
+        //find the haplotypes to prioritize
+        let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
+        let lp_haplotypes = self.linear_program(&candidate_matrix, &haplotypes, &variant_calls)?;
+        dbg!(&lp_haplotypes);
+
+        //take only haplotypes that are found by lp
+        let haplotype_variants =
+            haplotype_variants.find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?; //fix: find_plausible haplotypes should only contain the list of "haplotypes" given as parameter
+        dbg!(&haplotype_variants);
+
+        //make sure lp_haplotypes sorted the same as in haplotype_variants
+        let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
+        let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
+        dbg!(&final_haplotypes);
+
         //construct candidate matrix
         let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
