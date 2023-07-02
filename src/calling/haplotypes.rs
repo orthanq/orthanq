@@ -39,7 +39,6 @@ use std::{path::PathBuf, str};
 pub struct Caller {
     haplotype_variants: bcf::Reader,
     variant_calls: bcf::Reader,
-    hdf5_reader: hdf5::File,
     xml: PathBuf,
     max_haplotypes: i64,
     min_norm_counts: f64,
@@ -140,7 +139,6 @@ impl Caller {
             Prior::new(prior.clone()),
             Posterior::new(),
         );
-        // let data = Data::new(candidate_matrix.clone(), variant_calls.clone(), kallisto_estimates.values().cloned().collect());
         let data = Data::new(candidate_matrix.clone(), variant_calls.clone());
         let computed_model = model.compute_from_marginal(
             &Marginal::new(final_haplotypes.len(), upper_bond, prior),
