@@ -807,7 +807,7 @@ impl Caller {
         //     "DMA", "DQB1", "G", "TAP1", "DMB", "DRA", "HFE", "TAP2", "DOA", "DRB1", "T", "DOB",
         //     "DRB3", "MICA", "U", //all the non-pseudogenes
         // ]
-        for locus in vec!["A", "B", "C", "DQA1", "DQB1"] {
+        for locus in vec!["A", "B", "C", "DQA1", "DQB1", "DRB1"] {
             let mut locus_columns = vec!["Index".to_string(), "ID".to_string()];
             for column_name in names.iter().skip(2) {
                 let splitted = column_name.split("*").collect::<Vec<&str>>();
@@ -889,7 +889,11 @@ impl Caller {
                         .unwrap()
                         .unwrap();
                     let gt = GenotypeAllele::Phased(gt.try_into().unwrap());
-                    //vg requires the candidate variants phased, so make 0 -> 0/0 and 1 -> 0/1
+                    //vg requires the candidate variants phased, so make 0 -> 0|0 and 1 -> 1|1
+                    //side note about how push_genotypes() works:
+                    //we push the genotypes two times into the one dimensional vector because
+                    //push_genotypes() expects a 'flattened' two dimensional vector 
+                    //thereby pushing into the vector two times also means the same thing for push_genotypes() in the end
                     all_gt.push(gt);
                     all_gt.push(gt);
                 }
