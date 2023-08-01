@@ -1,5 +1,6 @@
 use crate::calling;
 use crate::candidate_variants;
+use crate::preprocess_hla;
 use anyhow::Result;
 use rust_htslib::bcf;
 use std::path::PathBuf;
@@ -113,6 +114,30 @@ pub enum Orthanq {
         )]
         common_variants: bool,
     },
+    #[structopt(
+        name = "preprocess-hla",
+        about = "Preprocess raw reads including aligning to linear and pangenome.",
+        setting = structopt::clap::AppSettings::ColoredHelp,
+    )]
+    PreprocessHLA {
+        #[structopt(
+            long = "genome",
+            required = true,
+            help = "Reference genome that is used during candidate generation."
+        )]
+        genome: PathBuf,
+        #[structopt(
+            long = "reads",
+            required = true,
+            help = "Input FASTQ reads belonging to the sample."
+        )]
+        reads: Vec<PathBuf>,
+        #[structopt(
+            long = "output BCF",
+            help = "Output BCF file to be used as input in the calling step."
+        )]
+        output: Option<PathBuf>,
+    },
 }
 
 pub fn run(opt: Orthanq) -> Result<()> {
@@ -162,6 +187,20 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 .build()
                 .unwrap();
             caller.call()?;
+            Ok(())
+        }
+        Orthanq::PreprocessHLA {
+            genome,
+            reads,
+            output,
+        } => {
+            preprocess_hla::CallerBuilder::default()
+                .genome(genome)
+                .reads(reads)
+                .output(output)
+                .build()
+                .unwrap()
+                .call()?;
             Ok(())
         }
     }

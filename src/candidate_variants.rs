@@ -892,7 +892,7 @@ impl Caller {
                     //vg requires the candidate variants phased, so make 0 -> 0|0 and 1 -> 1|1
                     //side note about how push_genotypes() works:
                     //we push the genotypes two times into the one dimensional vector because
-                    //push_genotypes() expects a 'flattened' two dimensional vector 
+                    //push_genotypes() expects a 'flattened' two dimensional vector
                     //thereby pushing into the vector two times also means the same thing for push_genotypes() in the end
                     all_gt.push(gt);
                     all_gt.push(gt);
