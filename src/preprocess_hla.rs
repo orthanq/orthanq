@@ -93,6 +93,8 @@ impl Caller {
                 .arg(file_aligned)
                 .arg("-o")
                 .arg(&file_aligned_sorted)
+                .arg("-@")
+                .arg("10")
                 .arg("--write-index")
                 .status()
                 .expect("failed to execute the sorting process")
@@ -115,9 +117,9 @@ impl Caller {
                 .arg(file_aligned_sorted)
                 .arg("-R")
                 .arg(regions)
-                .arg(">")
-                .arg(&file_extracted)
                 .arg("--write-index") //??
+                .arg("-o")
+                .arg(&file_extracted)
                 .status()
                 .expect("failed to execute the extracting process")
         };
