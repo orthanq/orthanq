@@ -1,11 +1,11 @@
 use anyhow::Result;
 use derive_builder::Builder;
+use std::io::Read;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tempfile::tempdir;
 use tempfile::{NamedTempFile, TempDir};
-use std::io::Write;
-use std::io::Read;
 
 #[derive(Builder, Clone)]
 pub struct Caller {
@@ -151,7 +151,7 @@ impl Caller {
         println!("Conversion from BAM to fq was exited with: {}", bam_to_fq);
 
         //Step-3: map extracted reads to the pangenome with vg giraffe
-        
+
         //path to the index directory
         let giraffe_index = "resources/hprc-v1.0-mc-grch38.xg";
 
@@ -197,7 +197,9 @@ impl Caller {
         // f.flush()?;
 
         // let output_align = align_pangenome.stdout.expect("failed to wait on aligning to pangenome");
-        let output = align_pangenome.wait_with_output().expect("Failed to read stdout");
+        let output = align_pangenome
+            .wait_with_output()
+            .expect("Failed to read stdout");
 
         let mut vg_bam = std::fs::File::create(file_aligned_pangenome)?;
         vg_bam.write_all(&output.stdout)?; //write with bam writer
@@ -225,22 +227,22 @@ impl Caller {
         // println!("{}", file_vg_aligned_sorted.display());
 
         // //modify the header for chromosome names to be compatible with the reference genome that we acquire from ensembl
-        
+
         // //prepare the temporary file path for the reheadered bam output
         // let file_reheadered = temp_dir
         // .path()
         // .join(format!("{}_reheadered.bam", sample_name.clone()));
 
         // //in Rust, piping cannot be done via "|" but instead in the following way:
-        
+
         // //get the header
         // let samtools_view_child = Command::new("samtools")
         // .arg("view")// `samtools view` command...
         // .arg("-H") // of which we will pipe the output.
         // .arg(&file_vg_aligned_sorted) //Once configured, we actually spawn the command...
-        // .stdout(Stdio::piped())       
-        // .spawn()                     
-        // .unwrap(); 
+        // .stdout(Stdio::piped())
+        // .spawn()
+        // .unwrap();
 
         // //replace the 'GRCh38.chr' with ''
         // let sed_child_one = Command::new("sed")

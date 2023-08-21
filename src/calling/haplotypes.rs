@@ -177,6 +177,10 @@ impl Caller {
             &final_haplotypes,
             self.prior.clone(),
         );
+
+        //plot first 10 posteriors of orthanq output
+        self.plot_posteriors(&event_posteriors, &final_haplotypes);
+
         //second: convert to G groups
         let mut converted_name = PathBuf::from(self.outcsv.as_ref().unwrap().parent().unwrap());
         converted_name.push("G_groups.tsv");
@@ -677,6 +681,41 @@ impl Caller {
         dbg!(&g_to_alleles);
         Ok(g_to_alleles)
     }
+    fn plot_posteriors(
+        &self,
+        event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
+        final_haplotypes: &Vec<Haplotype>,
+    ) -> Result<()> {
+        let mut file_name = "solutions.json".to_string();
+        let json = include_str!("../../templates/orthanq_output.json");
+        let mut blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
+        let mut plot_data_solutions = Vec::new();
+
+        //take first 10 solutions
+        let event_posteriors = event_posteriors[0..10].to_vec();
+        for (i, (fractions, logprob)) in event_posteriors.iter().enumerate() {
+            for (f, h) in fractions.iter().zip(final_haplotypes.iter()) {
+                //fractions and final haplotypes are already ordered.
+                if f != &NotNan::new(0.0).unwrap() {
+                    plot_data_solutions.push(dataset_haplotype_fractions_wdensity {
+                        haplotype: h.to_string(),
+                        fraction: f.clone(),
+                        solution_number: i,
+                        density: logprob.exp().clone(),
+                    });
+                }
+            }
+        }
+
+        //write to json
+        let plot_data_solutions = json!(plot_data_solutions);
+        blueprint["datasets"]["haplotype_fractions"] = plot_data_solutions;
+        let mut parent = self.outcsv.clone().unwrap();
+        parent.pop();
+        let file = fs::File::create(parent.join(file_name)).unwrap();
+        serde_json::to_writer(file, &blueprint);
+        Ok(())
+    }
 }
 
 #[derive(Serialize, Debug)]
@@ -700,6 +739,14 @@ pub(crate) struct dataset_afd {
     variant: VariantID,
     allele_freq: AlleleFreq,
     probability: f64,
+}
+
+#[derive(Serialize, Debug)]
+pub(crate) struct dataset_haplotype_fractions_wdensity {
+    haplotype: String,
+    fraction: AlleleFreq,
+    solution_number: usize,
+    density: f64,
 }
 
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]

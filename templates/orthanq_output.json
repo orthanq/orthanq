@@ -1,0 +1,17 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "datasets": {"haplotype_fractions": []},
+  "data": {"name": "haplotype_fractions"},
+  "transform": [
+    {"calculate": "datum.density*datum.fraction", "as": "posterior density"}
+  ],
+  "mark": "bar",
+  "encoding": {
+  "x": {"field": "solution_number", "type": "ordinal", "axis": {"labels": false}},
+  "y": {"type": "quantitative", "aggregate": "sum", "field": "posterior density", "axis": {"titleFontSize": 12}},
+  "color": {
+    "field": "haplotype",
+    "scale": {"scheme": "category10"}
+    }
+    }
+}
