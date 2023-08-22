@@ -689,27 +689,33 @@ impl Caller {
         let mut file_name = "solutions.json".to_string();
         let json = include_str!("../../templates/orthanq_output.json");
         let mut blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
-        let mut plot_data_solutions = Vec::new();
-
+        let mut plot_data_fractions = Vec::new();
+        let mut plot_density = Vec::new();
         //take first 10 solutions
         let event_posteriors = event_posteriors[0..10].to_vec();
         for (i, (fractions, logprob)) in event_posteriors.iter().enumerate() {
+            plot_density.push(dataset_density_solution {
+                density: logprob.exp().clone(),
+                solution_number: i,
+            });
             for (f, h) in fractions.iter().zip(final_haplotypes.iter()) {
                 //fractions and final haplotypes are already ordered.
                 if f != &NotNan::new(0.0).unwrap() {
-                    plot_data_solutions.push(dataset_haplotype_fractions_wdensity {
+                    plot_data_fractions.push(dataset_haplotype_fractions_wsolution {
                         haplotype: h.to_string(),
                         fraction: f.clone(),
                         solution_number: i,
-                        density: logprob.exp().clone(),
                     });
                 }
             }
         }
 
         //write to json
-        let plot_data_solutions = json!(plot_data_solutions);
-        blueprint["datasets"]["haplotype_fractions"] = plot_data_solutions;
+        let plot_data_fractions = json!(plot_data_fractions);
+        let plot_density = json!(plot_density);
+        blueprint["datasets"]["haplotype_fractions"] = plot_data_fractions;
+        blueprint["datasets"]["densities"] = plot_density;
+
         let mut parent = self.outcsv.clone().unwrap();
         parent.pop();
         let file = fs::File::create(parent.join(file_name)).unwrap();
@@ -742,11 +748,16 @@ pub(crate) struct dataset_afd {
 }
 
 #[derive(Serialize, Debug)]
-pub(crate) struct dataset_haplotype_fractions_wdensity {
+pub(crate) struct dataset_haplotype_fractions_wsolution {
     haplotype: String,
     fraction: AlleleFreq,
     solution_number: usize,
+}
+
+#[derive(Serialize, Debug)]
+pub(crate) struct dataset_density_solution {
     density: f64,
+    solution_number: usize,
 }
 
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
