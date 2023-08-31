@@ -691,7 +691,7 @@ impl Caller {
         let mut blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
         let mut plot_data_fractions = Vec::new();
         let mut plot_density = Vec::new();
-        
+
         //take first 10 solutions, if the events are less than that, then take the length
         let num_events = event_posteriors.len();
         if num_events < 10 {
