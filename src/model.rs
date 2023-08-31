@@ -1,5 +1,5 @@
 use crate::calling::haplotypes::{
-    AlleleFreqDist, CandidateMatrix, KallistoEstimate, PriorTypes, VariantCalls, VariantStatus,
+    AlleleFreqDist, CandidateMatrix, PriorTypes, VariantCalls, VariantStatus,
 };
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb, Prob};
