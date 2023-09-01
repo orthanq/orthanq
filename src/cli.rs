@@ -101,10 +101,10 @@ pub enum Orthanq {
         //     help = "Expected maximum number of haplotype."
         // )]
         // max_haplotypes: i64,
-        // #[structopt(
-        //     long,
-        //     help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
-        // )]
+        #[structopt(
+            long,
+            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
+        )]
         output: Option<PathBuf>,
         #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
         prior: String,
