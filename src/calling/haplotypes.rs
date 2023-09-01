@@ -558,12 +558,10 @@ impl Caller {
                                 //create the plot_data_covered_variants using only the variants that have GT:1 for at least one haplotype.
                                 for (j, haplotype) in haplotypes.iter().enumerate() {
                                     if covered[j as u64] {
-                                        plot_data_covered_variants.push(
-                                            DatasetHaplotypeVariants {
-                                                variant: *variant_id,
-                                                haplotype: haplotype.to_string(),
-                                            },
-                                        );
+                                        plot_data_covered_variants.push(DatasetHaplotypeVariants {
+                                            variant: *variant_id,
+                                            haplotype: haplotype.to_string(),
+                                        });
                                     }
                                 }
 

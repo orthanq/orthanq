@@ -6,7 +6,9 @@ fn check_haplotype_fractions_5050() {
     output.push("test_output.csv");
     let _ = orthanq::calling::haplotypes::CallerBuilder::default()
         .haplotype_variants(bcf::Reader::from_path("tests/B.vcf").unwrap())
-        .variant_calls(bcf::Reader::from_path("tests/Sample_HLA00318-0.5_HLA00319-0.5_B.bcf").unwrap())
+        .variant_calls(
+            bcf::Reader::from_path("tests/Sample_HLA00318-0.5_HLA00319-0.5_B.bcf").unwrap(),
+        )
         .xml("tests/hla.xml".into())
         .common_variants(false)
         .outcsv(Some(output))
