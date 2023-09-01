@@ -514,15 +514,15 @@ impl Caller {
                         best_variables.iter().zip(haplotypes.iter()).enumerate()
                     {
                         if genotype_matrix[i] == VariantStatus::Present {
-                            plot_data_haplotype_fractions.push(dataset_haplotype_fractions {
+                            plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
                                 haplotype: haplotype.to_string(),
                                 fraction: NotNan::new(*variable).unwrap(),
                             });
-                            plot_data_haplotype_variants.push(dataset_haplotype_variants {
+                            plot_data_haplotype_variants.push(DatasetHaplotypeVariants {
                                 variant: *variant_id,
                                 haplotype: haplotype.to_string(),
                             });
-                            plot_data_variants.push(dataset_variants {
+                            plot_data_variants.push(DatasetVariants {
                                 variant: *variant_id,
                                 vaf: af.clone(),
                             });
@@ -542,15 +542,15 @@ impl Caller {
                         .enumerate()
                         .for_each(|(i, (fraction, haplotype))| {
                             if genotypes[i] == VariantStatus::Present && covered[i as u64] {
-                                plot_data_haplotype_fractions.push(dataset_haplotype_fractions {
+                                plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
                                     haplotype: haplotype.to_string(),
                                     fraction: NotNan::new(*fraction).unwrap(),
                                 });
-                                plot_data_haplotype_variants.push(dataset_haplotype_variants {
+                                plot_data_haplotype_variants.push(DatasetHaplotypeVariants {
                                     variant: *variant_id,
                                     haplotype: haplotype.to_string(),
                                 });
-                                plot_data_variants.push(dataset_variants {
+                                plot_data_variants.push(DatasetVariants {
                                     variant: *variant_id,
                                     vaf: *af,
                                 });
@@ -559,7 +559,7 @@ impl Caller {
                                 for (j, haplotype) in haplotypes.iter().enumerate() {
                                     if covered[j as u64] {
                                         plot_data_covered_variants.push(
-                                            dataset_haplotype_variants {
+                                            DatasetHaplotypeVariants {
                                                 variant: *variant_id,
                                                 haplotype: haplotype.to_string(),
                                             },
@@ -569,7 +569,7 @@ impl Caller {
 
                                 //also add the heatmap for afd below the covered panels
                                 for (allele_freq, prob) in afd.iter() {
-                                    plot_data_dataset_afd.push(dataset_afd {
+                                    plot_data_dataset_afd.push(DatasetAfd {
                                         variant: *variant_id,
                                         allele_freq: *allele_freq,
                                         probability: prob.clone(),
@@ -701,14 +701,14 @@ impl Caller {
         }
 
         for (i, (fractions, logprob)) in event_posteriors.iter().enumerate() {
-            plot_density.push(dataset_density_solution {
+            plot_density.push(DatasetDensitySolution {
                 density: logprob.exp().clone(),
                 solution_number: i,
             });
             for (f, h) in fractions.iter().zip(final_haplotypes.iter()) {
                 //fractions and final haplotypes are already ordered.
                 if f != &NotNan::new(0.0).unwrap() {
-                    plot_data_fractions.push(dataset_haplotype_fractions_wsolution {
+                    plot_data_fractions.push(DatasetHaplotypeFractionsWsolution {
                         haplotype: h.to_string(),
                         fraction: f.clone(),
                         solution_number: i,
@@ -732,37 +732,37 @@ impl Caller {
 }
 
 #[derive(Serialize, Debug)]
-pub(crate) struct dataset_variants {
+pub(crate) struct DatasetVariants {
     variant: VariantID,
     vaf: f32,
 }
 #[derive(Serialize, Debug)]
-pub(crate) struct dataset_haplotype_variants {
+pub(crate) struct DatasetHaplotypeVariants {
     variant: VariantID,
     haplotype: String,
 }
 #[derive(Serialize, Debug)]
-pub(crate) struct dataset_haplotype_fractions {
+pub(crate) struct DatasetHaplotypeFractions {
     haplotype: String,
     fraction: AlleleFreq,
 }
 
 #[derive(Serialize, Debug)]
-pub(crate) struct dataset_afd {
+pub(crate) struct DatasetAfd {
     variant: VariantID,
     allele_freq: AlleleFreq,
     probability: f64,
 }
 
 #[derive(Serialize, Debug)]
-pub(crate) struct dataset_haplotype_fractions_wsolution {
+pub(crate) struct DatasetHaplotypeFractionsWsolution {
     haplotype: String,
     fraction: AlleleFreq,
     solution_number: usize,
 }
 
 #[derive(Serialize, Debug)]
-pub(crate) struct dataset_density_solution {
+pub(crate) struct DatasetDensitySolution {
     density: f64,
     solution_number: usize,
 }
