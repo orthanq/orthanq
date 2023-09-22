@@ -176,6 +176,21 @@ impl Caller {
             &event_posteriors,
             &final_haplotypes,
             self.prior.clone(),
+            true,
+        );
+        //second: 2-field
+        let (two_field_haplotypes, two_field_event_posteriors) =
+            convert_to_two_field(&event_posteriors, &final_haplotypes)?;
+        let mut path_for_two_fields =
+            PathBuf::from(self.outcsv.as_ref().unwrap().parent().unwrap());
+        path_for_two_fields.push("2-field.csv");
+        self.write_results(
+            path_for_two_fields,
+            &data,
+            &two_field_event_posteriors,
+            &two_field_haplotypes,
+            self.prior.clone(),
+            false,
         );
 
         //plot first 10 posteriors of orthanq output
@@ -206,6 +221,7 @@ impl Caller {
             &event_posteriors,
             &final_haplotypes_converted,
             self.prior.clone(),
+            true,
         );
         Ok(())
     }
@@ -216,6 +232,7 @@ impl Caller {
         event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
         final_haplotypes: &Vec<Haplotype>,
         prior: String,
+        variant_info: bool,
     ) -> Result<()> {
         //firstly add variant query and probabilities to the outout table for each event
         let variant_calls: Vec<AlleleFreqDist> = data
@@ -225,45 +242,48 @@ impl Caller {
             .collect();
         let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
         // let event_posteriors = computed_model.event_posteriors();
-        event_posteriors.iter().for_each(|(fractions, _)| {
-            let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
-            data.candidate_matrix
-                .iter()
-                .zip(variant_calls.iter())
-                .for_each(|((variant_id, (genotypes, covered)), afd)| {
-                    let mut denom = NotNan::new(1.0).unwrap();
-                    let mut vaf_sum = NotNan::new(0.0).unwrap();
-                    let mut counter = 0;
-                    fractions.iter().enumerate().for_each(|(i, fraction)| {
-                        if genotypes[i] == VariantStatus::Present && covered[i as u64] {
-                            vaf_sum += *fraction;
-                            counter += 1;
-                        } else if genotypes[i] == VariantStatus::Unknown && covered[i as u64] {
-                            todo!();
-                        } else if genotypes[i] == VariantStatus::Unknown
-                            && covered[i as u64] == false
-                        {
-                            todo!();
-                        } else if genotypes[i] == VariantStatus::NotPresent
-                            && covered[i as u64] == false
-                        {
-                            denom -= *fraction;
+        if variant_info {
+            event_posteriors.iter().for_each(|(fractions, _)| {
+                let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
+                data.candidate_matrix
+                    .iter()
+                    .zip(variant_calls.iter())
+                    .for_each(|((variant_id, (genotypes, covered)), afd)| {
+                        let mut denom = NotNan::new(1.0).unwrap();
+                        let mut vaf_sum = NotNan::new(0.0).unwrap();
+                        let mut counter = 0;
+                        fractions.iter().enumerate().for_each(|(i, fraction)| {
+                            if genotypes[i] == VariantStatus::Present && covered[i as u64] {
+                                vaf_sum += *fraction;
+                                counter += 1;
+                            } else if genotypes[i] == VariantStatus::Unknown && covered[i as u64] {
+                                todo!();
+                            } else if genotypes[i] == VariantStatus::Unknown
+                                && covered[i as u64] == false
+                            {
+                                todo!();
+                            } else if genotypes[i] == VariantStatus::NotPresent
+                                && covered[i as u64] == false
+                            {
+                                denom -= *fraction;
+                            }
+                        });
+                        if denom > NotNan::new(0.0).unwrap() {
+                            vaf_sum /= denom;
+                        }
+                        vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round())
+                            .unwrap()
+                            / NotNan::new(100.0).unwrap();
+                        if !afd.is_empty() && counter > 0 {
+                            let answer = afd.vaf_query(&vaf_sum);
+                            vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
+                        } else {
+                            ()
                         }
                     });
-                    if denom > NotNan::new(0.0).unwrap() {
-                        vaf_sum /= denom;
-                    }
-                    vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
-                        / NotNan::new(100.0).unwrap();
-                    if !afd.is_empty() && counter > 0 {
-                        let answer = afd.vaf_query(&vaf_sum);
-                        vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
-                    } else {
-                        ()
-                    }
-                });
-            event_queries.push(vaf_queries);
-        });
+                event_queries.push(vaf_queries);
+            });
+        }
         // Then,print TSV table with results
         // Columns: posterior_prob, haplotype_a, haplotype_b, haplotype_c, ...
         // with each column after the first showing the fraction of the respective haplotype
@@ -275,11 +295,13 @@ impl Caller {
             .map(|h| h.to_string())
             .collect();
         headers.extend(haplotypes_str);
-        let variant_names = event_queries[0]
-            .keys()
-            .map(|key| format!("{:?}", key))
-            .collect::<Vec<String>>();
-        headers.extend(variant_names); //add variant names as separate columns
+        if variant_info {
+            let variant_names = event_queries[0]
+                .keys()
+                .map(|key| format!("{:?}", key))
+                .collect::<Vec<String>>();
+            headers.extend(variant_names); //add variant names as separate columns
+        }
         wtr.write_record(&headers)?;
 
         //write best record on top
@@ -306,49 +328,72 @@ impl Caller {
         haplotype_frequencies
             .iter()
             .for_each(|frequency| format_freqs(*frequency, &mut records));
-        //add vaf queries and probabilities for the first event to the output table
-        let queries: Vec<(AlleleFreq, LogProb)> = event_queries
-            .iter()
-            .next()
-            .unwrap()
-            .values()
-            .cloned()
-            .collect();
-        queries.iter().for_each(|(query, answer)| {
-            let prob = f64::from(Prob::from(*answer));
-            if prob <= 0.01 {
-                records.push(format!("{}{}{:+.2e}", query, ":", prob));
-            } else {
-                records.push(format!("{}{}{:.2}", query, ":", prob));
-            }
-        });
+
+        if variant_info {
+            //add vaf queries and probabilities for the first event to the output table
+            let queries: Vec<(AlleleFreq, LogProb)> = event_queries
+                .iter()
+                .next()
+                .unwrap()
+                .values()
+                .cloned()
+                .collect();
+            queries.iter().for_each(|(query, answer)| {
+                let prob = f64::from(Prob::from(*answer));
+                if prob <= 0.01 {
+                    records.push(format!("{}{}{:+.2e}", query, ":", prob));
+                } else {
+                    records.push(format!("{}{}{:.2}", query, ":", prob));
+                }
+            });
+        }
+
         wtr.write_record(records)?;
 
         //write the rest of the records
         dbg!(&event_posteriors);
-        event_posteriors
-            .iter()
-            .skip(1)
-            .zip(event_queries.iter().skip(1))
-            .for_each(|((haplotype_frequencies, density), queries)| {
-                let mut records = Vec::new();
-                let odds = (density - best_density).exp();
-                format_f64(density.exp(), &mut records);
-                format_f64(odds, &mut records);
-                haplotype_frequencies
-                    .iter()
-                    .for_each(|frequency| format_freqs(*frequency, &mut records));
 
-                queries.iter().for_each(|(_, (query, answer))| {
-                    let prob = f64::from(Prob::from(*answer));
-                    if prob <= 0.01 {
-                        records.push(format!("{}{}{:+.2e}", query, ":", prob));
-                    } else {
-                        records.push(format!("{}{}{:.2}", query, ":", prob));
-                    }
+        if variant_info {
+            event_posteriors
+                .iter()
+                .skip(1)
+                .zip(event_queries.iter().skip(1))
+                .for_each(|((haplotype_frequencies, density), queries)| {
+                    let mut records = Vec::new();
+                    let odds = (density - best_density).exp();
+                    format_f64(density.exp(), &mut records);
+                    format_f64(odds, &mut records);
+                    haplotype_frequencies
+                        .iter()
+                        .for_each(|frequency| format_freqs(*frequency, &mut records));
+
+                    queries.iter().for_each(|(_, (query, answer))| {
+                        let prob = f64::from(Prob::from(*answer));
+                        if prob <= 0.01 {
+                            records.push(format!("{}{}{:+.2e}", query, ":", prob));
+                        } else {
+                            records.push(format!("{}{}{:.2}", query, ":", prob));
+                        }
+                    });
+                    wtr.write_record(records).unwrap();
                 });
-                wtr.write_record(records).unwrap();
-            });
+        } else {
+            event_posteriors
+                .iter()
+                .skip(1)
+                .for_each(|(haplotype_frequencies, density)| {
+                    let mut records = Vec::new();
+                    let odds = (density - best_density).exp();
+                    format_f64(density.exp(), &mut records);
+                    format_f64(odds, &mut records);
+                    haplotype_frequencies
+                        .iter()
+                        .for_each(|frequency| format_freqs(*frequency, &mut records));
+
+                    wtr.write_record(records).unwrap();
+                });
+        }
+
         Ok(())
     }
     fn linear_program(
@@ -1112,4 +1157,78 @@ fn collect_constraints_and_variants(
         }
     }
     Ok(haplotype_dict)
+}
+
+//convert_to_two_field function converts the event posteriors that contain three-field info by default, to two-field information
+fn convert_to_two_field(
+    event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
+    haplotypes: &Vec<Haplotype>,
+) -> Result<(Vec<Haplotype>, Vec<(HaplotypeFractions, LogProb)>)> {
+    dbg!(&event_posteriors);
+
+    let mut event_posteriors_map: Vec<(LogProb, BTreeMap<Haplotype, NotNan<f64>>)> = Vec::new();
+    for (fractions, logprob) in event_posteriors.iter() {
+        //firstly, initiate a map for haplotype and fraction info for each event
+        let mut haplotype_to_fraction_new: BTreeMap<Haplotype, NotNan<f64>> = haplotypes
+            .iter()
+            .map(|h| {
+                let splitted: Vec<&str> = h.split(':').collect();
+                let two_field = format!("{}:{}", splitted[0].to_string(), splitted[1]);
+                (Haplotype(two_field.clone()), NotNan::new(0.00).unwrap())
+            })
+            .collect();
+
+        for (fraction, haplotype) in fractions.iter().zip(haplotypes.iter()) {
+            let splitted: Vec<&str> = haplotype.split(':').collect();
+            let two_field = format!("{}:{}", splitted[0].to_string(), splitted[1]);
+            let two_field = Haplotype(two_field);
+
+            // enter the fraction per haplotype to the haplotype map,
+            // if the value has not been changed before to a value that is greater than 0.0
+            if haplotype_to_fraction_new[&two_field] == NotNan::new(0.00).unwrap() {
+                haplotype_to_fraction_new.insert(two_field.clone(), *fraction);
+            }
+        }
+
+        event_posteriors_map.push((*logprob, haplotype_to_fraction_new.clone()));
+    }
+    dbg!(&event_posteriors_map);
+    let mut event_posteriors_map_final = event_posteriors_map.clone();
+    for (logprob, haplotype_to_fraction) in event_posteriors_map.iter() {
+        for (l_c, h_c) in event_posteriors_map.iter() {
+            if l_c == logprob && h_c == haplotype_to_fraction {
+                // dbg!(&haplotype_to_fraction);
+                // dbg!(&h_c);
+                // dbg!(&logprob);
+                // dbg!(&l_c);
+                let new_logprob = logprob + l_c;
+                // dbg!(&new_logprob);
+                let indices = event_posteriors_map_final
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, (lp, map))| {
+                        ((lp, map) == (&logprob, &haplotype_to_fraction)).then(|| index)
+                    })
+                    .collect::<Vec<_>>();
+                for i in indices.iter() {
+                    event_posteriors_map_final.remove(*i);
+                }
+                event_posteriors_map_final.push((new_logprob, haplotype_to_fraction.clone()));
+            }
+        }
+    }
+    dbg!(&event_posteriors_map_final);
+    event_posteriors_map_final.dedup();
+    dbg!(&event_posteriors_map_final);
+
+    //convert the final construct to the type of event_posteriors and return new haplotypes with two-field information
+    let (lp, map) = &event_posteriors_map_final[0];
+    let final_haplotypes: Vec<Haplotype> = map.keys().cloned().collect();
+    let mut event_posteriors_two_field = Vec::new();
+    for (lp, map) in event_posteriors_map_final.iter() {
+        let haplotype_fractions = HaplotypeFractions(map.values().cloned().collect());
+        event_posteriors_two_field.push((haplotype_fractions, *lp));
+    }
+    Ok((final_haplotypes, event_posteriors_two_field))
+    // Ok(())
 }

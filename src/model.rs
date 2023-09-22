@@ -14,7 +14,7 @@ use std::mem;
 pub(crate) type AlleleFreq = NotNan<f64>;
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable)]
-pub(crate) struct HaplotypeFractions(#[deref] Vec<AlleleFreq>);
+pub(crate) struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
 
 #[derive(Debug, new)]
 pub(crate) struct Marginal {
