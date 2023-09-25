@@ -1235,6 +1235,7 @@ fn convert_to_two_field(
     let mut event_posteriors_two_field = Vec::new();
     for (lp, map) in event_posteriors_map_final.iter() {
         let haplotype_fractions = HaplotypeFractions(map.values().cloned().collect());
+        event_posteriors_two_field.push((haplotype_fractions, *lp));
     }
 
     Ok((final_haplotypes, event_posteriors_two_field))
