@@ -738,14 +738,13 @@ impl Caller {
         let mut plot_density = Vec::new();
 
         //take first 10 solutions, if the events are less than that, then take the length
+        let plot_first_events = 10;
         let num_events = event_posteriors.len();
-        if num_events < 10 {
-            let event_posteriors = event_posteriors[0..num_events].to_vec();
-        } else {
-            let event_posteriors = event_posteriors[0..10].to_vec();
-        }
-        dbg!(&plot_density);
-        for (i, (fractions, logprob)) in event_posteriors.iter().enumerate() {
+        let mut new_event_posteriors = event_posteriors.clone();
+        if num_events > plot_first_events {
+            new_event_posteriors = new_event_posteriors[0..plot_first_events].to_vec();
+        } 
+        for (i, (fractions, logprob)) in new_event_posteriors.iter().enumerate() {
             plot_density.push(DatasetDensitySolution {
                 density: logprob.exp().clone(),
                 solution_number: i,
