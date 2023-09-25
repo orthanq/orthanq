@@ -1160,15 +1160,16 @@ fn collect_constraints_and_variants(
 }
 
 //convert_to_two_field function converts the event posteriors that contain three-field info by default, to two-field information
+//by summing densities of events that have identical explanation with the first two fields
 fn convert_to_two_field(
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     haplotypes: &Vec<Haplotype>,
 ) -> Result<(Vec<Haplotype>, Vec<(HaplotypeFractions, LogProb)>)> {
-    dbg!(&event_posteriors);
-
+    // dbg!(&event_posteriors);
     let mut event_posteriors_map: Vec<(LogProb, BTreeMap<Haplotype, NotNan<f64>>)> = Vec::new();
     for (fractions, logprob) in event_posteriors.iter() {
         //firstly, initiate a map for haplotype and fraction info for each event
+        //by having zero fraction as first values
         let mut haplotype_to_fraction_new: BTreeMap<Haplotype, NotNan<f64>> = haplotypes
             .iter()
             .map(|h| {
@@ -1178,31 +1179,32 @@ fn convert_to_two_field(
             })
             .collect();
 
+        // secondly, enter the fraction per haplotype to fraction map
+        // if the value has not been updated before to a value that is greater than 0.0
+        // that is done to prevent overwriting the haplotype that has a fraction greater
+        // than 0 to 0 because of having the identical first two fields
         for (fraction, haplotype) in fractions.iter().zip(haplotypes.iter()) {
             let splitted: Vec<&str> = haplotype.split(':').collect();
             let two_field = format!("{}:{}", splitted[0].to_string(), splitted[1]);
             let two_field = Haplotype(two_field);
-
-            // enter the fraction per haplotype to the haplotype map,
-            // if the value has not been changed before to a value that is greater than 0.0
             if haplotype_to_fraction_new[&two_field] == NotNan::new(0.00).unwrap() {
                 haplotype_to_fraction_new.insert(two_field.clone(), *fraction);
             }
         }
-
         event_posteriors_map.push((*logprob, haplotype_to_fraction_new.clone()));
     }
-    dbg!(&event_posteriors_map);
+
+    // dbg!(&event_posteriors_map);
+
+    //thirdly, loop over the vector of the collection of map of event posteriors to come up with
+    //final report of events that are summed by their densities for identical haplotype fractions,
+    //then, a new event is added with the new densities inside a final vector and
+    //and the constituent events are excluded in the final vector.
     let mut event_posteriors_map_final = event_posteriors_map.clone();
     for (logprob, haplotype_to_fraction) in event_posteriors_map.iter() {
         for (l_c, h_c) in event_posteriors_map.iter() {
             if l_c == logprob && h_c == haplotype_to_fraction {
-                // dbg!(&haplotype_to_fraction);
-                // dbg!(&h_c);
-                // dbg!(&logprob);
-                // dbg!(&l_c);
                 let new_logprob = logprob + l_c;
-                // dbg!(&new_logprob);
                 let indices = event_posteriors_map_final
                     .iter()
                     .enumerate()
@@ -1217,18 +1219,24 @@ fn convert_to_two_field(
             }
         }
     }
-    dbg!(&event_posteriors_map_final);
-    event_posteriors_map_final.dedup();
-    dbg!(&event_posteriors_map_final);
+    // dbg!(&event_posteriors_map_final);
 
-    //convert the final construct to the type of event_posteriors and return new haplotypes with two-field information
+    //the previous operation involved a nested loop of event posteriors which results in
+    //the final vector containing repeated entries.
+    //dedup() is then used to remove the replicates considering that the vector is already sorted.
+    event_posteriors_map_final.dedup();
+    // dbg!(&event_posteriors_map_final);
+
+    //convert the final construct to the same type with the input of the function
+    //(event_posteriors) and finally return new haplotypes with two-field information
+    //in addition to event posteriors
     let (lp, map) = &event_posteriors_map_final[0];
     let final_haplotypes: Vec<Haplotype> = map.keys().cloned().collect();
     let mut event_posteriors_two_field = Vec::new();
     for (lp, map) in event_posteriors_map_final.iter() {
         let haplotype_fractions = HaplotypeFractions(map.values().cloned().collect());
-        event_posteriors_two_field.push((haplotype_fractions, *lp));
     }
+
     Ok((final_haplotypes, event_posteriors_two_field))
     // Ok(())
 }
