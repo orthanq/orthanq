@@ -194,7 +194,8 @@ impl Caller {
         );
 
         //plot first 10 posteriors of orthanq output
-        self.plot_posteriors(&event_posteriors, &final_haplotypes);
+        self.plot_posteriors(&event_posteriors, &final_haplotypes, "3_field");
+        self.plot_posteriors(&two_field_event_posteriors, &two_field_haplotypes, "2_field");
 
         //second: convert to G groups
         let mut converted_name = PathBuf::from(self.outcsv.as_ref().unwrap().parent().unwrap());
@@ -728,8 +729,9 @@ impl Caller {
         &self,
         event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
         final_haplotypes: &Vec<Haplotype>,
+        file_prefix: &str
     ) -> Result<()> {
-        let mut file_name = "solutions.json".to_string();
+        let mut file_name = format!("{}_solutions.json", file_prefix.to_string());
         let json = include_str!("../../templates/orthanq_output.json");
         let mut blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
         let mut plot_data_fractions = Vec::new();
@@ -742,7 +744,7 @@ impl Caller {
         } else {
             let event_posteriors = event_posteriors[0..10].to_vec();
         }
-
+        dbg!(&plot_density);
         for (i, (fractions, logprob)) in event_posteriors.iter().enumerate() {
             plot_density.push(DatasetDensitySolution {
                 density: logprob.exp().clone(),
