@@ -1088,7 +1088,7 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
         .filter(|(id, name)| !unconfirmed_alleles.contains_key(&format!("HLA:{}", id)))
         .map(|(id, name)| (format!("HLA:{}", id.clone()), name.clone()))
         .collect::<HashMap<String, String>>();
-    //include only alleles that have >0.05 AF in at least one population
+    //include only alleles that have >0.01 AF in at least one population
     let mut unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
     dbg!(&unconfirmed_alleles.len());
     dbg!(&confirmed_alleles.len());
@@ -1117,13 +1117,13 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
             //B*39:06:01 is below 0.05 but 39:06 not and this allele is one of the true genotypes of a sample in the ground truths so we should include following lines. a direct match is not preferred by the authors in the ground truth.
             //they include alleles that do not have a direct name match, rather the ones starting with the first two fields.
             if &record.var == name {
-                if record.frequency > NotNan::new(0.05).unwrap() {
+                if record.frequency > NotNan::new(0.01).unwrap() {
                     to_be_included.push(id.clone());
                 }
             }
             // else if &record.var == &first_three && record.frequency > NotNan::new(0.05).unwrap(){
             //     to_be_included.push(id.clone());
-            else if &record.var == &first_two && record.frequency > NotNan::new(0.05).unwrap() {
+            else if &record.var == &first_two && record.frequency > NotNan::new(0.01).unwrap() {
                 to_be_included.push(id.clone());
             }
         });
