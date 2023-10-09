@@ -33,6 +33,7 @@ use std::path::Path;
 use std::str::FromStr;
 use std::{fs, fs::File};
 use std::{path::PathBuf, str};
+use bio::stats::bayesian::model;
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
@@ -45,13 +46,25 @@ pub struct Caller {
     outcsv: Option<PathBuf>,
     prior: String,
     common_variants: bool,
+    constraint_number: usize
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PriorTypes {
     Diploid,
-    DiploidSubclonal,
+    ConstrainedUniform,
     Uniform,
+}
+
+impl PriorTypes {
+    pub fn is_nonzero(&self, event: &HaplotypeFractions, n: usize) -> bool {
+        match self {
+            PriorTypes::ConstrainedUniform => {
+                event.get_nonzero_count() <= n
+            },
+            _ => true,
+        }
+    }
 }
 
 impl FromStr for PriorTypes {
@@ -61,7 +74,7 @@ impl FromStr for PriorTypes {
         match input {
             "uniform" => Ok(PriorTypes::Uniform),
             "diploid" => Ok(PriorTypes::Diploid),
-            "diploid-subclonal" => Ok(PriorTypes::DiploidSubclonal),
+            "constrained" => Ok(PriorTypes::ConstrainedUniform),
             _ => Err(()),
         }
     }
@@ -141,7 +154,7 @@ impl Caller {
         );
         let data = Data::new(candidate_matrix.clone(), variant_calls.clone());
         let computed_model = model.compute_from_marginal(
-            &Marginal::new(final_haplotypes.len(), upper_bond, prior),
+            &Marginal::new(final_haplotypes.len(), upper_bond, prior, self.constraint_number),
             &data,
         );
         let mut event_posteriors = computed_model.event_posteriors();

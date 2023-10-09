@@ -16,11 +16,21 @@ pub(crate) type AlleleFreq = NotNan<f64>;
 #[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable)]
 pub(crate) struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
 
+impl HaplotypeFractions {
+    pub fn get_nonzero_count(&self) -> usize {
+        self
+        .iter()
+        .filter(|&n| n > &NotNan::new(0.0).unwrap())
+        .count()
+    }
+}
+
 #[derive(Debug, new)]
 pub(crate) struct Marginal {
     n_haplotypes: usize,
     upper_bond: NotNan<f64>,
     prior_info: PriorTypes,
+    constraint_number: usize
 }
 
 impl Marginal {
@@ -47,7 +57,7 @@ impl Marginal {
                 let second_if = density(fraction_upper_bound);
                 second_if
             } else {
-                if fraction_upper_bound == NotNan::new(0.0).unwrap() {
+                if fraction_upper_bound == NotNan::new(0.0).unwrap() || !self.prior_info.is_nonzero(&HaplotypeFractions(fractions.to_vec()), self.constraint_number) {
                     let last_if = density(NotNan::new(0.0).unwrap());
                     last_if
                 } else {
@@ -71,7 +81,7 @@ impl Marginal {
                         diploid_points(NotNan::new(1.0).unwrap(), &mut probs);
                         LogProb::ln_sum_exp(&probs)
                     } else if self.prior_info == PriorTypes::Uniform
-                        || self.prior_info == PriorTypes::DiploidSubclonal
+                        || self.prior_info == PriorTypes::ConstrainedUniform
                     {
                         adaptive_integration::ln_integrate_exp(
                             density,
@@ -222,12 +232,9 @@ impl model::Prior for Prior {
                 }
             });
             prior_prob
-        } else if self.prior == PriorTypes::DiploidSubclonal {
+        } else if self.prior == PriorTypes::ConstrainedUniform {
             //diploid subclonal prior: don't allow for more than 4 fractions bearing greater than 0.0
-            if event
-                .iter()
-                .filter(|&n| n > &NotNan::new(0.0).unwrap())
-                .count()
+            if event.get_nonzero_count()
                 > 4
             {
                 LogProb::ln_zero()

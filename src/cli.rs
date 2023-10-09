@@ -106,8 +106,16 @@ pub enum Orthanq {
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
         )]
         output: Option<PathBuf>,
-        #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
+        #[structopt(
+            long, 
+            help = "Choose uniform, diploid or constrained")]
         prior: String,
+        #[structopt(
+            default_value = "5",
+            long,
+            help = "Applicable to constrained prior; choose a single digit number for an expected number of haplotypes."
+        )]
+        constraint_number: usize,
         #[structopt(
             long,
             help = "If true, only common variants of considered haplotypes will be used in the model."
@@ -151,6 +159,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
             // min_norm_counts,
             output,
             prior,
+            constraint_number,
             common_variants,
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
@@ -161,6 +170,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 // .min_norm_counts(min_norm_counts)
                 .outcsv(output)
                 .prior(prior)
+                .constraint_number(constraint_number)
                 .common_variants(common_variants)
                 .build()
                 .unwrap();
