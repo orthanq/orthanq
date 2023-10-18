@@ -154,7 +154,7 @@ impl Caller {
             .iter()
             .map(|f| NotNan::into_inner(*f))
             .collect::<Vec<f64>>();
-        self.plot_solution(
+        self.plot_prediction(
             &"final",
             &candidate_matrix_values,
             &final_haplotypes,
@@ -194,8 +194,8 @@ impl Caller {
         );
 
         //plot first 10 posteriors of orthanq output
-        self.plot_posteriors(&event_posteriors, &final_haplotypes, "3_field");
-        self.plot_posteriors(&two_field_event_posteriors, &two_field_haplotypes, "2_field");
+        self.plot_densities(&event_posteriors, &final_haplotypes, "3_field");
+        self.plot_densities(&two_field_event_posteriors, &two_field_haplotypes, "2_field");
 
         //second: convert to G groups
         let mut converted_name = PathBuf::from(self.outcsv.as_ref().unwrap().parent().unwrap());
@@ -467,7 +467,7 @@ impl Caller {
         // dbg!(&best_variables.len());
         let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
             candidate_matrix.values().cloned().collect();
-        self.plot_solution(
+        self.plot_prediction(
             &"lp",
             &candidate_matrix_values,
             &haplotypes,
@@ -528,7 +528,7 @@ impl Caller {
         dbg!(&extended_haplotypes);
         Ok(extended_haplotypes)
     }
-    fn plot_solution(
+    fn plot_prediction(
         &self,
         solution: &str,
         candidate_matrix_values: &Vec<(Vec<VariantStatus>, BitVec)>,
@@ -537,7 +537,7 @@ impl Caller {
         best_variables: &Vec<f64>,
     ) -> Result<()> {
         let mut file_name = "".to_string();
-        let json = include_str!("../../templates/fractions_barchart.json");
+        let json = include_str!("../../templates/prediction.json");
         let mut blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
         let mut plot_data_variants = Vec::new();
         let mut plot_data_haplotype_variants = Vec::new();
@@ -725,14 +725,14 @@ impl Caller {
         dbg!(&g_to_alleles);
         Ok(g_to_alleles)
     }
-    fn plot_posteriors(
+    fn plot_densities(
         &self,
         event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
         final_haplotypes: &Vec<Haplotype>,
         file_prefix: &str
     ) -> Result<()> {
         let mut file_name = format!("{}_solutions.json", file_prefix.to_string());
-        let json = include_str!("../../templates/orthanq_output.json");
+        let json = include_str!("../../templates/densities.json");
         let mut blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
         let mut plot_data_fractions = Vec::new();
         let mut plot_density = Vec::new();

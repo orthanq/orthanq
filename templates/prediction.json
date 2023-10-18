@@ -26,27 +26,27 @@
               }
             }
           ],
-          "mark": "bar",
+          "mark": {"type": "bar", "tooltip": true},
           "encoding": {
-            "x": {"field": "variant", "type": "ordinal"},
-            "y": {"aggregate": "sum", "type": "quantitative", "field": "fraction", "axis": {"titleFontSize": 20}},
+            "x": {"field": "variant", "type": "ordinal", "axis": {"title": null, "labelFontSize": 12}},
+            "y": {"aggregate": "sum", "type": "quantitative", "field": "fraction", "axis": {"titleFontSize": 16}},
             "color": {
               "field": "haplotype",
               "type": "nominal",
-              "legend": {"titleFontSize": 20, "labelFontSize": 16},
+              "legend": {"titleFontSize": 16, "labelFontSize": 14},
               "scale": {"scheme": "category20"}
             }
           }
         },
         {
           "data": {"name": "variants"},
-          "mark": "point",
+          "mark": {"type": "point", "tooltip": true},
           "encoding": {
-            "x": {"field": "variant", "type": "ordinal", "axis": {"labels": true}},
+            "x": {"field": "variant", "type": "ordinal", "axis": {"labels": true, "title": null, "labelFontSize": 12}},
             "y": {
               "field": "vaf",
               "type": "quantitative",
-              "axis": {"titleFontSize": 20, "labelFontSize": 16},
+              "axis": {"titleFontSize": 16, "labelFontSize": 12},
               "scale": {"domain": [0, 1]}
             },
             "color": {"value": "black"}
@@ -56,41 +56,45 @@
   },
   {
     "data": {"name": "haplotype_variants"},
-    "mark": "rect",
+    "mark": {"type":"rect", "tooltip": true},
     "encoding": {
-    "y": {"field": "haplotype", "type": "ordinal", "axis": {"titleFontSize": 20, "labelFontSize": 16}},
-    "x": {"field": "variant", "type": "ordinal", "axis": {"titleFontSize": 20, "labels": true}},
+    "y": {"field": "haplotype", "type": "ordinal", "axis": {"titleFontSize": 16, "labelFontSize": 12}},
+    "x": {"field": "variant", "type": "ordinal", "axis": {"titleFontSize": 16, "labels": true, "labelFontSize": 12}},
     "color": {
       "field": "haplotype",
-      "scale": {"scheme": "category20"}
+      "scale": {"scheme": "category20"},
+      "legend": null
     }
     }
   },
   {
     "data": {"name": "covered_variants"},
-    "mark": "rect",
+    "mark": {"type": "rect", "tooltip": true},
     "encoding": {
-    "y": {"field": "haplotype", "type": "ordinal", "axis": {"titleFontSize": 20, "labelFontSize": 16}},
-    "x": {"field": "variant", "type": "ordinal", "axis": {"titleFontSize": 20, "labels": true}},
+    "y": {"field": "haplotype", "type": "ordinal", "axis": {"titleFontSize": 16, "labelFontSize": 12}},
+    "x": {"field": "variant", "type": "ordinal", "axis": {"titleFontSize": 16, "labels": true, "labelFontSize": 12}},
     "color": {
       "field": "haplotype",
-      "scale": {"scheme": "category20"}
+      "scale": {"scheme": "category20"},
+      "legend": null
     }
     }
   },
   {
     "data": {"name": "allele_frequency_distribution"},
-    "mark": "rect",
+    "mark": {"type": "rect", "tooltip": true},
     "encoding": {
       "x": {
         "field": "variant",
         "type": "ordinal",
-        "title": "Variant"
+        "title": "Variant",
+        "axis": {"labelFontSize": 12, "titleFontSize": 16}
       },
       "y": {
         "field": "allele_freq",
         "type": "ordinal",
-        "title": "Allele frequency"
+        "title": "Allele frequency",
+        "axis": {"labelFontSize": 12, "titleFontSize": 16}
       },
       "color": {
         "field": "probability",
