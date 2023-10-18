@@ -162,12 +162,14 @@ impl Caller {
             &best_fractions,
         );
 
-        //write to tsv
+        //write to tsv for nonzero densities
         let mut event_posteriors = Vec::new();
         computed_model
             .event_posteriors()
             .for_each(|(fractions, logprob)| {
-                event_posteriors.push((fractions.clone(), logprob.clone()));
+                if logprob.exp() != 0.0 {
+                    event_posteriors.push((fractions.clone(), logprob.clone()));
+                }
             });
         //first: 3-field
         self.write_results(
@@ -176,7 +178,7 @@ impl Caller {
             &event_posteriors,
             &final_haplotypes,
             self.prior.clone(),
-            true,
+            false,
         );
         //second: 2-field
         let (two_field_haplotypes, two_field_event_posteriors) =
@@ -199,7 +201,7 @@ impl Caller {
 
         //second: convert to G groups
         let mut converted_name = PathBuf::from(self.outcsv.as_ref().unwrap().parent().unwrap());
-        converted_name.push("G_groups.tsv");
+        converted_name.push("G_groups.csv");
         let allele_to_g_groups = self.convert_to_g().unwrap();
         let mut final_haplotypes_converted: Vec<Haplotype> = Vec::new();
         final_haplotypes.iter().for_each(|haplotype| {
