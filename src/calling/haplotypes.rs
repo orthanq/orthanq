@@ -149,7 +149,7 @@ impl Caller {
         let upper_bond = NotNan::new(1.0).unwrap();
         let model = Model::new(
             Likelihood::new(),
-            Prior::new(prior.clone()),
+            Prior::new(prior.clone(), self.constraint_number),
             Posterior::new(),
         );
         let data = Data::new(candidate_matrix.clone(), variant_calls.clone());

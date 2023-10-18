@@ -212,6 +212,7 @@ impl Likelihood {
 #[derive(Debug, new)]
 pub(crate) struct Prior {
     prior: PriorTypes,
+    constraint_number: usize
 }
 
 impl model::Prior for Prior {
@@ -235,7 +236,7 @@ impl model::Prior for Prior {
         } else if self.prior == PriorTypes::ConstrainedUniform {
             //diploid subclonal prior: don't allow for more than 4 fractions bearing greater than 0.0
             if event.get_nonzero_count()
-                > 4
+                > self.constraint_number
             {
                 LogProb::ln_zero()
             } else {
