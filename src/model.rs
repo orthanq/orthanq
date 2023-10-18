@@ -1,30 +1,26 @@
-use crate::calling::haplotypes::{AlleleFreqDist, GenotypesLoci, HaplotypeCalls, KallistoEstimate};
+use crate::calling::haplotypes::{
+    AlleleFreqDist, CandidateMatrix, PriorTypes, VariantCalls, VariantStatus,
+};
 use bio::stats::probs::adaptive_integration;
-use bio::stats::{bayesian::model, LogProb};
+use bio::stats::{bayesian::model, LogProb, Prob};
 use bv::BitVec;
 use derefable::Derefable;
 use derive_new::new;
 use ordered_float::NotNan;
 use statrs::function::beta::ln_beta;
-use std::{collections::HashMap, mem};
+use std::collections::HashMap;
+use std::mem;
 
 pub(crate) type AlleleFreq = NotNan<f64>;
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable)]
-pub(crate) struct HaplotypeFractions(#[deref] Vec<AlleleFreq>);
-
-impl HaplotypeFractions {
-    // pub(crate) fn likely(kallisto_estimates: &KallistoEstimates) -> Vec<Self> {
-    //     // TODO: return all combinations of haplotype fractions that are somehow likely
-    //     // given the callisto estimates. E.g., omit fractions > 0 for haplotypes that
-    //     // do not occur at all.
-    //     todo!();
-    // }
-}
+pub(crate) struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
 
 #[derive(Debug, new)]
 pub(crate) struct Marginal {
     n_haplotypes: usize,
+    upper_bond: NotNan<f64>,
+    prior_info: PriorTypes,
 }
 
 impl Marginal {
@@ -41,25 +37,51 @@ impl Marginal {
             let event = HaplotypeFractions(fractions.to_vec());
             joint_prob(&event, data)
         } else {
-            let fraction_upper_bound =
-                NotNan::new(1.0).unwrap() - fractions.iter().sum::<NotNan<f64>>();
+            let fraction_upper_bound = self.upper_bond - fractions.iter().sum::<NotNan<f64>>();
             let mut density = |fraction| {
                 let mut fractions = fractions.clone();
                 fractions.push(fraction);
                 self.calc_marginal(data, haplotype_index + 1, &mut fractions, joint_prob)
             };
             if haplotype_index == self.n_haplotypes - 1 {
-                density(fraction_upper_bound)
+                let second_if = density(fraction_upper_bound);
+                second_if
             } else {
                 if fraction_upper_bound == NotNan::new(0.0).unwrap() {
-                    density(NotNan::new(0.0).unwrap())
+                    let last_if = density(NotNan::new(0.0).unwrap());
+                    last_if
                 } else {
-                    adaptive_integration::ln_integrate_exp(
-                        density,
-                        NotNan::new(0.0).unwrap(),
-                        fraction_upper_bound,
-                        NotNan::new(0.1).unwrap(),
-                    )
+                    //check prior info
+                    if self.prior_info == PriorTypes::Diploid {
+                        //sum 0.0, 0.5 and 1.0
+                        let mut probs = Vec::new();
+                        let mut diploid_points = |point, probs: &mut Vec<_>| {
+                            let mut fractions = fractions.clone();
+                            if fractions.iter().sum::<NotNan<f64>>() + point
+                                <= NotNan::new(1.0).unwrap()
+                            {
+                                // this check is necessary to avoid combinations that sum up to more than 1.0.
+                                probs.push(density(point));
+                            } else {
+                                ()
+                            }
+                        };
+                        diploid_points(NotNan::new(0.0).unwrap(), &mut probs);
+                        diploid_points(NotNan::new(0.5).unwrap(), &mut probs);
+                        diploid_points(NotNan::new(1.0).unwrap(), &mut probs);
+                        LogProb::ln_sum_exp(&probs)
+                    } else if self.prior_info == PriorTypes::Uniform
+                        || self.prior_info == PriorTypes::DiploidSubclonal
+                    {
+                        adaptive_integration::ln_integrate_exp(
+                            density,
+                            NotNan::new(0.0).unwrap(),
+                            fraction_upper_bound,
+                            NotNan::new(0.1).unwrap(),
+                        )
+                    } else {
+                        panic!("uniform, prior or diploid-subclonal must be selected")
+                    }
                 }
             }
         }
@@ -83,31 +105,21 @@ impl model::Marginal for Marginal {
 
 #[derive(Debug, new)]
 pub(crate) struct Data {
-    pub kallisto_estimates: Vec<KallistoEstimate>,
-    pub variant_matrix: GenotypesLoci,
-    pub haplotype_calls: HaplotypeCalls,
+    pub candidate_matrix: CandidateMatrix,
+    pub variant_calls: VariantCalls,
+    // pub kallisto_estimates: Vec<KallistoEstimate>
 }
 
 #[derive(Debug, new)]
-pub(crate) struct Likelihood {
-    use_evidence: String,
-}
+pub(crate) struct Likelihood;
 
 impl model::Likelihood<Cache> for Likelihood {
     type Event = HaplotypeFractions;
     type Data = Data;
 
     fn compute(&self, event: &Self::Event, data: &Self::Data, payload: &mut Cache) -> LogProb {
-        if self.use_evidence == "kallisto" {
-            LogProb::ln_one() + self.compute_kallisto(event, data, payload)
-        } else if self.use_evidence == "varlociraptor" {
-            LogProb::ln_one() + self.compute_varlociraptor(event, data, payload)
-        } else if self.use_evidence == "both" {
-            self.compute_kallisto(event, data, payload)
-                + self.compute_varlociraptor(event, data, payload)
-        } else {
-            panic!("please type kallisto, varlociraptor or both.")
-        }
+        // self.compute_kallisto(event, data, payload) + //comment it out for now
+        self.compute_varlociraptor(event, data, payload)
     }
 }
 
@@ -121,18 +133,19 @@ impl Likelihood {
         // TODO compute likelihood using neg_binom on the counts and dispersion
         // in the data and the fractions in the events.
         //Later: use the cache to avoid redundant computations.
-        event
-            .iter()
-            .zip(data.kallisto_estimates.iter())
-            .map(|(fraction, estimate)| {
-                neg_binom(
-                    *estimate.count,
-                    NotNan::into_inner(*fraction),
-                    *estimate.dispersion,
-                )
-            })
-            .sum()
-        //LogProb::ln_one()
+        // event
+        //     .iter()
+        //     .zip(data.kallisto_estimates.iter())
+        //     .map(|(fraction, estimate)| {
+        //         dbg!(&estimate, &fraction);
+        //         neg_binom(
+        //             *estimate.count,
+        //             NotNan::into_inner(*fraction),
+        //             *estimate.dispersion,
+        //         )
+        //     })
+        //     .sum();
+        LogProb::ln_one()
     }
 
     fn compute_varlociraptor(
@@ -141,23 +154,30 @@ impl Likelihood {
         data: &Data,
         _cache: &mut Cache,
     ) -> LogProb {
-        // TODO compute likelihood based on Varlociraptor VAFs.
-        // Let us postpone this until we have a working version with kallisto only.
-        let variant_matrix: Vec<(BitVec, BitVec)> = data.variant_matrix.values().cloned().collect();
-        //let variant_matrix = data.variant_matrix;
-        let variant_calls: Vec<AlleleFreqDist> = data.haplotype_calls.values().cloned().collect();
-        variant_matrix
+        let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
+            data.candidate_matrix.values().cloned().collect();
+        let variant_calls: Vec<AlleleFreqDist> = data
+            .variant_calls
+            .iter()
+            .map(|(_, (_, afd))| afd.clone())
+            .collect();
+        let mut final_prob = LogProb::ln_one();
+        candidate_matrix_values
             .iter()
             .zip(variant_calls.iter())
-            .map(|((genotypes, covered), afd)| {
+            .for_each(|((genotypes, covered), afd)| {
                 let mut denom = NotNan::new(1.0).unwrap();
                 let mut vaf_sum = NotNan::new(0.0).unwrap();
                 event.iter().enumerate().for_each(|(i, fraction)| {
-                    if genotypes[i as u64] && covered[i as u64] {
+                    if genotypes[i] == VariantStatus::Present && covered[i as u64] {
                         vaf_sum += *fraction;
+                    } else if genotypes[i] == VariantStatus::Unknown {
+                        ()
                     } else if covered[i as u64] {
                         ()
-                    } else {
+                    } else if genotypes[i] == VariantStatus::NotPresent
+                        && covered[i as u64] == false
+                    {
                         denom -= *fraction;
                     }
                 });
@@ -168,22 +188,55 @@ impl Likelihood {
                 //In any case, for a direct query to the AFD VAFs (they contain 2 decimal places).
                 vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
                     / NotNan::new(100.0).unwrap();
-                afd.vaf_query(&vaf_sum)
-            })
-            .sum()
+                if !afd.is_empty() {
+                    final_prob += afd.vaf_query(&vaf_sum).unwrap();
+                } else {
+                    final_prob += LogProb::ln_one();
+                }
+            });
+        final_prob
         //LogProb::ln_one()
     }
 }
 
 #[derive(Debug, new)]
-pub(crate) struct Prior;
+pub(crate) struct Prior {
+    prior: PriorTypes,
+}
 
 impl model::Prior for Prior {
     type Event = HaplotypeFractions;
 
-    fn compute(&self, _event: &Self::Event) -> LogProb {
-        // flat prior for now
-        LogProb::ln_one()
+    fn compute(&self, event: &Self::Event) -> LogProb {
+        if self.prior == PriorTypes::Diploid {
+            let mut prior_prob = LogProb::ln_one();
+            event.iter().for_each(|fraction| {
+                if *fraction == NotNan::new(0.0).unwrap() {
+                    prior_prob += LogProb::from(Prob(1.0 / 3.0))
+                } else if *fraction == NotNan::new(0.5).unwrap() {
+                    prior_prob += LogProb::from(Prob(1.0 / 3.0))
+                } else if *fraction == NotNan::new(1.0).unwrap() {
+                    prior_prob += LogProb::from(Prob(1.0 / 3.0))
+                } else {
+                    prior_prob += LogProb::ln_zero()
+                }
+            });
+            prior_prob
+        } else if self.prior == PriorTypes::DiploidSubclonal {
+            //diploid subclonal prior: don't allow for more than 4 fractions bearing greater than 0.0
+            if event
+                .iter()
+                .filter(|&n| n > &NotNan::new(0.0).unwrap())
+                .count()
+                > 4
+            {
+                LogProb::ln_zero()
+            } else {
+                LogProb::ln_one()
+            }
+        } else {
+            LogProb::ln_one()
+        }
     }
 }
 
@@ -211,7 +264,41 @@ impl model::Posterior for Posterior {
 #[derive(Debug, Derefable, Default)]
 pub(crate) struct Cache(#[deref] HashMap<usize, HashMap<AlleleFreq, LogProb>>);
 
-// TODO move into model
+// fn recursive_vaf_query(
+//     haplotype_index: usize,
+//     fractions: &Vec<AlleleFreq>,
+//     upper_bond: &NotNan<f64>,
+//     afd: &AlleleFreqDist,
+// ) -> LogProb {
+//     let n_haplotypes = 1;
+//     let mut vaf_sum = NotNan::new(0.0).unwrap();
+//     if haplotype_index == n_haplotypes {
+//         vaf_sum += *fractions[0];
+//         if !afd.is_empty() {
+//             afd.vaf_query(&vaf_sum).unwrap()
+//         } else {
+//             LogProb::ln_one()
+//         }
+//     } else {
+//         let fraction_upper_bound = *upper_bond - fractions.iter().sum::<NotNan<f64>>();
+//         let mut density = |fraction| {
+//             let mut fractions = fractions.clone();
+//             fractions.push(fraction);
+//             recursive_vaf_query(haplotype_index + 1, &mut fractions, upper_bond, afd)
+//         };
+//         if fraction_upper_bound == NotNan::new(0.0).unwrap() {
+//             density(NotNan::new(0.0).unwrap())
+//         } else {
+//             adaptive_integration::ln_integrate_exp(
+//                 density,
+//                 NotNan::new(0.0).unwrap(),
+//                 fraction_upper_bound,
+//                 NotNan::new(0.1).unwrap(),
+//             )
+//         }
+//     }
+// }
+
 pub(crate) fn neg_binom(x: f64, mu: f64, theta: f64) -> LogProb {
     let n = 1.0 / theta;
     let p = n / (n + mu);

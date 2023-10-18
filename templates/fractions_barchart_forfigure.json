@@ -1,0 +1,69 @@
+{
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    
+    "config": {
+      "axis": {"grid": true, "tickBand": "extent"}
+    },
+    "datasets": {
+      "variants": [],
+      "haplotype_variants": [],
+      "haplotype_fractions": []
+    },
+    "vconcat":[
+      {
+        "layer": [
+          {
+            "data": {"name": "haplotype_variants"},
+            "transform": [
+              {
+                "lookup": "haplotype",
+                "from": {
+                  "data": {"name": "haplotype_fractions"},
+                  "key": "haplotype",
+                  "fields": ["fraction"]
+                }
+              }
+            ],
+            "mark": "bar",
+            "encoding": {
+              "x": {"field": "variant", "type": "ordinal", "axis": {"title": null}},
+              "y": {"aggregate": "sum", "type": "quantitative", "field": "fraction", "axis": {"titleFontSize": 20}},
+              "color": {
+                "field": "haplotype",
+                "type": "nominal",
+                "legend": {"titleFontSize": 20, "labelFontSize": 16},
+                "scale": {"range": ["#EECC66", "#6699CC", "#997700", "#EE99AA"]}
+              }
+            }
+          },
+          {
+            "data": {"name": "variants"},
+            "mark": "point",
+            "encoding": {
+              "x": {"field": "variant", "type": "ordinal", "axis": {"labels": false}},
+              "y": {
+                "field": "vaf",
+                "type": "quantitative",
+                "axis": {"titleFontSize": 20, "labelFontSize": 16},
+                "scale": {"domain": [0, 1]}
+              },
+              "color": {"value": "black"}
+            }
+          }
+        ]
+    },
+    {
+      "data": {"name": "haplotype_variants"},
+      "mark": "rect",
+      "encoding": {
+      "y": {"field": "haplotype", "type": "ordinal", "axis": {"titleFontSize": 20, "labelFontSize": 16}},
+      "x": {"field": "variant", "type": "ordinal", "axis": {"titleFontSize": 20, "labels": true}},
+      "color": {
+        "field": "haplotype",
+        "scale": {"range": ["#EECC66", "#6699CC", "#997700", "#EE99AA"]}
+      }
+      }
+    }
+  ]
+  }
+  
