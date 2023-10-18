@@ -46,6 +46,7 @@ pub struct Caller {
     outcsv: Option<PathBuf>,
     prior: String,
     common_variants: bool,
+    exclude_redundant_variants: bool,
     constraint_number: usize
 }
 
@@ -86,6 +87,8 @@ impl Caller {
         //initially prepare haplotype_variants and variant_calls
         let mut variant_calls = VariantCalls::new(&mut self.variant_calls)?;
         let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
+        dbg!(&variant_ids.len());
+        dbg!(&variant_ids);
         let mut haplotype_variants =
             HaplotypeVariants::new(&mut self.haplotype_variants, &variant_ids)?;
         let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
@@ -100,8 +103,8 @@ impl Caller {
             let common_variants =
                 haplotype_variants.find_common_variants(&variant_calls, &haplotypes)?;
             let mut haplotype_variants =
-                haplotype_variants.filter_haplotype_variants(&common_variants)?;
-            let variant_calls = variant_calls.filter_variant_calls(&common_variants)?;
+                haplotype_variants.filter_haplotype_variants(&common_variants, true)?;
+            let variant_calls = variant_calls.filter_variant_calls(&common_variants, true)?;
             dbg!(&common_variants);
             dbg!(&haplotype_variants);
             dbg!(&variant_calls);
@@ -110,6 +113,21 @@ impl Caller {
         let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
         let lp_haplotypes = self.linear_program(&candidate_matrix, &haplotypes, &variant_calls)?;
         dbg!(&lp_haplotypes);
+
+
+        //remove redundant variants from haplotype variants and variant calls
+        //if the variant is present in all or none of them, they have no effect in model decision.
+        if self.exclude_redundant_variants {
+            let redundant_variants = haplotype_variants.find_redundant_variants(&variant_calls)?;
+            let mut haplotype_variants =
+            haplotype_variants.filter_haplotype_variants(&redundant_variants, false)?;
+            let variant_calls = variant_calls.filter_variant_calls(&redundant_variants, false)?;
+            dbg!(&redundant_variants.len());
+            dbg!(&redundant_variants);
+            dbg!(&haplotype_variants);
+            dbg!(&variant_calls.len());
+            dbg!(&variant_calls);
+        }
 
         //take only haplotypes that are found by lp
         let haplotype_variants =
@@ -1010,6 +1028,27 @@ impl HaplotypeVariants {
         Ok(HaplotypeVariants(new_haplotype_variants))
     }
 
+    fn find_redundant_variants(&self, variant_calls: &VariantCalls) -> Result<Vec<VariantID>> {
+        let mut redundant_variants = Vec::new();
+        let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> = CandidateMatrix::new(self)
+        .unwrap()
+        .values()
+        .cloned()
+        .collect();
+        for ((genotype_matrix, coverage_matrix), (variant, (af, _))) in
+        candidate_matrix_values.iter().zip(variant_calls.iter()) {
+            let mut counter = 0;
+            for i in 0..genotype_matrix.len() {
+                if genotype_matrix[i] == VariantStatus::Present {
+                    counter += 1;
+                }
+            }
+            if counter == genotype_matrix.len() || counter == 0 { //if the variant is present in all or none of them.
+                redundant_variants.push(variant.clone());
+            }
+        }
+    Ok(redundant_variants)
+    }
     fn find_common_variants(
         &self,
         variant_calls: &VariantCalls,
@@ -1036,11 +1075,19 @@ impl HaplotypeVariants {
         }
         Ok(common_variants)
     }
-    fn filter_haplotype_variants(&self, variants: &Vec<VariantID>) -> Result<Self> {
+    fn filter_haplotype_variants(&self, variants: &Vec<VariantID>, include: bool) -> Result<Self> {
         let mut haplotype_variants_filtered = self.clone();
-        for (v, _) in self.iter() {
-            if !variants.contains(&v) {
-                haplotype_variants_filtered.remove_entry(&v);
+        if include {
+            for (v, _) in self.iter() {
+                if !variants.contains(&v) {
+                    haplotype_variants_filtered.remove_entry(&v);
+                }
+            }
+        } else {
+            for (v, _) in self.iter() {
+                if variants.contains(&v) {
+                    haplotype_variants_filtered.remove_entry(&v);
+                }
             }
         }
         Ok(haplotype_variants_filtered)
@@ -1119,11 +1166,19 @@ impl VariantCalls {
         }
         Ok(VariantCalls(calls))
     }
-    fn filter_variant_calls(&self, variants: &Vec<VariantID>) -> Result<Self> {
+    fn filter_variant_calls(&self, variants: &Vec<VariantID>, include: bool) -> Result<Self> {
         let mut variant_calls_filtered = self.clone();
-        for (v, _) in self.iter() {
-            if !variants.contains(&v) {
-                variant_calls_filtered.remove_entry(&v);
+        if include{
+            for (v, _) in self.iter() {
+                if !variants.contains(&v) {
+                    variant_calls_filtered.remove_entry(&v);
+                }
+            }
+        } else {
+            for (v, _) in self.iter() {
+                if variants.contains(&v) {
+                    variant_calls_filtered.remove_entry(&v);
+                }
             }
         }
         Ok(variant_calls_filtered)

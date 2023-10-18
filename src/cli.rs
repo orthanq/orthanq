@@ -111,7 +111,7 @@ pub enum Orthanq {
             help = "Choose uniform, diploid or constrained")]
         prior: String,
         #[structopt(
-            default_value = "5",
+            default_value = "3",
             long,
             help = "Applicable to constrained prior; choose a single digit number for an expected number of haplotypes."
         )]
@@ -121,6 +121,11 @@ pub enum Orthanq {
             help = "If true, only common variants of considered haplotypes will be used in the model."
         )]
         common_variants: bool,
+        #[structopt(
+            long,
+            help = "If true, redundant variants of considered haplotypes are excluded from the model evaluation."
+        )]
+        exclude_redundant_variants: bool,
     },
     #[structopt(
         name = "preprocess-hla",
@@ -161,6 +166,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
             prior,
             constraint_number,
             common_variants,
+            exclude_redundant_variants
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
                 .haplotype_variants(bcf::Reader::from_path(&haplotype_variants)?)
@@ -172,6 +178,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 .prior(prior)
                 .constraint_number(constraint_number)
                 .common_variants(common_variants)
+                .exclude_redundant_variants(exclude_redundant_variants)
                 .build()
                 .unwrap();
             caller.call()?;

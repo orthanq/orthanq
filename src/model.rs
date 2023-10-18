@@ -57,12 +57,25 @@ impl Marginal {
                 let second_if = density(fraction_upper_bound);
                 second_if
             } else {
-                if fraction_upper_bound == NotNan::new(0.0).unwrap() || !self.prior_info.is_nonzero(&HaplotypeFractions(fractions.to_vec()), self.constraint_number) {
+                if fraction_upper_bound == NotNan::new(0.0).unwrap() {
                     let last_if = density(NotNan::new(0.0).unwrap());
                     last_if
                 } else {
+                    if self.prior_info == PriorTypes::ConstrainedUniform {
+                        if !self.prior_info.is_nonzero(&HaplotypeFractions(fractions.to_vec()), self.constraint_number) {
+                            LogProb::ln_zero()
+                        } else {
+                            adaptive_integration::ln_integrate_exp(
+                                density,
+                                NotNan::new(0.0).unwrap(),
+                                fraction_upper_bound,
+                                NotNan::new(0.1).unwrap()
+                            )
+                        }
+                    
+                    } 
                     //check prior info
-                    if self.prior_info == PriorTypes::Diploid {
+                    else if self.prior_info == PriorTypes::Diploid {
                         //sum 0.0, 0.5 and 1.0
                         let mut probs = Vec::new();
                         let mut diploid_points = |point, probs: &mut Vec<_>| {
