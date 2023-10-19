@@ -45,6 +45,7 @@ pub struct Caller {
     outcsv: Option<PathBuf>,
     prior: String,
     common_variants: bool,
+    lp_cutoff: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -95,7 +96,12 @@ impl Caller {
         }
         //find the haplotypes to prioritize
         let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
-        let lp_haplotypes = self.linear_program(&candidate_matrix, &haplotypes, &variant_calls)?;
+        let lp_haplotypes = self.linear_program(
+            &candidate_matrix,
+            &haplotypes,
+            &variant_calls,
+            self.lp_cutoff,
+        )?;
         dbg!(&lp_haplotypes);
 
         //take only haplotypes that are found by lp
@@ -197,7 +203,11 @@ impl Caller {
 
         //plot first 10 posteriors of orthanq output
         self.plot_densities(&event_posteriors, &final_haplotypes, "3_field");
-        self.plot_densities(&two_field_event_posteriors, &two_field_haplotypes, "2_field");
+        self.plot_densities(
+            &two_field_event_posteriors,
+            &two_field_haplotypes,
+            "2_field",
+        );
 
         //second: convert to G groups
         let mut converted_name = PathBuf::from(self.outcsv.as_ref().unwrap().parent().unwrap());
@@ -404,6 +414,7 @@ impl Caller {
         candidate_matrix: &CandidateMatrix,
         haplotypes: &Vec<Haplotype>,
         variant_calls: &VariantCalls,
+        lp_cutoff: f64,
     ) -> Result<Vec<Haplotype>> {
         //first init the problem
         let mut problem = ProblemVariables::new();
@@ -458,7 +469,7 @@ impl Caller {
         for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
             println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
             best_variables.push(solution.value(var.clone()).clone());
-            if solution.value(*var) >= 0.01 {
+            if solution.value(*var) >= lp_cutoff {
                 //the speed of fraction exploration is managable in case of diploid priors
                 lp_haplotypes.insert(haplotype.clone(), solution.value(*var).clone());
             }
@@ -731,7 +742,7 @@ impl Caller {
         &self,
         event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
         final_haplotypes: &Vec<Haplotype>,
-        file_prefix: &str
+        file_prefix: &str,
     ) -> Result<()> {
         let mut file_name = format!("{}_solutions.json", file_prefix.to_string());
         let json = include_str!("../../templates/densities.json");
@@ -745,7 +756,7 @@ impl Caller {
         let mut new_event_posteriors = event_posteriors.clone();
         if num_events > plot_first_events {
             new_event_posteriors = new_event_posteriors[0..plot_first_events].to_vec();
-        } 
+        }
         for (i, (fractions, logprob)) in new_event_posteriors.iter().enumerate() {
             plot_density.push(DatasetDensitySolution {
                 density: logprob.exp().clone(),

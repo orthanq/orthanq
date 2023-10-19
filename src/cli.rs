@@ -113,6 +113,8 @@ pub enum Orthanq {
             help = "If true, only common variants of considered haplotypes will be used in the model."
         )]
         common_variants: bool,
+        #[structopt(default_value = "0.01", help = "Cutoff for linear program solutions.")]
+        lp_cutoff: f64,
     },
     #[structopt(
         name = "preprocess-hla",
@@ -152,6 +154,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
             output,
             prior,
             common_variants,
+            lp_cutoff,
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
                 .haplotype_variants(bcf::Reader::from_path(&haplotype_variants)?)
@@ -162,6 +165,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 .outcsv(output)
                 .prior(prior)
                 .common_variants(common_variants)
+                .lp_cutoff(lp_cutoff)
                 .build()
                 .unwrap();
             caller.call()?;
