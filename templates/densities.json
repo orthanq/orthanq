@@ -38,7 +38,7 @@
           "aggregate": "sum",
           "axis": {"title": "fraction"}
         },
-        "color": {"field": "haplotype", "scale": {"scheme": "category10"}}
+        "color": {"field": "haplotype", "scale": {"scheme": "category20"}}
       }
     }
   ]
