@@ -1181,7 +1181,7 @@ fn convert_to_two_field(
     haplotypes: &Vec<Haplotype>,
 ) -> Result<(Vec<Haplotype>, Vec<(HaplotypeFractions, LogProb)>)> {
     // dbg!(&event_posteriors);
-    let mut event_posteriors_map: Vec<(LogProb, BTreeMap<Haplotype, NotNan<f64>>)> = Vec::new();
+    let mut event_posteriors_map: Vec<(BTreeMap<Haplotype, NotNan<f64>>,LogProb)> = Vec::new();
     for (fractions, logprob) in event_posteriors.iter() {
         //firstly, initiate a map for haplotype and fraction info for each event
         //by having zero fraction as first values
@@ -1206,59 +1206,36 @@ fn convert_to_two_field(
                 haplotype_to_fraction_new.insert(two_field.clone(), *fraction);
             }
         }
-        event_posteriors_map.push((*logprob, haplotype_to_fraction_new.clone()));
+        event_posteriors_map.push((haplotype_to_fraction_new.clone(),*logprob));
     }
 
-    // find the number of events that have the same logprob and haplotype fractions and collect them in a map
-    // (key should contain the logprob and the count concatenated in a string, to differentiate events with same logprob but different haplotype fractions)
-    let logprob_counts: BTreeMap<String, BTreeMap<Haplotype, NotNan<f64>>> = event_posteriors_map
-        .iter()
-        .map(|(logprob, hf)| {
-            let lp = f64::from(*logprob).to_string();
-            let count = event_posteriors_map
-                .iter()
-                .filter(|(lp2, hf2)| (logprob, hf) == (lp2, hf2))
-                .count()
-                .to_string();
-            let concatenated = format!("{}_{}", lp, count);
-            (concatenated, hf.clone())
-        })
-        .collect();
-    //collect events with the summed up logprobs for idential events (same logprob and haplotype fractions)
-    let mut final_event_posteriors_map: Vec<(LogProb, BTreeMap<Haplotype, NotNan<f64>>)> =
-        Vec::new();
-    for (lp_first_map, hf) in event_posteriors_map.iter() {
-        //event_posteriors is sorted
-        let lp_first_map_in_string = f64::from(*lp_first_map).to_string();
-        let mut new_lp = LogProb::ln_one();
-        for (lp_count, hf2) in logprob_counts.iter() {
-            let splitted = lp_count.split("_").collect::<Vec<&str>>();
-            let lp_str = splitted[0];
-            let cnt_str = splitted[1];
-            if lp_str == lp_first_map_in_string && hf == hf2 {
-                let mut probs = Vec::new();
-                for c in 0..cnt_str.parse::<i32>().unwrap() {
-                    probs.push(lp_first_map.clone());
-                }
-                new_lp = LogProb::ln_sum_exp(&probs);
-                final_event_posteriors_map.push((new_lp, hf.clone()));
-                break;
-            }
+    //last, create a map for haplotype-fractions to logprob, 
+    //in order to sum all logprobs belonging to same haplotype-fractions
+    let mut hf_to_logprob:BTreeMap<BTreeMap<Haplotype,NotNan<f64>>,LogProb> = BTreeMap::new();
+    for (hf, logprob) in event_posteriors_map.iter() {
+        if hf_to_logprob.contains_key(&hf) {
+            let new_logprob = LogProb::ln_sum_exp(&vec![hf_to_logprob[&hf].clone(), *logprob]);
+            hf_to_logprob.insert(hf.clone(), new_logprob.clone());
+        } else {
+            hf_to_logprob.insert(hf.clone(), logprob.clone());
         }
     }
-    //sort and then remove the duplicated entries
-    final_event_posteriors_map.sort_by(|a, b| b.partial_cmp(a).unwrap_or(Ordering::Equal));
-    final_event_posteriors_map.dedup();
-
+    //logprob doesn't implement Ord, so, convert the map to a vector of tuples starting with logprob
+    let mut logprob_and_hf = Vec::new();
+    for (hf, logprob) in hf_to_logprob.iter() {
+        logprob_and_hf.push((logprob, hf));
+    }
+    logprob_and_hf.sort_by(|a, b| b.partial_cmp(a).unwrap_or(Ordering::Equal));
+    
     //convert the final construct to the same type with the input of the function
     //(event_posteriors) and finally return new haplotypes with two-field information
     //in addition to event posteriors
-    let (lp, map) = &final_event_posteriors_map[0];
+    let (lp, map) = &logprob_and_hf[0];
     let final_haplotypes: Vec<Haplotype> = map.keys().cloned().collect();
     let mut event_posteriors_two_field = Vec::new();
-    for (lp, map) in final_event_posteriors_map.iter() {
+    for (lp, map) in logprob_and_hf.iter() {
         let haplotype_fractions = HaplotypeFractions(map.values().cloned().collect());
-        event_posteriors_two_field.push((haplotype_fractions, *lp));
+        event_posteriors_two_field.push((haplotype_fractions, **lp));
     }
     dbg!(&event_posteriors_two_field);
     Ok((final_haplotypes, event_posteriors_two_field))
