@@ -2,6 +2,7 @@ use crate::model::{AlleleFreq, Data, HaplotypeFractions, Likelihood, Marginal, P
 use anyhow::Result;
 use bio::stats::{bayesian::model::Model, probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
+use core::cmp::Ordering;
 use derefable::Derefable;
 use derive_builder::Builder;
 use derive_deref::DerefMut;
@@ -33,7 +34,6 @@ use std::path::Path;
 use std::str::FromStr;
 use std::{fs, fs::File};
 use std::{path::PathBuf, str};
-use core::cmp::Ordering;
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
@@ -1208,18 +1208,27 @@ fn convert_to_two_field(
         }
         event_posteriors_map.push((*logprob, haplotype_to_fraction_new.clone()));
     }
-    
+
     // find the number of events that have the same logprob and haplotype fractions and collect them in a map
     // (key should contain the logprob and the count concatenated in a string, to differentiate events with same logprob but different haplotype fractions)
-    let logprob_counts: BTreeMap<String, BTreeMap<Haplotype, NotNan<f64>>> = event_posteriors_map.iter().map(|(logprob,hf)| {
-        let lp = f64::from(*logprob).to_string();
-        let count = event_posteriors_map.iter().filter(|(lp2,hf2)| (logprob, hf) == (lp2, hf2)).count().to_string();
-        let concatenated = format!("{}_{}", lp, count); 
-        (concatenated, hf.clone())
-}).collect();
+    let logprob_counts: BTreeMap<String, BTreeMap<Haplotype, NotNan<f64>>> = event_posteriors_map
+        .iter()
+        .map(|(logprob, hf)| {
+            let lp = f64::from(*logprob).to_string();
+            let count = event_posteriors_map
+                .iter()
+                .filter(|(lp2, hf2)| (logprob, hf) == (lp2, hf2))
+                .count()
+                .to_string();
+            let concatenated = format!("{}_{}", lp, count);
+            (concatenated, hf.clone())
+        })
+        .collect();
     //collect events with the summed up logprobs for idential events (same logprob and haplotype fractions)
-    let mut final_event_posteriors_map: Vec<(LogProb, BTreeMap<Haplotype, NotNan<f64>>)> = Vec::new();
-    for (lp_first_map, hf) in event_posteriors_map.iter() { //event_posteriors is sorted
+    let mut final_event_posteriors_map: Vec<(LogProb, BTreeMap<Haplotype, NotNan<f64>>)> =
+        Vec::new();
+    for (lp_first_map, hf) in event_posteriors_map.iter() {
+        //event_posteriors is sorted
         let lp_first_map_in_string = f64::from(*lp_first_map).to_string();
         let mut new_lp = LogProb::ln_one();
         for (lp_count, hf2) in logprob_counts.iter() {
@@ -1233,8 +1242,8 @@ fn convert_to_two_field(
                 }
                 new_lp = LogProb::ln_sum_exp(&probs);
                 final_event_posteriors_map.push((new_lp, hf.clone()));
-                break
-                }
+                break;
+            }
         }
     }
     //sort and then remove the duplicated entries
