@@ -74,170 +74,194 @@ impl Caller {
         //Step 1: Prepare data and compute the model
         //initially prepare haplotype_variants and variant_calls
         let mut variant_calls = VariantCalls::new(&mut self.variant_calls)?;
-        let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
-        let mut haplotype_variants =
-            HaplotypeVariants::new(&mut self.haplotype_variants, &variant_ids)?;
-        let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
-        let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-        dbg!(&haplotypes);
 
-        //check if common_variants is true, if yes use only common variants both for lp and model
-        if self.common_variants {
-            //include only common variants if common_variants is true
-            //this happens by first finding the common variants and then filtering
-            //haplotype_variants and variant_calls to only contain those variants
-            let common_variants =
-                haplotype_variants.find_common_variants(&variant_calls, &haplotypes)?;
-            let mut haplotype_variants =
-                haplotype_variants.filter_haplotype_variants(&common_variants)?;
-            let variant_calls = variant_calls.filter_variant_calls(&common_variants)?;
-            dbg!(&common_variants);
-            dbg!(&haplotype_variants);
-            dbg!(&variant_calls);
-        }
-        //find the haplotypes to prioritize
-        let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
-        let lp_haplotypes = self.linear_program(
-            &candidate_matrix,
-            &haplotypes,
-            &variant_calls,
-            self.lp_cutoff,
-        )?;
-        dbg!(&lp_haplotypes);
+        //write blank plots and tsv table if no variants are available.
+        if variant_calls.len() == 0 {
 
-        //take only haplotypes that are found by lp
-        let haplotype_variants =
-            haplotype_variants.find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?; //fix: find_plausible haplotypes should only contain the list of "haplotypes" given as parameter
-        dbg!(&haplotype_variants);
+            let mut parent = self.outcsv.clone().unwrap();
+            parent.pop();
+            fs::create_dir_all(&parent)?;
 
-        //make sure lp_haplotypes sorted the same as in haplotype_variants
-        let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
-        let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-        dbg!(&final_haplotypes);
-
-        //construct candidate matrix
-        let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
-
-        //for diploid-subclonal priors, max N number of haplotypes should be selected
-        // let final_haplotypes = final_haplotypes[0..5].to_vec();
-        //
-
-        // //kallisto experimentation
-        // //prepare KallistoEstimates for only the haplotypes come from LP
-        // let kallisto_estimates = KallistoEstimates::new(&self.hdf5_reader, self.min_norm_counts, &final_haplotypes)?;
-        // dbg!(&kallisto_estimates);
-        // let kallisto_estimates = kallisto_estimates
-        //  .select_haplotypes(4)
-        //  .unwrap();
-        // dbg!(&kallisto_estimates);
-        // let kallisto_haplotypes = kallisto_estimates.keys().cloned().collect();
-        // let haplotype_variants =
-        // haplotype_variants.find_plausible_haplotypes(&variant_calls, &kallisto_haplotypes)?;
-        // let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
-        // let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-        // dbg!(&final_haplotypes); //the final ranking of haplotypes
-        // let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
-
-        //1-) model computation for chosen prior
-        let prior = PriorTypes::from_str(&self.prior).unwrap();
-        let upper_bond = NotNan::new(1.0).unwrap();
-        let model = Model::new(
-            Likelihood::new(),
-            Prior::new(prior.clone()),
-            Posterior::new(),
-        );
-        let data = Data::new(candidate_matrix.clone(), variant_calls.clone());
-        let computed_model = model.compute_from_marginal(
-            &Marginal::new(final_haplotypes.len(), upper_bond, prior),
-            &data,
-        );
-        let mut event_posteriors = computed_model.event_posteriors();
-        let (best_fractions, _) = event_posteriors.next().unwrap();
-
-        //Step 2: plot the final solution
-        let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
-            data.candidate_matrix.values().cloned().collect();
-        let best_fractions = best_fractions
-            .iter()
-            .map(|f| NotNan::into_inner(*f))
-            .collect::<Vec<f64>>();
-        self.plot_prediction(
-            &"final",
-            &candidate_matrix_values,
-            &final_haplotypes,
-            &data.variant_calls,
-            &best_fractions,
-        );
-
-        //write to tsv for nonzero densities
-        let mut event_posteriors = Vec::new();
-        computed_model
-            .event_posteriors()
-            .for_each(|(fractions, logprob)| {
-                if logprob.exp() != 0.0 {
-                    event_posteriors.push((fractions.clone(), logprob.clone()));
-                }
-            });
-        //first: 3-field
-        self.write_results(
-            self.outcsv.as_ref().unwrap().clone(),
-            &data,
-            &event_posteriors,
-            &final_haplotypes,
-            self.prior.clone(),
-            false,
-        );
-        //second: 2-field
-        let (two_field_haplotypes, two_field_event_posteriors) =
-            convert_to_two_field(&event_posteriors, &final_haplotypes)?;
-        let mut path_for_two_fields =
-            PathBuf::from(self.outcsv.as_ref().unwrap().parent().unwrap());
-        path_for_two_fields.push("2-field.csv");
-        self.write_results(
-            path_for_two_fields,
-            &data,
-            &two_field_event_posteriors,
-            &two_field_haplotypes,
-            self.prior.clone(),
-            false,
-        );
-
-        //plot first 10 posteriors of orthanq output
-        self.plot_densities(&event_posteriors, &final_haplotypes, "3_field");
-        self.plot_densities(
-            &two_field_event_posteriors,
-            &two_field_haplotypes,
-            "2_field",
-        );
-
-        //second: convert to G groups
-        let mut converted_name = PathBuf::from(self.outcsv.as_ref().unwrap().parent().unwrap());
-        converted_name.push("G_groups.csv");
-        let allele_to_g_groups = self.convert_to_g().unwrap();
-        let mut final_haplotypes_converted: Vec<Haplotype> = Vec::new();
-        final_haplotypes.iter().for_each(|haplotype| {
-            let mut conv_haplotype = Vec::new();
-            allele_to_g_groups.iter().for_each(|(allele, g_group)| {
-                if allele.starts_with(&haplotype.to_string()) {
-                    conv_haplotype.push(g_group.to_string());
-                }
-            });
-            if conv_haplotype.is_empty() {
-                conv_haplotype.push(haplotype.to_string());
+            //write blank plots, required for the workflow!
+            for file_name in vec!["lp_solution.json".to_string(), "final_solution.json".to_string(), "2_field_solutions.json".to_string(), "3_field_solutions.json".to_string()] {
+                let json = include_str!("../../templates/prediction.json");
+                let mut blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
+                let file = fs::File::create(parent.join(file_name)).unwrap();
+                serde_json::to_writer(file, &blueprint);
             }
-            let conv_haplotype = Haplotype(conv_haplotype[0].clone());
-            final_haplotypes_converted.push(conv_haplotype);
-        });
-
-        self.write_results(
-            converted_name,
-            &data,
-            &event_posteriors,
-            &final_haplotypes_converted,
-            self.prior.clone(),
-            true,
-        );
-        Ok(())
+            //write blank tsv
+            let mut wtr = csv::Writer::from_path(self.outcsv.as_ref().unwrap().clone())?;
+            let mut headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
+            wtr.write_record(&headers)?;
+            Ok(())
+        }
+        else {
+            let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
+            let mut haplotype_variants =
+                HaplotypeVariants::new(&mut self.haplotype_variants, &variant_ids)?;
+            let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
+            let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
+            dbg!(&haplotypes);
+    
+            //check if common_variants is true, if yes use only common variants both for lp and model
+            if self.common_variants {
+                //include only common variants if common_variants is true
+                //this happens by first finding the common variants and then filtering
+                //haplotype_variants and variant_calls to only contain those variants
+                let common_variants =
+                    haplotype_variants.find_common_variants(&variant_calls, &haplotypes)?;
+                let mut haplotype_variants =
+                    haplotype_variants.filter_haplotype_variants(&common_variants)?;
+                let variant_calls = variant_calls.filter_variant_calls(&common_variants)?;
+                dbg!(&common_variants);
+                dbg!(&haplotype_variants);
+                dbg!(&variant_calls);
+            }
+            //find the haplotypes to prioritize
+            let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
+            let lp_haplotypes = self.linear_program(
+                &candidate_matrix,
+                &haplotypes,
+                &variant_calls,
+                self.lp_cutoff,
+            )?;
+            dbg!(&lp_haplotypes);
+    
+            //take only haplotypes that are found by lp
+            let haplotype_variants =
+                haplotype_variants.find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?; //fix: find_plausible haplotypes should only contain the list of "haplotypes" given as parameter
+            dbg!(&haplotype_variants);
+    
+            //make sure lp_haplotypes sorted the same as in haplotype_variants
+            let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
+            let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
+            dbg!(&final_haplotypes);
+    
+            //construct candidate matrix
+            let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
+    
+            //for diploid-subclonal priors, max N number of haplotypes should be selected
+            // let final_haplotypes = final_haplotypes[0..5].to_vec();
+            //
+    
+            // //kallisto experimentation
+            // //prepare KallistoEstimates for only the haplotypes come from LP
+            // let kallisto_estimates = KallistoEstimates::new(&self.hdf5_reader, self.min_norm_counts, &final_haplotypes)?;
+            // dbg!(&kallisto_estimates);
+            // let kallisto_estimates = kallisto_estimates
+            //  .select_haplotypes(4)
+            //  .unwrap();
+            // dbg!(&kallisto_estimates);
+            // let kallisto_haplotypes = kallisto_estimates.keys().cloned().collect();
+            // let haplotype_variants =
+            // haplotype_variants.find_plausible_haplotypes(&variant_calls, &kallisto_haplotypes)?;
+            // let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
+            // let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
+            // dbg!(&final_haplotypes); //the final ranking of haplotypes
+            // let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
+    
+            //1-) model computation for chosen prior
+            let prior = PriorTypes::from_str(&self.prior).unwrap();
+            let upper_bond = NotNan::new(1.0).unwrap();
+            let model = Model::new(
+                Likelihood::new(),
+                Prior::new(prior.clone()),
+                Posterior::new(),
+            );
+            let data = Data::new(candidate_matrix.clone(), variant_calls.clone());
+            let computed_model = model.compute_from_marginal(
+                &Marginal::new(final_haplotypes.len(), upper_bond, prior),
+                &data,
+            );
+            let mut event_posteriors = computed_model.event_posteriors();
+            let (best_fractions, _) = event_posteriors.next().unwrap();
+    
+            //Step 2: plot the final solution
+            let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
+                data.candidate_matrix.values().cloned().collect();
+            let best_fractions = best_fractions
+                .iter()
+                .map(|f| NotNan::into_inner(*f))
+                .collect::<Vec<f64>>();
+            self.plot_prediction(
+                &"final",
+                &candidate_matrix_values,
+                &final_haplotypes,
+                &data.variant_calls,
+                &best_fractions,
+            );
+    
+            //write to tsv for nonzero densities
+            let mut event_posteriors = Vec::new();
+            computed_model
+                .event_posteriors()
+                .for_each(|(fractions, logprob)| {
+                    if logprob.exp() != 0.0 {
+                        event_posteriors.push((fractions.clone(), logprob.clone()));
+                    }
+                });
+            //first: 3-field
+            self.write_results(
+                self.outcsv.as_ref().unwrap().clone(),
+                &data,
+                &event_posteriors,
+                &final_haplotypes,
+                self.prior.clone(),
+                false,
+            );
+            //second: 2-field
+            let (two_field_haplotypes, two_field_event_posteriors) =
+                convert_to_two_field(&event_posteriors, &final_haplotypes)?;
+            let mut path_for_two_fields =
+                PathBuf::from(self.outcsv.as_ref().unwrap().parent().unwrap());
+            path_for_two_fields.push("2-field.csv");
+            self.write_results(
+                path_for_two_fields,
+                &data,
+                &two_field_event_posteriors,
+                &two_field_haplotypes,
+                self.prior.clone(),
+                false,
+            );
+    
+            //plot first 10 posteriors of orthanq output
+            self.plot_densities(&event_posteriors, &final_haplotypes, "3_field");
+            self.plot_densities(
+                &two_field_event_posteriors,
+                &two_field_haplotypes,
+                "2_field",
+            );
+    
+            //second: convert to G groups
+            let mut converted_name = PathBuf::from(self.outcsv.as_ref().unwrap().parent().unwrap());
+            converted_name.push("G_groups.csv");
+            let allele_to_g_groups = self.convert_to_g().unwrap();
+            let mut final_haplotypes_converted: Vec<Haplotype> = Vec::new();
+            final_haplotypes.iter().for_each(|haplotype| {
+                let mut conv_haplotype = Vec::new();
+                allele_to_g_groups.iter().for_each(|(allele, g_group)| {
+                    if allele.starts_with(&haplotype.to_string()) {
+                        conv_haplotype.push(g_group.to_string());
+                    }
+                });
+                if conv_haplotype.is_empty() {
+                    conv_haplotype.push(haplotype.to_string());
+                }
+                let conv_haplotype = Haplotype(conv_haplotype[0].clone());
+                final_haplotypes_converted.push(conv_haplotype);
+            });
+    
+            self.write_results(
+                converted_name,
+                &data,
+                &event_posteriors,
+                &final_haplotypes_converted,
+                self.prior.clone(),
+                true,
+            );
+            Ok(())
+        }
+       
     }
     fn write_results(
         &self,
