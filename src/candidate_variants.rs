@@ -1104,30 +1104,32 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
             || y.starts_with("DQB1")
     });
     dbg!(confirmed_alleles_clone.len());
-
+    // dbg!(&confirmed_alleles_clone);
     allele_freq_rdr.deserialize().for_each(|result| {
         let record: Record = result.unwrap();
         confirmed_alleles_clone.iter().for_each(|(id, name)| {
-            // let mut first_three = String::from("");
+            
+            let mut first_three = String::from("");
             let splitted = name.split(":").collect::<Vec<&str>>(); //DQB1*05:02:01 is alone not an allele name, but DQB1*05:02:01:01, DQB1*05:02:01:02.. are.
             let first_two = format!("{}:{}", splitted[0], splitted[1]);
-            // if splitted.len() > 2{
-            //     let first_three = format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]);
-            // }
-            //B*39:06:01 is below 0.05 but 39:06 not and this allele is one of the true genotypes of a sample in the ground truths so we should include following lines. a direct match is not preferred by the authors in the ground truth.
-            //they include alleles that do not have a direct name match, rather the ones starting with the first two fields.
+            if splitted.len() > 2{
+                first_three = format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]);
+            }
+            // first a direct match then if it doesn't match, then perform matches against the first three and first two fields of the record in the confirmed alleles.
             if &record.var == name {
                 if record.frequency > NotNan::new(0.05).unwrap() {
                     to_be_included.push(id.clone());
                 }
             }
-            // else if &record.var == &first_three && record.frequency > NotNan::new(0.05).unwrap(){
-            //     to_be_included.push(id.clone());
+            else if &record.var == &first_three && record.frequency > NotNan::new(0.05).unwrap(){
+                to_be_included.push(id.clone());
+            }
             else if &record.var == &first_two && record.frequency > NotNan::new(0.05).unwrap() {
                 to_be_included.push(id.clone());
             }
         });
     });
+    // dbg!(&to_be_included);
     dbg!(&to_be_included.len());
     let below_criterium: Vec<String> = confirmed_alleles_clone
         .iter()
