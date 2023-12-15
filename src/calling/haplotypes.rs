@@ -1206,6 +1206,7 @@ fn convert_to_two_field(
 ) -> Result<(Vec<Haplotype>, Vec<(HaplotypeFractions, LogProb)>)> {
     // dbg!(&event_posteriors);
     let mut event_posteriors_map: Vec<(BTreeMap<Haplotype, NotNan<f64>>,LogProb)> = Vec::new();
+    dbg!(&event_posteriors);
     for (fractions, logprob) in event_posteriors.iter() {
         //firstly, initiate a map for haplotype and fraction info for each event
         //by having zero fraction as first values
@@ -1226,8 +1227,13 @@ fn convert_to_two_field(
             let splitted: Vec<&str> = haplotype.split(':').collect();
             let two_field = format!("{}:{}", splitted[0].to_string(), splitted[1]);
             let two_field = Haplotype(two_field);
+            let mut sum_of_two = NotNan::new(0.00).unwrap();
             if haplotype_to_fraction_new[&two_field] == NotNan::new(0.00).unwrap() {
                 haplotype_to_fraction_new.insert(two_field.clone(), *fraction);
+            } 
+            else { // this is to ensure that haplotypes with identical two_fields do not have separate records
+                sum_of_two = haplotype_to_fraction_new[&two_field].clone() + fraction.clone();
+                haplotype_to_fraction_new.insert(two_field.clone(), sum_of_two);
             }
         }
         event_posteriors_map.push((haplotype_to_fraction_new.clone(),*logprob));
@@ -1236,6 +1242,7 @@ fn convert_to_two_field(
     //last, create a map for haplotype-fractions to logprob, 
     //in order to sum all logprobs belonging to same haplotype-fractions
     let mut hf_to_logprob:BTreeMap<BTreeMap<Haplotype,NotNan<f64>>,LogProb> = BTreeMap::new();
+    // dbg!(&event_posteriors_map);
     for (hf, logprob) in event_posteriors_map.iter() {
         if hf_to_logprob.contains_key(&hf) {
             let new_logprob = LogProb::ln_sum_exp(&vec![hf_to_logprob[&hf].clone(), *logprob]);
@@ -1244,6 +1251,7 @@ fn convert_to_two_field(
             hf_to_logprob.insert(hf.clone(), logprob.clone());
         }
     }
+    // dbg!(&hf_to_logprob);
     //logprob doesn't implement Ord, so, convert the map to a vector of tuples starting with logprob
     let mut logprob_and_hf = Vec::new();
     for (hf, logprob) in hf_to_logprob.iter() {
