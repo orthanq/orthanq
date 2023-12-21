@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.0.1](https://www.github.com/orthanq/orthanq/compare/v1.0.0...v1.0.1) (2023-12-21)
+
+
+### Miscellaneous Chores
+
+* release 1.0.1 ([af15015](https://www.github.com/orthanq/orthanq/commit/af15015df8b83c89c74ab571d2dd61582355c980))
+
 ## 1.0.0 (2023-12-21)
 
 
