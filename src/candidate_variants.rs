@@ -937,8 +937,8 @@ impl Caller {
                 if splitted[0] == locus {
                     if confirmed_alleles.contains(&id.to_string()) {
                         let new_record = bio::io::fasta::Record::with_attrs(
-                            description.split_whitespace().collect::<Vec<&str>>()[0].clone(),
-                            Some(id.clone()),
+                            description.split_whitespace().collect::<Vec<&str>>()[0],
+                            Some(id),
                             record.seq(),
                         );
                         writer

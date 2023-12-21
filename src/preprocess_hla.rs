@@ -47,14 +47,14 @@ impl Caller {
         let sample_name = sample_name_split[0];
 
         //create the output file name in temp directory
-        let file_aligned = temp_dir.path().join(format!("{}.bam", sample_name.clone()));
+        let file_aligned = temp_dir.path().join(format!("{}.bam", sample_name));
         println!("{}", file_aligned.display());
 
         //insert read_group info from the sample names
         let read_group = format!(
             "@RG\\tID:{}\\tSM:{}",
-            sample_name.clone(),
-            sample_name.clone()
+            sample_name,
+            sample_name
         );
 
         //test the subcommand, for this skip the indexing part
@@ -86,7 +86,7 @@ impl Caller {
         //create the output file name in temp directory
         let file_aligned_sorted = temp_dir
             .path()
-            .join(format!("{}_sorted.bam", sample_name.clone()));
+            .join(format!("{}_sorted.bam", sample_name));
 
         let sort = {
             Command::new("samtools")
@@ -108,7 +108,7 @@ impl Caller {
         //create the output file name in temp directory
         let file_extracted = temp_dir
             .path()
-            .join(format!("{}_extracted.bam", sample_name.clone()));
+            .join(format!("{}_extracted.bam", sample_name));
 
         let regions = "resources/regions.bed";
 
@@ -131,10 +131,10 @@ impl Caller {
         //create the output file name in temp directory
         let temp_extracted_fq_1 = temp_dir
             .path()
-            .join(format!("{}_1.fastq", sample_name.clone()));
+            .join(format!("{}_1.fastq", sample_name));
         let temp_extracted_fq_2 = temp_dir
             .path()
-            .join(format!("{}_2.fastq", sample_name.clone()));
+            .join(format!("{}_2.fastq", sample_name));
 
         let bam_to_fq = {
             Command::new("samtools")
