@@ -11,9 +11,6 @@ use good_lp::IntoAffineExpression;
 use good_lp::*;
 use good_lp::{variable, Expression};
 
-
-
-
 use ordered_float::NotNan;
 use ordered_float::OrderedFloat;
 use quick_xml::events::Event;
@@ -29,10 +26,8 @@ use serde::Serialize;
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap};
 
-
-
+use std::fs;
 use std::str::FromStr;
-use std::{fs};
 use std::{path::PathBuf, str};
 
 #[derive(Builder)]

@@ -22,9 +22,9 @@ use std::convert::TryInto;
 use std::io;
 use std::iter::FromIterator;
 
+use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use std::{fs};
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]
