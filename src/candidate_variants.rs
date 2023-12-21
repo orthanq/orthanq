@@ -1108,11 +1108,10 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
     allele_freq_rdr.deserialize().for_each(|result| {
         let record: Record = result.unwrap();
         confirmed_alleles_clone.iter().for_each(|(id, name)| {
-            
             let mut first_three = String::from("");
             let splitted = name.split(":").collect::<Vec<&str>>(); //DQB1*05:02:01 is alone not an allele name, but DQB1*05:02:01:01, DQB1*05:02:01:02.. are.
             let first_two = format!("{}:{}", splitted[0], splitted[1]);
-            if splitted.len() > 2{
+            if splitted.len() > 2 {
                 first_three = format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]);
             }
             // first a direct match then if it doesn't match, then perform matches against the first three and first two fields of the record in the confirmed alleles.
@@ -1120,11 +1119,9 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                 if record.frequency > NotNan::new(0.05).unwrap() {
                     to_be_included.push(id.clone());
                 }
-            }
-            else if &record.var == &first_three && record.frequency > NotNan::new(0.05).unwrap(){
+            } else if &record.var == &first_three && record.frequency > NotNan::new(0.05).unwrap() {
                 to_be_included.push(id.clone());
-            }
-            else if &record.var == &first_two && record.frequency > NotNan::new(0.05).unwrap() {
+            } else if &record.var == &first_two && record.frequency > NotNan::new(0.05).unwrap() {
                 to_be_included.push(id.clone());
             }
         });
