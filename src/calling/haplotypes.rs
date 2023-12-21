@@ -6,20 +6,20 @@ use core::cmp::Ordering;
 use derefable::Derefable;
 use derive_builder::Builder;
 use derive_deref::DerefMut;
-use derive_new::new;
+
 use good_lp::IntoAffineExpression;
 use good_lp::*;
 use good_lp::{variable, Expression};
-use hdf5;
-use linfa::prelude::*;
-use linfa_clustering::KMeans;
-use ndarray::prelude::*;
+
+
+
+
 use ordered_float::NotNan;
 use ordered_float::OrderedFloat;
 use quick_xml::events::Event;
 use quick_xml::reader::Reader as xml_reader;
 use rand::prelude::*;
-use rand_xoshiro::Xoshiro256Plus;
+
 use rust_htslib::bcf::{
     self,
     record::GenotypeAllele::{Phased, Unphased},
@@ -28,11 +28,11 @@ use rust_htslib::bcf::{
 use serde::Serialize;
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap};
-use std::convert::TryInto;
-use std::error::Error;
-use std::path::Path;
+
+
+
 use std::str::FromStr;
-use std::{fs, fs::File};
+use std::{fs};
 use std::{path::PathBuf, str};
 
 #[derive(Builder)]
@@ -73,7 +73,7 @@ impl Caller {
     pub fn call(&mut self) -> Result<()> {
         //Step 1: Prepare data and compute the model
         //initially prepare haplotype_variants and variant_calls
-        let mut variant_calls = VariantCalls::new(&mut self.variant_calls)?;
+        let variant_calls = VariantCalls::new(&mut self.variant_calls)?;
 
         //write blank plots and tsv table if no variants are available.
         if variant_calls.len() == 0 {
@@ -89,18 +89,18 @@ impl Caller {
                 "3_field_solutions.json".to_string(),
             ] {
                 let json = include_str!("../../templates/prediction.json");
-                let mut blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
+                let blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
                 let file = fs::File::create(parent.join(file_name)).unwrap();
                 serde_json::to_writer(file, &blueprint);
             }
             //write blank tsv
             let mut wtr = csv::Writer::from_path(self.outcsv.as_ref().unwrap().clone())?;
-            let mut headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
+            let headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
             wtr.write_record(&headers)?;
             Ok(())
         } else {
             let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
-            let mut haplotype_variants =
+            let haplotype_variants =
                 HaplotypeVariants::new(&mut self.haplotype_variants, &variant_ids)?;
             let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
             let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
@@ -113,7 +113,7 @@ impl Caller {
                 //haplotype_variants and variant_calls to only contain those variants
                 let common_variants =
                     haplotype_variants.find_common_variants(&variant_calls, &haplotypes)?;
-                let mut haplotype_variants =
+                let haplotype_variants =
                     haplotype_variants.filter_haplotype_variants(&common_variants)?;
                 let variant_calls = variant_calls.filter_variant_calls(&common_variants)?;
                 dbg!(&common_variants);
@@ -271,7 +271,7 @@ impl Caller {
         data: &Data,
         event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
         final_haplotypes: &Vec<Haplotype>,
-        prior: String,
+        _prior: String,
         variant_info: bool,
     ) -> Result<()> {
         //firstly add variant query and probabilities to the outout table for each event
@@ -590,7 +590,7 @@ impl Caller {
                 candidate_matrix_values.iter().zip(variant_calls.iter())
             {
                 let mut counter = 0;
-                for (i, variable) in best_variables.iter().enumerate() {
+                for (i, _variable) in best_variables.iter().enumerate() {
                     if coverage_matrix[i as u64] {
                         counter += 1;
                     }
@@ -754,12 +754,12 @@ impl Caller {
 
         let mut g_to_alleles: BTreeMap<String, String> = BTreeMap::new();
         let g_names: Vec<String> = hla_g_groups.values().cloned().collect();
-        let unconfirmed_alleles = filtered_alleles
+        let _unconfirmed_alleles = filtered_alleles
             .iter()
             .zip(filtered_confirmed.iter())
             .zip(g_names.iter())
-            .filter(|((allele, c), g_group)| c == &"Confirmed")
-            .for_each(|((allele, c), g_group)| {
+            .filter(|((_allele, c), _g_group)| c == &"Confirmed")
+            .for_each(|((allele, _c), g_group)| {
                 g_to_alleles.insert(allele.clone(), g_group.to_string());
             });
         dbg!(&g_to_alleles);
@@ -771,7 +771,7 @@ impl Caller {
         final_haplotypes: &Vec<Haplotype>,
         file_prefix: &str,
     ) -> Result<()> {
-        let mut file_name = format!("{}_solutions.json", file_prefix.to_string());
+        let file_name = format!("{}_solutions.json", file_prefix.to_string());
         let json = include_str!("../../templates/densities.json");
         let mut blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
         let mut plot_data_fractions = Vec::new();
@@ -1014,7 +1014,7 @@ impl HaplotypeVariants {
 
     fn find_plausible_haplotypes(
         &self,
-        variant_calls: &VariantCalls,
+        _variant_calls: &VariantCalls,
         haplotypes: &Vec<Haplotype>,
     ) -> Result<Self> {
         let mut new_haplotype_variants: BTreeMap<
@@ -1048,11 +1048,11 @@ impl HaplotypeVariants {
             .cloned()
             .collect();
         let mut common_variants = Vec::new();
-        for ((genotype_matrix, coverage_matrix), (variant, (af, _))) in
+        for ((_genotype_matrix, coverage_matrix), (variant, (_af, _))) in
             candidate_matrix_values.iter().zip(variant_calls.iter())
         {
             let mut counter = 0;
-            for (i, haplotype) in haplotypes.iter().enumerate() {
+            for (i, _haplotype) in haplotypes.iter().enumerate() {
                 if coverage_matrix[i as u64] {
                     counter += 1;
                 }
@@ -1102,7 +1102,7 @@ impl CandidateMatrix {
         haplotype_variants.iter().for_each(|(variant_id, bmap)| {
             let mut haplotype_variants_gt = Vec::new();
             let mut haplotype_variants_c = BitVec::new();
-            bmap.iter().for_each(|(haplotype, (gt, c))| {
+            bmap.iter().for_each(|(_haplotype, (gt, c))| {
                 haplotype_variants_c.push(*c);
                 haplotype_variants_gt.push(gt.clone());
             });
@@ -1175,10 +1175,10 @@ fn collect_constraints_and_variants(
         candidate_matrix_values.iter().zip(variant_calls.iter())
     {
         let mut fraction_cont = Expression::from_other_affine(0.);
-        let mut prime_fraction_cont = Expression::from_other_affine(0.);
-        let mut vaf = Expression::from_other_affine(0.);
+        let _prime_fraction_cont = Expression::from_other_affine(0.);
+        let _vaf = Expression::from_other_affine(0.);
         let mut counter = 0;
-        for (i, variable) in variables.iter().enumerate() {
+        for (i, _variable) in variables.iter().enumerate() {
             if coverage_matrix[i as u64] {
                 counter += 1;
             }
@@ -1264,7 +1264,7 @@ fn convert_to_two_field(
     //convert the final construct to the same type with the input of the function
     //(event_posteriors) and finally return new haplotypes with two-field information
     //in addition to event posteriors
-    let (lp, map) = &logprob_and_hf[0];
+    let (_lp, map) = &logprob_and_hf[0];
     let final_haplotypes: Vec<Haplotype> = map.keys().cloned().collect();
     let mut event_posteriors_two_field = Vec::new();
     for (lp, map) in logprob_and_hf.iter() {

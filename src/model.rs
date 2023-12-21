@@ -56,7 +56,7 @@ impl Marginal {
                         //sum 0.0, 0.5 and 1.0
                         let mut probs = Vec::new();
                         let mut diploid_points = |point, probs: &mut Vec<_>| {
-                            let mut fractions = fractions.clone();
+                            let fractions = fractions.clone();
                             if fractions.iter().sum::<NotNan<f64>>() + point
                                 <= NotNan::new(1.0).unwrap()
                             {
@@ -126,8 +126,8 @@ impl model::Likelihood<Cache> for Likelihood {
 impl Likelihood {
     fn compute_kallisto(
         &self,
-        event: &HaplotypeFractions,
-        data: &Data,
+        _event: &HaplotypeFractions,
+        _data: &Data,
         _cache: &mut Cache,
     ) -> LogProb {
         // TODO compute likelihood using neg_binom on the counts and dispersion

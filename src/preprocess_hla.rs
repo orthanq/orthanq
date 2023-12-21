@@ -1,11 +1,11 @@
 use anyhow::Result;
 use derive_builder::Builder;
-use std::io::Read;
+
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tempfile::tempdir;
-use tempfile::{NamedTempFile, TempDir};
+use tempfile::{NamedTempFile};
 
 #[derive(Builder, Clone)]
 pub struct Caller {
@@ -20,7 +20,7 @@ impl Caller {
         //bwa index -p hs_genome -a bwtsw hs_genome.fasta
 
         //create a temporary file for bwa index and execute bwa index
-        let mut temp_index = NamedTempFile::new()?;
+        let temp_index = NamedTempFile::new()?;
         // let index = {
         //     Command::new("bwa")
         //         .arg("index")
@@ -35,7 +35,7 @@ impl Caller {
         // println!("The index was created successfully: {}", index);
 
         //perform the alignment for paired end reads
-        let mut temp_aligned = NamedTempFile::new()?;
+        let _temp_aligned = NamedTempFile::new()?;
 
         // Create a directory inside of `std::env::temp_dir()`
         let temp_dir = tempdir()?;
@@ -161,7 +161,7 @@ impl Caller {
         // .join(format!("{}_vg.sam", sample_name.clone()));
         let file_aligned_pangenome = "out.gam";
 
-        let mut align_pangenome = {
+        let align_pangenome = {
             Command::new("vg")
                 .arg("giraffe")
                 .arg("-x")

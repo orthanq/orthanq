@@ -1,15 +1,14 @@
 use anyhow::Result;
-use bio::io::fasta::Reader;
+
 use bio_types::genome::AbstractInterval;
 use csv::Reader as CsvReader;
 use derive_builder::Builder;
 use ndarray::Array2;
 use ordered_float::NotNan;
 use polars::{
-    datatypes::Utf8Chunked,
     df,
     frame::DataFrame,
-    prelude::{CsvWriter, IntoSeries, NamedFrom, SerWriter},
+    prelude::{NamedFrom, SerWriter},
     series::Series,
 };
 use quick_xml::events::Event;
@@ -19,13 +18,13 @@ use rust_htslib::{bam, bam::ext::BamRecordExtensions, bam::record::Cigar, bam::R
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
-use std::error::Error;
+
 use std::io;
 use std::iter::FromIterator;
-use std::path::Path;
+
 use std::path::PathBuf;
 use std::process::Command;
-use std::{fs, fs::File};
+use std::{fs};
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]
@@ -43,7 +42,7 @@ impl Caller {
         //prepare the map to look up which alleles are confirmed and unconfirmed and g codes available
         //IMGT/HLA version for xml file is 3.35, set this to the same version in the evaluation workflow
         //and only include alleles that have AF >0.05
-        let (confirmed_alleles, unconfirmed_alleles) =
+        let (_confirmed_alleles, unconfirmed_alleles) =
             confirmed_alleles(&self.xml, &self.allele_freq).unwrap();
 
         //write loci to separate fasta files (Confirmed and alleles that have g codes available)
@@ -708,7 +707,7 @@ impl Caller {
             variant_table["Index"].clone(),
             variant_table["ID"].clone(),
         ])?;
-        for (column_index, column_name) in
+        for (_column_index, column_name) in
             variant_table.get_column_names().iter().skip(2).enumerate()
         {
             let protein_level = &allele_digit_table[&column_name.to_string()];
@@ -854,7 +853,7 @@ impl Caller {
             )
             .unwrap();
 
-            let id_iter = variant_table["ID"].i64().unwrap().into_iter();
+            let _id_iter = variant_table["ID"].i64().unwrap().into_iter();
             for row_index in 0..variant_table.height() {
                 let mut record = vcf.empty_record();
                 let mut variant_iter = variant_table["Index"].utf8().unwrap().into_iter();
@@ -1074,18 +1073,18 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
 
     assert_eq!(alleles.len(), confirmed.len());
     //create a map for allele ids and allele names
-    let mut unconfirmed_alleles = alleles
+    let unconfirmed_alleles = alleles
         .iter()
         .zip(allele_names.iter())
         .zip(confirmed.iter())
-        .filter(|((id, name), c)| c == &"Unconfirmed")
-        .map(|((id, name), c)| (format!("HLA:{}", id.clone()), name.clone()))
+        .filter(|((_id, _name), c)| c == &"Unconfirmed")
+        .map(|((id, name), _c)| (format!("HLA:{}", id.clone()), name.clone()))
         .collect::<HashMap<String, String>>();
     //write confirmed alleles to file
-    let mut confirmed_alleles = alleles
+    let confirmed_alleles = alleles
         .iter()
         .zip(allele_names.iter())
-        .filter(|(id, name)| !unconfirmed_alleles.contains_key(&format!("HLA:{}", id)))
+        .filter(|(id, _name)| !unconfirmed_alleles.contains_key(&format!("HLA:{}", id)))
         .map(|(id, name)| (format!("HLA:{}", id.clone()), name.clone()))
         .collect::<HashMap<String, String>>();
     //include only alleles that have >0.01 AF in at least one population
