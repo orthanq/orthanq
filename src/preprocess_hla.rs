@@ -51,11 +51,7 @@ impl Caller {
         println!("{}", file_aligned.display());
 
         //insert read_group info from the sample names
-        let read_group = format!(
-            "@RG\\tID:{}\\tSM:{}",
-            sample_name,
-            sample_name
-        );
+        let read_group = format!("@RG\\tID:{}\\tSM:{}", sample_name, sample_name);
 
         //test the subcommand, for this skip the indexing part
         let index = "/projects/koesterlab/orthanq/orthanq-evaluation/results/bwa-index/hs_genome";
@@ -84,9 +80,7 @@ impl Caller {
         //sort the aligned reads by coordinate
 
         //create the output file name in temp directory
-        let file_aligned_sorted = temp_dir
-            .path()
-            .join(format!("{}_sorted.bam", sample_name));
+        let file_aligned_sorted = temp_dir.path().join(format!("{}_sorted.bam", sample_name));
 
         let sort = {
             Command::new("samtools")
@@ -129,12 +123,8 @@ impl Caller {
         //convert the alignment file to fq
 
         //create the output file name in temp directory
-        let temp_extracted_fq_1 = temp_dir
-            .path()
-            .join(format!("{}_1.fastq", sample_name));
-        let temp_extracted_fq_2 = temp_dir
-            .path()
-            .join(format!("{}_2.fastq", sample_name));
+        let temp_extracted_fq_1 = temp_dir.path().join(format!("{}_1.fastq", sample_name));
+        let temp_extracted_fq_2 = temp_dir.path().join(format!("{}_2.fastq", sample_name));
 
         let bam_to_fq = {
             Command::new("samtools")
