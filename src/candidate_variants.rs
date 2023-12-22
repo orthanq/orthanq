@@ -8,7 +8,7 @@ use ordered_float::NotNan;
 use polars::{
     df,
     frame::DataFrame,
-    prelude::{NamedFrom, SerWriter},
+    prelude::NamedFrom,
     series::Series,
 };
 use quick_xml::events::Event;
@@ -134,7 +134,7 @@ impl Caller {
                             haplotypes.push(j); //appending j informs the dict about the allele names eventually
                             candidate_variants
                                 .insert((chrom, pos, ref_base, alt_sequence), haplotypes);
-                            rcount; // no change
+                            // rcount; // no change
                             scount += num;
                         }
                         Cigar::Del(num) => {
@@ -165,7 +165,7 @@ impl Caller {
                                 .insert((chrom, pos, ref_sequence, alt_base), haplotypes);
 
                             rcount += num;
-                            scount;
+                            // scount;
                         }
                         Cigar::SoftClip(num) => {
                             let num = i64::from(*num);
@@ -633,8 +633,8 @@ impl Caller {
 
         //Unconfirmed alleles are removed from both dataframes
         unconfirmed_alleles.iter().for_each(|unconf_allele| {
-            genotype_df.drop_in_place(unconf_allele);
-            loci_df.drop_in_place(unconf_allele);
+            let _ = genotype_df.drop_in_place(unconf_allele);
+            let _ = loci_df.drop_in_place(unconf_allele);
         });
 
         //Split up the variants per locus and depending on --wes samples, restrict the columns to protein level.

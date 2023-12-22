@@ -193,7 +193,7 @@ impl Caller {
 
         let mut vg_bam = std::fs::File::create(file_aligned_pangenome)?;
         vg_bam.write_all(&output.stdout)?; //write with bam writer
-        vg_bam.flush();
+        vg_bam.flush()?;
         // println!("{}", file_aligned_pangenome.display());
 
         //sort the resulting vg aligned file

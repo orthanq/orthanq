@@ -7,9 +7,7 @@ use bv::BitVec;
 use derefable::Derefable;
 use derive_new::new;
 use ordered_float::NotNan;
-use statrs::function::beta::ln_beta;
 use std::collections::HashMap;
-use std::mem;
 
 pub(crate) type AlleleFreq = NotNan<f64>;
 
@@ -124,30 +122,6 @@ impl model::Likelihood<Cache> for Likelihood {
 }
 
 impl Likelihood {
-    fn compute_kallisto(
-        &self,
-        _event: &HaplotypeFractions,
-        _data: &Data,
-        _cache: &mut Cache,
-    ) -> LogProb {
-        // TODO compute likelihood using neg_binom on the counts and dispersion
-        // in the data and the fractions in the events.
-        //Later: use the cache to avoid redundant computations.
-        // event
-        //     .iter()
-        //     .zip(data.kallisto_estimates.iter())
-        //     .map(|(fraction, estimate)| {
-        //         dbg!(&estimate, &fraction);
-        //         neg_binom(
-        //             *estimate.count,
-        //             NotNan::into_inner(*fraction),
-        //             *estimate.dispersion,
-        //         )
-        //     })
-        //     .sum();
-        LogProb::ln_one()
-    }
-
     fn compute_varlociraptor(
         &self,
         event: &HaplotypeFractions,
@@ -298,15 +272,3 @@ pub(crate) struct Cache(#[deref] HashMap<usize, HashMap<AlleleFreq, LogProb>>);
 //         }
 //     }
 // }
-
-pub(crate) fn neg_binom(x: f64, mu: f64, theta: f64) -> LogProb {
-    let n = 1.0 / theta;
-    let p = n / (n + mu);
-    let mut p1 = if n > 0.0 { n * p.ln() } else { 0.0 };
-    let mut p2 = if x > 0.0 { x * (1.0 - p).ln() } else { 0.0 };
-    let b = ln_beta(x + 1.0, n);
-    if p1 < p2 {
-        mem::swap(&mut p1, &mut p2);
-    }
-    LogProb((p1 - b + p2) - (x + n).ln())
-}

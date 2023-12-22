@@ -1995,7 +1995,6 @@ dependencies = [
  "plotters",
  "polars",
  "quick-xml",
- "rand",
  "rand_xoshiro",
  "rust-htslib",
  "serde",

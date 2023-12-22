@@ -15,7 +15,6 @@ use ordered_float::NotNan;
 use ordered_float::OrderedFloat;
 use quick_xml::events::Event;
 use quick_xml::reader::Reader as xml_reader;
-use rand::prelude::*;
 
 use rust_htslib::bcf::{
     self,
@@ -86,7 +85,7 @@ impl Caller {
                 let json = include_str!("../../templates/prediction.json");
                 let blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
                 let file = fs::File::create(parent.join(file_name)).unwrap();
-                serde_json::to_writer(file, &blueprint);
+                serde_json::to_writer(file, &blueprint)?;
             }
             //write blank tsv
             let mut wtr = csv::Writer::from_path(self.outcsv.as_ref().unwrap().clone())?;
@@ -187,7 +186,7 @@ impl Caller {
                 &final_haplotypes,
                 &data.variant_calls,
                 &best_fractions,
-            );
+            )?;
 
             //write to tsv for nonzero densities
             let mut event_posteriors = Vec::new();
@@ -206,7 +205,7 @@ impl Caller {
                 &final_haplotypes,
                 self.prior.clone(),
                 false,
-            );
+            )?;
             //second: 2-field
             let (two_field_haplotypes, two_field_event_posteriors) =
                 convert_to_two_field(&event_posteriors, &final_haplotypes)?;
@@ -220,15 +219,15 @@ impl Caller {
                 &two_field_haplotypes,
                 self.prior.clone(),
                 false,
-            );
+            )?;
 
             //plot first 10 posteriors of orthanq output
-            self.plot_densities(&event_posteriors, &final_haplotypes, "3_field");
+            self.plot_densities(&event_posteriors, &final_haplotypes, "3_field")?;
             self.plot_densities(
                 &two_field_event_posteriors,
                 &two_field_haplotypes,
                 "2_field",
-            );
+            )?;
 
             //second: convert to G groups
             let mut converted_name = PathBuf::from(self.outcsv.as_ref().unwrap().parent().unwrap());
@@ -256,7 +255,7 @@ impl Caller {
                 &final_haplotypes_converted,
                 self.prior.clone(),
                 true,
-            );
+            )?;
             Ok(())
         }
     }
@@ -508,7 +507,7 @@ impl Caller {
             &haplotypes,
             &variant_calls,
             &best_variables,
-        );
+        )?;
 
         //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list
         //and optionally, sort by hamming distance, take the closest x additional alleles according to 'permitted'
@@ -675,7 +674,7 @@ impl Caller {
         parent.pop();
         fs::create_dir_all(&parent)?;
         let file = fs::File::create(parent.join(file_name)).unwrap();
-        serde_json::to_writer(file, &blueprint);
+        serde_json::to_writer(file, &blueprint)?;
         Ok(())
     }
     pub fn convert_to_g(&self) -> Result<BTreeMap<String, String>> {
@@ -805,7 +804,7 @@ impl Caller {
         let mut parent = self.outcsv.clone().unwrap();
         parent.pop();
         let file = fs::File::create(parent.join(file_name)).unwrap();
-        serde_json::to_writer(file, &blueprint);
+        serde_json::to_writer(file, &blueprint)?;
         Ok(())
     }
 }
