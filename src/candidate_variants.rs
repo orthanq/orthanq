@@ -5,12 +5,7 @@ use csv::Reader as CsvReader;
 use derive_builder::Builder;
 use ndarray::Array2;
 use ordered_float::NotNan;
-use polars::{
-    df,
-    frame::DataFrame,
-    prelude::NamedFrom,
-    series::Series,
-};
+use polars::{df, frame::DataFrame, prelude::NamedFrom, series::Series};
 use quick_xml::events::Event;
 use quick_xml::reader::Reader as xml_reader;
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
