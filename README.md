@@ -1,4 +1,4 @@
-[![DOI](https://zenodo.org/badge/{475406908}.svg)](https://zenodo.org/badge/latestdoi/{475406908})
+[![DOI](https://zenodo.org/badge/475406908.svg)](https://zenodo.org/badge/latestdoi/475406908)
 
 # Orthanq 
 
