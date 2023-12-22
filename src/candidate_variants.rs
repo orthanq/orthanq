@@ -951,7 +951,7 @@ impl Caller {
 #[derive(Debug, Deserialize)]
 struct Record {
     var: String,
-    population: String,
+    // population: String,
     frequency: NotNan<f64>,
 }
 

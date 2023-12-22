@@ -1223,12 +1223,11 @@ fn convert_to_two_field(
             let splitted: Vec<&str> = haplotype.split(':').collect();
             let two_field = format!("{}:{}", splitted[0].to_string(), splitted[1]);
             let two_field = Haplotype(two_field);
-            let mut sum_of_two = NotNan::new(0.00).unwrap();
             if haplotype_to_fraction_new[&two_field] == NotNan::new(0.00).unwrap() {
                 haplotype_to_fraction_new.insert(two_field.clone(), *fraction);
             } else {
                 // this is to ensure that haplotypes with identical two_fields do not have separate records
-                sum_of_two = haplotype_to_fraction_new[&two_field].clone() + fraction.clone();
+                let sum_of_two = haplotype_to_fraction_new[&two_field].clone() + fraction.clone();
                 haplotype_to_fraction_new.insert(two_field.clone(), sum_of_two);
             }
         }

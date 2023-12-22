@@ -134,11 +134,11 @@ pub enum Orthanq {
             help = "Input FASTQ reads belonging to the sample."
         )]
         reads: Vec<PathBuf>,
-        #[structopt(
-            long = "output BCF",
-            help = "Output BCF file to be used as input in the calling step."
-        )]
-        output: Option<PathBuf>,
+        // #[structopt(
+        //     long = "output BCF",
+        //     help = "Output BCF file to be used as input in the calling step."
+        // )]
+        // output: Option<PathBuf>,
     },
 }
 
@@ -196,12 +196,12 @@ pub fn run(opt: Orthanq) -> Result<()> {
         Orthanq::PreprocessHLA {
             genome,
             reads,
-            output,
+            // output,
         } => {
             preprocess_hla::CallerBuilder::default()
                 .genome(genome)
                 .reads(reads)
-                .output(output)
+                // .output(output)
                 .build()
                 .unwrap()
                 .call()?;

@@ -11,7 +11,7 @@ use tempfile::NamedTempFile;
 pub struct Caller {
     genome: PathBuf,
     reads: Vec<PathBuf>,
-    output: Option<PathBuf>,
+    // output: Option<PathBuf>,
 }
 
 impl Caller {
@@ -21,18 +21,18 @@ impl Caller {
 
         //create a temporary file for bwa index and execute bwa index
         let temp_index = NamedTempFile::new()?;
-        // let index = {
-        //     Command::new("bwa")
-        //         .arg("index")
-        //         .arg("-p")
-        //         .arg(&temp_index.path())
-        //         .arg("-a")
-        //         .arg("bwtsw") //-a bwtsw' does not work for short genomes, lineage quantification?
-        //         .arg(self.genome.clone())
-        //         .status()
-        //         .expect("failed to execute indexing process")
-        // };
-        // println!("The index was created successfully: {}", index);
+        let index = {
+            Command::new("bwa")
+                .arg("index")
+                .arg("-p")
+                .arg(&temp_index.path())
+                .arg("-a")
+                .arg("bwtsw") //-a bwtsw' does not work for short genomes, lineage quantification?
+                .arg(self.genome.clone())
+                .status()
+                .expect("failed to execute indexing process")
+        };
+        println!("The index was created successfully: {}", index);
 
         //perform the alignment for paired end reads
         let _temp_aligned = NamedTempFile::new()?;
