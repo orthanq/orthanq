@@ -149,10 +149,10 @@ impl Likelihood {
                         vaf_sum += *fraction;
                     } else if genotypes[i] == VariantStatus::Unknown || covered[i as u64] {
                         ()
-                    } 
+                    }
                     // else if covered[i as u64] {
                     //     ()
-                    // } 
+                    // }
                     else if genotypes[i] == VariantStatus::NotPresent && !covered[i as u64] {
                         denom -= *fraction;
                     }

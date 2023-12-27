@@ -789,9 +789,7 @@ impl Caller {
     }
 
     fn write_loci_to_vcf(&self, variant_table: &DataFrame, loci_table: &DataFrame) -> Result<()> {
-        let names = variant_table
-            .get_column_names()
-            .to_vec();
+        let names = variant_table.get_column_names().to_vec();
 
         // for locus in vec![
         //     "A", "DPA1", "DRB4", "V", "B", "DPB1", "DRB5", "W", "C", "DQA1", "E", "DQA2", "F", "S",
@@ -991,10 +989,10 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                             .collect::<Vec<_>>()[1]
                             .as_ref()
                             .unwrap()
-                        .split('-') //"HLA-" don't take the HLA prefix
-                        .collect::<Vec<&str>>()[1]
-                        .to_string(),
-                ); //index 1 holds the allele name
+                            .split('-') //"HLA-" don't take the HLA prefix
+                            .collect::<Vec<&str>>()[1]
+                            .to_string(),
+                    ); //index 1 holds the allele name
                     alleles_indices.push(counter.clone());
                     counter += 1;
                 }
@@ -1110,9 +1108,11 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                 if record.frequency > NotNan::new(0.05).unwrap() {
                     to_be_included.push(id.clone());
                 }
-            } else if (record.var == first_three && record.frequency > NotNan::new(0.05).unwrap()) || (record.var == first_two && record.frequency > NotNan::new(0.05).unwrap()){
+            } else if (record.var == first_three && record.frequency > NotNan::new(0.05).unwrap())
+                || (record.var == first_two && record.frequency > NotNan::new(0.05).unwrap())
+            {
                 to_be_included.push(id.clone());
-            } 
+            }
             // else if record.var == first_two && record.frequency > NotNan::new(0.05).unwrap() {
             //     to_be_included.push(id.clone());
             // }
