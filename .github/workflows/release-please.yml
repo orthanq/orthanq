@@ -33,7 +33,7 @@ jobs:
             
       - name: Install dependencies in conda environment
         run: |
-          $CONDA/bin/conda env update --file environment.yml --name base
+            $CONDA/bin/conda env update --file environment.yml --name base
           
       - uses: Swatinem/rust-cache@v1.3.0
         if: ${{ steps.release.outputs.release_created }}
