@@ -25,7 +25,7 @@ impl Caller {
             Command::new("bwa")
                 .arg("index")
                 .arg("-p")
-                .arg(&temp_index.path())
+                .arg(temp_index.path())
                 .arg("-a")
                 .arg("bwtsw") //-a bwtsw' does not work for short genomes, lineage quantification?
                 .arg(self.genome.clone())
@@ -43,7 +43,7 @@ impl Caller {
         //find sample name of one of the fastq files from the read pair
         let sample_name = &self.reads[0].file_stem().unwrap().to_str().unwrap();
         //get rid of any underscore (PE reads contain them)
-        let sample_name_split = sample_name.split("_").collect::<Vec<&str>>();
+        let sample_name_split = sample_name.split('_').collect::<Vec<&str>>();
         let sample_name = sample_name_split[0];
 
         //create the output file name in temp directory

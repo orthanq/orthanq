@@ -149,9 +149,7 @@ impl Likelihood {
                         ()
                     } else if covered[i as u64] {
                         ()
-                    } else if genotypes[i] == VariantStatus::NotPresent
-                        && covered[i as u64] == false
-                    {
+                    } else if genotypes[i] == VariantStatus::NotPresent && !covered[i as u64] {
                         denom -= *fraction;
                     }
                 });
@@ -185,13 +183,18 @@ impl model::Prior for Prior {
         if self.prior == PriorTypes::Diploid {
             let mut prior_prob = LogProb::ln_one();
             event.iter().for_each(|fraction| {
-                if *fraction == NotNan::new(0.0).unwrap() {
+                if *fraction == NotNan::new(0.0).unwrap()
+                    || *fraction == NotNan::new(0.5).unwrap()
+                    || *fraction == NotNan::new(1.0).unwrap()
+                {
                     prior_prob += LogProb::from(Prob(1.0 / 3.0))
-                } else if *fraction == NotNan::new(0.5).unwrap() {
-                    prior_prob += LogProb::from(Prob(1.0 / 3.0))
-                } else if *fraction == NotNan::new(1.0).unwrap() {
-                    prior_prob += LogProb::from(Prob(1.0 / 3.0))
-                } else {
+                }
+                // else if *fraction == NotNan::new(0.5).unwrap() {
+                //     prior_prob += LogProb::from(Prob(1.0 / 3.0))
+                // } else if *fraction == NotNan::new(1.0).unwrap() {
+                //     prior_prob += LogProb::from(Prob(1.0 / 3.0))
+                // }
+                else {
                     prior_prob += LogProb::ln_zero()
                 }
             });
