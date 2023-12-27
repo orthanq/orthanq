@@ -28,7 +28,7 @@ impl Marginal {
         &self,
         data: &Data,
         haplotype_index: usize,
-        fractions: &mut Vec<AlleleFreq>,
+        fractions: &mut [AlleleFreq],
         joint_prob: &mut F,
     ) -> LogProb {
         if haplotype_index == self.n_haplotypes {
@@ -37,24 +37,26 @@ impl Marginal {
         } else {
             let fraction_upper_bound = self.upper_bond - fractions.iter().sum::<NotNan<f64>>();
             let mut density = |fraction| {
-                let mut fractions = fractions.clone();
+                let mut fractions = fractions.to_vec();
                 fractions.push(fraction);
                 self.calc_marginal(data, haplotype_index + 1, &mut fractions, joint_prob)
             };
             if haplotype_index == self.n_haplotypes - 1 {
-                let second_if = density(fraction_upper_bound);
-                second_if
+                // let second_if = density(fraction_upper_bound);
+                // second_if //clippy gives a warning
+                density(fraction_upper_bound)
             } else {
                 if fraction_upper_bound == NotNan::new(0.0).unwrap() {
-                    let last_if = density(NotNan::new(0.0).unwrap());
-                    last_if
+                    // let last_if = density(NotNan::new(0.0).unwrap());
+                    // last_if
+                    density(NotNan::new(0.0).unwrap())
                 } else {
                     //check prior info
                     if self.prior_info == PriorTypes::Diploid {
                         //sum 0.0, 0.5 and 1.0
                         let mut probs = Vec::new();
                         let mut diploid_points = |point, probs: &mut Vec<_>| {
-                            let fractions = fractions.clone();
+                            let fractions = fractions.to_vec();
                             if fractions.iter().sum::<NotNan<f64>>() + point
                                 <= NotNan::new(1.0).unwrap()
                             {
@@ -145,11 +147,13 @@ impl Likelihood {
                 event.iter().enumerate().for_each(|(i, fraction)| {
                     if genotypes[i] == VariantStatus::Present && covered[i as u64] {
                         vaf_sum += *fraction;
-                    } else if genotypes[i] == VariantStatus::Unknown {
+                    } else if genotypes[i] == VariantStatus::Unknown || covered[i as u64] {
                         ()
-                    } else if covered[i as u64] {
-                        ()
-                    } else if genotypes[i] == VariantStatus::NotPresent && !covered[i as u64] {
+                    } 
+                    // else if covered[i as u64] {
+                    //     ()
+                    // } 
+                    else if genotypes[i] == VariantStatus::NotPresent && !covered[i as u64] {
                         denom -= *fraction;
                     }
                 });

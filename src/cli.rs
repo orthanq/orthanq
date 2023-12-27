@@ -157,8 +157,8 @@ pub fn run(opt: Orthanq) -> Result<()> {
             lp_cutoff,
         } => {
             let mut caller = calling::haplotypes::CallerBuilder::default()
-                .haplotype_variants(bcf::Reader::from_path(&haplotype_variants)?)
-                .variant_calls(bcf::Reader::from_path(&variant_calls)?)
+                .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
+                .variant_calls(bcf::Reader::from_path(variant_calls)?)
                 .xml(xml)
                 // .max_haplotypes(max_haplotypes)
                 // .min_norm_counts(min_norm_counts)

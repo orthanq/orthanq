@@ -14,7 +14,6 @@ use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 
-use std::io;
 use std::iter::FromIterator;
 
 use std::fs;
@@ -584,7 +583,7 @@ impl Caller {
         let mut loci_df = genotype_df.clone();
         //second, fill the genotypes dataframe.
         for (index, haplotype_name) in seq_names.iter().enumerate() {
-            let query = genotype_df.select_series(&[haplotype_name.as_str()]);
+            let query = genotype_df.select_series([haplotype_name.as_str()]);
             //the following has to be done in case the haplotype name already exists in the dataframe because
             //of the supplementary alignment records and it needs to be checked to prevent overwriting of the columns.
             //if the haplotype already exists, then the new variants coming from the supplementary alignments
@@ -592,24 +591,24 @@ impl Caller {
             match query {
                 Ok(answer) => genotype_df.with_column(
                     &Series::new(
-                        &haplotype_name.as_str(),
+                        haplotype_name.as_str(),
                         genotypes_array.column(index).to_vec(),
-                    ) + answer.iter().nth(0).unwrap(),
+                    ) + answer.get(0).unwrap(),
                 )?,
                 Err(_) => genotype_df.with_column(Series::new(
-                    &haplotype_name.as_str(),
+                    haplotype_name.as_str(),
                     genotypes_array.column(index).to_vec(),
                 ))?,
             };
             //the above operation has to be done for the loci dataframe as well.
-            let query = loci_df.select_series(&[haplotype_name.as_str()]);
+            let query = loci_df.select_series([haplotype_name.as_str()]);
             match query {
                 Ok(answer) => loci_df.with_column(
-                    &Series::new(&haplotype_name.as_str(), loci_array.column(index).to_vec())
-                        + answer.iter().nth(0).unwrap(),
+                    &Series::new(haplotype_name.as_str(), loci_array.column(index).to_vec())
+                        + answer.get(0).unwrap(),
                 )?,
                 Err(_) => loci_df.with_column(Series::new(
-                    &haplotype_name.as_str(),
+                    haplotype_name.as_str(),
                     loci_array.column(index).to_vec(),
                 ))?,
             };
@@ -652,7 +651,7 @@ impl Caller {
             let desc = record.desc().unwrap();
 
             let six_digit = desc.split_whitespace().collect::<Vec<&str>>()[0];
-            let splitted = six_digit.split(":").collect::<Vec<&str>>();
+            let splitted = six_digit.split(':').collect::<Vec<&str>>();
             if splitted.len() < 2 {
                 //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
                 allele_digit_table.insert(id.to_string(), splitted[0].to_string());
@@ -726,11 +725,11 @@ impl Caller {
                         }
                     })
                     .collect::<Series>();
-                intersection.rename(&protein_level);
+                intersection.rename(protein_level);
                 dbg!(&intersection);
                 new_df.with_column(intersection)?;
             } else {
-                new_df.replace_or_add(&protein_level, variant_table[*column_name].clone())?;
+                new_df.replace_or_add(protein_level, variant_table[*column_name].clone())?;
             }
         }
         // let names: Vec<String> = new_df.get_column_names_owned().iter().cloned().collect();
@@ -792,19 +791,17 @@ impl Caller {
     fn write_loci_to_vcf(&self, variant_table: &DataFrame, loci_table: &DataFrame) -> Result<()> {
         let names = variant_table
             .get_column_names()
-            .iter()
-            .cloned()
-            .collect::<Vec<&str>>();
+            .to_vec();
 
         // for locus in vec![
         //     "A", "DPA1", "DRB4", "V", "B", "DPB1", "DRB5", "W", "C", "DQA1", "E", "DQA2", "F", "S",
         //     "DMA", "DQB1", "G", "TAP1", "DMB", "DRA", "HFE", "TAP2", "DOA", "DRB1", "T", "DOB",
         //     "DRB3", "MICA", "U", //all the non-pseudogenes
         // ]
-        for locus in vec!["A", "B", "C", "DQA1", "DQB1", "DRB1"] {
+        for locus in ["A", "B", "C", "DQA1", "DQB1", "DRB1"] {
             let mut locus_columns = vec!["Index".to_string(), "ID".to_string()];
             for column_name in names.iter().skip(2) {
-                let splitted = column_name.split("*").collect::<Vec<&str>>();
+                let splitted = column_name.split('*').collect::<Vec<&str>>();
                 if splitted[0] == locus {
                     // just as an example locus for the start.
                     locus_columns.push(column_name.to_string());
@@ -857,7 +854,7 @@ impl Caller {
                     .nth(row_index)
                     .unwrap()
                     .unwrap()
-                    .split(",")
+                    .split(',')
                     .collect::<Vec<&str>>();
                 let chrom = splitted[0];
                 let pos = splitted[1];
@@ -882,7 +879,7 @@ impl Caller {
                         .nth(row_index)
                         .unwrap()
                         .unwrap();
-                    let gt = GenotypeAllele::Phased(gt.try_into().unwrap());
+                    let gt = GenotypeAllele::Phased(gt);
                     //vg requires the candidate variants phased, so make 0 -> 0|0 and 1 -> 1|1
                     //side note about how push_genotypes() works:
                     //we push the genotypes two times into the one dimensional vector because
@@ -904,7 +901,7 @@ impl Caller {
                         .nth(row_index)
                         .unwrap()
                         .unwrap();
-                    all_c.push(c as i32);
+                    all_c.push(c);
                 }
                 record.push_format_integer(b"C", &all_c)?;
                 vcf.write(&record).unwrap();
@@ -914,38 +911,38 @@ impl Caller {
     }
     //Write_to_fasta() function collects confirmed allele list from confirmed_alleles() function.
     //Then it generates Fasta files for those alleles for each loci (necessary for quantifications e.g. kallisto, salmon)
-    fn write_to_fasta(&self, confirmed_alleles: &Vec<String>) -> Result<()> {
-        for locus in vec!["A", "B", "C", "DQA1", "DQB1"] {
-            fs::create_dir_all(self.output.as_ref().unwrap())?;
-            let file = fs::File::create(format!(
-                "{}.fasta",
-                self.output.as_ref().unwrap().join(locus).display()
-            ))
-            .unwrap();
-            let handle = io::BufWriter::new(file);
-            let mut writer = bio::io::fasta::Writer::new(handle);
-            for record in bio::io::fasta::Reader::from_file(&self.alleles)?.records() {
-                let record = record.unwrap();
-                let id = record.id();
-                let description = record.desc().unwrap();
-                let splitted = description.split("*").collect::<Vec<&str>>();
-                if splitted[0] == locus {
-                    if confirmed_alleles.contains(&id.to_string()) {
-                        let new_record = bio::io::fasta::Record::with_attrs(
-                            description.split_whitespace().collect::<Vec<&str>>()[0],
-                            Some(id),
-                            record.seq(),
-                        );
-                        writer
-                            .write_record(&new_record)
-                            .ok()
-                            .expect("Error writing record.");
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
+    // fn write_to_fasta(&self, confirmed_alleles: &Vec<String>) -> Result<()> {
+    //     for locus in vec!["A", "B", "C", "DQA1", "DQB1"] {
+    //         fs::create_dir_all(self.output.as_ref().unwrap())?;
+    //         let file = fs::File::create(format!(
+    //             "{}.fasta",
+    //             self.output.as_ref().unwrap().join(locus).display()
+    //         ))
+    //         .unwrap();
+    //         let handle = io::BufWriter::new(file);
+    //         let mut writer = bio::io::fasta::Writer::new(handle);
+    //         for record in bio::io::fasta::Reader::from_file(&self.alleles)?.records() {
+    //             let record = record.unwrap();
+    //             let id = record.id();
+    //             let description = record.desc().unwrap();
+    //             let splitted = description.split("*").collect::<Vec<&str>>();
+    //             if splitted[0] == locus {
+    //                 if confirmed_alleles.contains(&id.to_string()) {
+    //                     let new_record = bio::io::fasta::Record::with_attrs(
+    //                         description.split_whitespace().collect::<Vec<&str>>()[0],
+    //                         Some(id),
+    //                         record.seq(),
+    //                     );
+    //                     writer
+    //                         .write_record(&new_record)
+    //                         .ok()
+    //                         .expect("Error writing record.");
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     Ok(())
+    // }
 }
 
 #[derive(Debug, Deserialize)]
@@ -961,7 +958,7 @@ struct Record {
 //update: remove alleles that are not AF <0.05 in at least one population.
 
 fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<String>, Vec<String>)> {
-    let mut reader = xml_reader::from_file(&xml_path)?;
+    let mut reader = xml_reader::from_file(xml_path)?;
     reader.trim_text(true);
     let mut buf = Vec::new();
     let mut alleles: Vec<String> = Vec::new();
@@ -994,10 +991,10 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                             .collect::<Vec<_>>()[1]
                             .as_ref()
                             .unwrap()
-                            .split("-") //"HLA-" don't take the HLA prefix
-                            .collect::<Vec<&str>>()[1]
-                            .to_string(),
-                    ); //index 1 holds the allele name
+                        .split('-') //"HLA-" don't take the HLA prefix
+                        .collect::<Vec<&str>>()[1]
+                        .to_string(),
+                ); //index 1 holds the allele name
                     alleles_indices.push(counter.clone());
                     counter += 1;
                 }
@@ -1023,9 +1020,9 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                         .to_string(), //index 4 holds the Confirmed info
                 ),
                 b"hla_g_group" => {
-                    groups_indices.push(counter.clone());
+                    groups_indices.push(counter);
                     hla_g_groups.insert(
-                        counter.clone(),
+                        counter,
                         e.attributes()
                             .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
                             .collect::<Vec<_>>()[0]
@@ -1091,9 +1088,9 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
     let mut to_be_included = Vec::new();
     dbg!(confirmed_alleles_clone.len());
     confirmed_alleles_clone.retain(|&_, y| {
-        y.starts_with("A")
-            || y.starts_with("B")
-            || y.starts_with("C")
+        y.starts_with('A')
+            || y.starts_with('B')
+            || y.starts_with('C')
             || y.starts_with("DQA1")
             || y.starts_with("DQB1")
     });
@@ -1103,7 +1100,7 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
         let record: Record = result.unwrap();
         confirmed_alleles_clone.iter().for_each(|(id, name)| {
             let mut first_three = String::from("");
-            let splitted = name.split(":").collect::<Vec<&str>>(); //DQB1*05:02:01 is alone not an allele name, but DQB1*05:02:01:01, DQB1*05:02:01:02.. are.
+            let splitted = name.split(':').collect::<Vec<&str>>(); //DQB1*05:02:01 is alone not an allele name, but DQB1*05:02:01:01, DQB1*05:02:01:02.. are.
             let first_two = format!("{}:{}", splitted[0], splitted[1]);
             if splitted.len() > 2 {
                 first_three = format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]);
@@ -1113,11 +1110,12 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                 if record.frequency > NotNan::new(0.05).unwrap() {
                     to_be_included.push(id.clone());
                 }
-            } else if &record.var == &first_three && record.frequency > NotNan::new(0.05).unwrap() {
+            } else if (record.var == first_three && record.frequency > NotNan::new(0.05).unwrap()) || (record.var == first_two && record.frequency > NotNan::new(0.05).unwrap()){
                 to_be_included.push(id.clone());
-            } else if &record.var == &first_two && record.frequency > NotNan::new(0.05).unwrap() {
-                to_be_included.push(id.clone());
-            }
+            } 
+            // else if record.var == first_two && record.frequency > NotNan::new(0.05).unwrap() {
+            //     to_be_included.push(id.clone());
+            // }
         });
     });
     // dbg!(&to_be_included);
