@@ -1,0 +1,8 @@
+dependencies:
+  - coincbc
+  - hdf5 =1.10.5
+  - fontconfig
+  - gcc_linux-64
+  - pkg-config
+  - gsl =2.7
+  - cmake
