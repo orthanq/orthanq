@@ -29,13 +29,15 @@ fn check_haplotype_fractions_5050() {
     if let Some(result) = iter.next() {
         let record = result.unwrap();
         let mut check_two_alleles = 0;
-        for (fraction,header) in record.iter().zip(headers.iter()){
-            if header.contains("B*"){
+        for (fraction, header) in record.iter().zip(headers.iter()) {
+            if header.contains("B*") {
                 let splitted = header.split(':').collect::<Vec<&str>>();
                 let first_two = splitted[0].to_owned() + ":" + splitted[1];
-                if (first_two == "B*44:02" && fraction == "0.50") || (first_two == "B*44:03" && fraction == "0.50"){
+                if (first_two == "B*44:02" && fraction == "0.50")
+                    || (first_two == "B*44:03" && fraction == "0.50")
+                {
                     check_two_alleles += 1;
-                }   
+                }
             }
         }
         let mut check = false;
