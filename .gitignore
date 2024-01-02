@@ -1,5 +1,6 @@
 /target
 /candidates
 /resources
+!resources/regions.bed
 /test_files
 /alignment_sorted.sam 
