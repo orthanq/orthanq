@@ -1,6 +1,6 @@
 use crate::calling;
 use crate::candidate_variants;
-use crate::preprocess_hla;
+use crate::preprocess;
 use anyhow::Result;
 use rust_htslib::bcf;
 use std::path::PathBuf;
@@ -148,6 +148,20 @@ pub enum PreprocessKind {
         // )]
         // output: Option<PathBuf>,
     },
+    Virus {
+        #[structopt(
+            long = "genome",
+            required = true,
+            help = "Reference genome that is used during candidate generation."
+        )]
+        genome: PathBuf,
+        #[structopt(
+            long = "reads",
+            required = true,
+            help = "Input FASTQ reads belonging to the sample."
+        )]
+        reads: Vec<PathBuf>,
+    },
 }
 
 pub fn run(opt: Orthanq) -> Result<()> {
@@ -207,7 +221,21 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 reads,
                 // output,
             } => {
-                preprocess_hla::CallerBuilder::default()
+                preprocess::hla::CallerBuilder::default()
+                    .genome(genome)
+                    .reads(reads)
+                    // .output(output)
+                    .build()
+                    .unwrap()
+                    .call()?;
+                Ok(())
+            }
+            PreprocessKind::Virus {
+                genome,
+                reads,
+                // output,
+            } => {
+                preprocess::virus::CallerBuilder::default()
                     .genome(genome)
                     .reads(reads)
                     // .output(output)
