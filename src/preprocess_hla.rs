@@ -1,7 +1,6 @@
 use anyhow::Result;
 use derive_builder::Builder;
 
-
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -152,9 +151,7 @@ impl Caller {
         let giraffe_index = "resources/hprc-v1.0-mc-grch38.xg";
 
         //create the output file name in temp directory
-        let file_aligned_pangenome = temp_dir
-            .path()
-            .join(format!("{}_vg.bam", sample_name));
+        let file_aligned_pangenome = temp_dir.path().join(format!("{}_vg.bam", sample_name));
 
         let align_pangenome = {
             Command::new("vg")
