@@ -1,7 +1,7 @@
 use anyhow::Result;
 use derive_builder::Builder;
 
-use std::fs;
+
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -154,7 +154,7 @@ impl Caller {
         //create the output file name in temp directory
         let file_aligned_pangenome = temp_dir
             .path()
-            .join(format!("{}_vg.bam", sample_name.clone()));
+            .join(format!("{}_vg.bam", sample_name));
 
         let align_pangenome = {
             Command::new("vg")
@@ -207,7 +207,7 @@ impl Caller {
         //sort the resulting vg aligned file
         let file_vg_aligned_sorted = temp_dir
             .path()
-            .join(format!("{}_vg_sorted.bam", sample_name.clone()));
+            .join(format!("{}_vg_sorted.bam", sample_name));
 
         let vg_sort = {
             Command::new("samtools")
@@ -229,7 +229,7 @@ impl Caller {
         //prepare the temporary file path for the reheadered bam output
         let file_reheadered = temp_dir
             .path()
-            .join(format!("{}_reheadered.bam", sample_name.clone()));
+            .join(format!("{}_reheadered.bam", sample_name));
 
         println!("{}", file_reheadered.display());
 
@@ -282,7 +282,7 @@ impl Caller {
 
         //finally, extract only strandard chromosomes
         let parent = &self.reads[0].parent().unwrap();
-        let final_bam = parent.join(format!("{}_processed.bam", sample_name.clone()));
+        let final_bam = parent.join(format!("{}_processed.bam", sample_name));
         println!("{}", final_bam.display());
 
         let samtools_extract = {
