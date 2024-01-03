@@ -1,10 +1,10 @@
 use anyhow::Result;
 use derive_builder::Builder;
 
+use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::fs;
 use tempfile::tempdir;
 use tempfile::NamedTempFile;
 
@@ -153,8 +153,8 @@ impl Caller {
 
         //create the output file name in temp directory
         let file_aligned_pangenome = temp_dir
-        .path()
-        .join(format!("{}_vg.bam", sample_name.clone()));
+            .path()
+            .join(format!("{}_vg.bam", sample_name.clone()));
 
         let align_pangenome = {
             Command::new("vg")
@@ -173,7 +173,10 @@ impl Caller {
                 .spawn()
                 .expect("failed to execute the vg giraffe process")
         };
-        println!("Alignment to pangenome was exited with: {:?}", align_pangenome);
+        println!(
+            "Alignment to pangenome was exited with: {:?}",
+            align_pangenome
+        );
 
         //write bam to file (buffered)
         // let mut vg_bam = std::fs::File::create(&file_aligned_pangenome)?;
@@ -193,7 +196,9 @@ impl Caller {
 
         // let output_align = align_pangenome.stdout.expect("failed to wait on aligning to pangenome");
 
-        let output = align_pangenome.wait_with_output().expect("Failed to read stdout");
+        let output = align_pangenome
+            .wait_with_output()
+            .expect("Failed to read stdout");
 
         let mut vg_bam = std::fs::File::create(file_aligned_pangenome.clone())?;
         vg_bam.write_all(&output.stdout)?; //write with bam writer
@@ -222,44 +227,86 @@ impl Caller {
         //modify the header for chromosome names to be compatible with the reference genome that we acquire from ensembl
 
         //prepare the temporary file path for the reheadered bam output
-        let parent = &self.reads[0].parent().unwrap();
-        let file_reheadered = parent.join(format!("{}_reheadered.bam",sample_name.clone()));
+        let file_reheadered = temp_dir
+            .path()
+            .join(format!("{}_reheadered.bam", sample_name.clone()));
+
         println!("{}", file_reheadered.display());
-        // let file_reheadered = "final.bam".to_string();
 
         //in Rust, piping cannot be done via "|" but instead in the following way:
 
         //get the header
         let samtools_view_child = Command::new("samtools")
-        .arg("view")// `samtools view` command...
-        .arg("-H") // of which we will pipe the output.
-        .arg(&file_vg_aligned_sorted) //Once configured, we actually spawn the command...
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
+            .arg("view") // `samtools view` command...
+            .arg("-H") // of which we will pipe the output.
+            .arg(&file_vg_aligned_sorted) //Once configured, we actually spawn the command...
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
 
         //replace the 'GRCh38.chr' with ''
         let sed_child_one = Command::new("sed")
-        .arg("s/GRCh38.chr//g")
-        .stdin(Stdio::from(samtools_view_child.stdout.unwrap())) // Pipe through.
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
+            .arg("s/GRCh38.chr//g")
+            .stdin(Stdio::from(samtools_view_child.stdout.unwrap())) // Pipe through.
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
 
         //then, reheader the header of the input bam
         let reheader_child_two = Command::new("samtools")
-        .arg("reheader")
-        .arg("-")
-        .stdin(sed_child_one.stdout.unwrap())
-        .arg(file_vg_aligned_sorted)
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
+            .arg("reheader")
+            .arg("-")
+            .stdin(sed_child_one.stdout.unwrap())
+            .arg(file_vg_aligned_sorted)
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
 
         //write the reheadered bam to file
-        let output = reheader_child_two.wait_with_output().expect("failed to wait on child");
-        let mut f = std::fs::File::create(file_reheadered)?;
+        let output = reheader_child_two
+            .wait_with_output()
+            .expect("failed to wait on child");
+        let mut f = std::fs::File::create(file_reheadered.clone())?;
         f.write_all(&output.stdout)?;
+
+        //index the resulting bam file
+        let samtools_index = {
+            Command::new("samtools")
+                .arg("index")
+                .arg(&file_reheadered)
+                .status()
+                .unwrap()
+        };
+
+        println!("The indexing was exited with: {}", samtools_index);
+
+        //finally, extract only strandard chromosomes
+        let parent = &self.reads[0].parent().unwrap();
+        let final_bam = parent.join(format!("{}_processed.bam", sample_name.clone()));
+        println!("{}", final_bam.display());
+
+        let samtools_extract = {
+            Command::new("samtools")
+                .arg("view")
+                .arg(&file_reheadered)
+                .args([
+                    "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
+                    "15", "16", "17", "18", "19", "20", "21", "22", "X", "Y", "M",
+                ])
+                .arg("-o")
+                .arg(&final_bam)
+                .arg("-@")
+                .arg(&thread_number)
+                .arg("--write-index")
+                .status()
+                .expect("failed to execute the sorting process")
+        };
+
+        //write the final bam to file
+        println!(
+            "The extractiong of standard chromosomes was exited with: {}",
+            samtools_extract
+        );
 
         // close the file handle of the named temporary files
         // temp_index.close()?;
