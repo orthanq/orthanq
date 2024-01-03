@@ -1,5 +1,5 @@
 use crate::calling;
-use crate::candidate_variants;
+use crate::candidates;
 use crate::preprocess;
 use anyhow::Result;
 use rust_htslib::bcf;
@@ -22,39 +22,8 @@ pub enum Orthanq {
         setting = structopt::clap::AppSettings::ColoredHelp,
     )]
     Candidates {
-        #[structopt(
-            long = "genome",
-            required = true,
-            help = "Reference genome to be used to align alleles or viral sequences (e.g. all existing HLA alleles) using minimap2."
-        )]
-        genome: PathBuf,
-        #[structopt(
-            long = "alleles",
-            required = true,
-            help = "All the alleles that exist for the gene of interest (e.g. HLA00001, HLA00002 .. for HLAs)"
-        )]
-        alleles: PathBuf,
-        #[structopt(
-            long = "xml",
-            required = true,
-            help = "xml file that is acquired from IMGT/HLA for the corresponding version"
-        )]
-        xml: PathBuf,
-        #[structopt(
-            long = "allele-freq",
-            required = true,
-            help = "allele frequencies for filterin purposes"
-        )]
-        allele_freq: PathBuf,
-        #[structopt(long = "wes", help = "Specify the sample type.")]
-        wes: bool,
-        #[structopt(long = "wgs", help = "Specify the sample type (default).")]
-        wgs: bool,
-        #[structopt(
-            long,
-            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
-        )]
-        output: Option<PathBuf>,
+        #[structopt(subcommand)]
+        kind: CandidatesKind,
     },
     #[structopt(
         name = "call",
@@ -164,6 +133,64 @@ pub enum PreprocessKind {
     },
 }
 
+#[derive(Debug, StructOpt, Clone)]
+pub enum CandidatesKind {
+    Hla {
+        #[structopt(
+            long = "genome",
+            required = true,
+            help = "Reference genome to be used to align alleles or viral sequences (e.g. all existing HLA alleles) using minimap2."
+        )]
+        genome: PathBuf,
+        #[structopt(
+            long = "alleles",
+            required = true,
+            help = "All the alleles that exist for the gene of interest (e.g. HLA00001, HLA00002 .. for HLAs)"
+        )]
+        alleles: PathBuf,
+        #[structopt(
+            long = "xml",
+            required = true,
+            help = "xml file that is acquired from IMGT/HLA for the corresponding version"
+        )]
+        xml: PathBuf,
+        #[structopt(
+            long = "allele-freq",
+            required = true,
+            help = "allele frequencies for filterin purposes"
+        )]
+        allele_freq: PathBuf,
+        #[structopt(long = "wes", help = "Specify the sample type.")]
+        wes: bool,
+        #[structopt(long = "wgs", help = "Specify the sample type (default).")]
+        wgs: bool,
+        #[structopt(
+            long,
+            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
+        )]
+        output: Option<PathBuf>,
+    },
+    Virus {
+        #[structopt(
+            long = "genome",
+            required = true,
+            help = "Reference genome to be used to align alleles or viral sequences (e.g. all existing HLA alleles) using minimap2."
+        )]
+        genome: PathBuf,
+        #[structopt(
+            long = "alleles",
+            required = true,
+            help = "All the alleles that exist for the gene of interest (e.g. HLA00001, HLA00002 .. for HLAs)"
+        )]
+        alleles: PathBuf,
+        #[structopt(
+            long,
+            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
+        )]
+        output: Option<PathBuf>,
+    },
+}
+
 pub fn run(opt: Orthanq) -> Result<()> {
     let opt_clone = opt.clone();
     match opt_clone {
@@ -193,28 +220,44 @@ pub fn run(opt: Orthanq) -> Result<()> {
             caller.call()?;
             Ok(())
         }
-        Orthanq::Candidates {
-            alleles,
-            genome,
-            xml,
-            allele_freq,
-            wes,
-            wgs,
-            output,
-        } => {
-            let caller = candidate_variants::CallerBuilder::default()
-                .alleles(alleles)
-                .genome(genome)
-                .xml(xml)
-                .allele_freq(allele_freq)
-                .wes(wes)
-                .wgs(wgs)
-                .output(output)
-                .build()
-                .unwrap();
-            caller.call()?;
-            Ok(())
-        }
+        Orthanq::Candidates { kind } => match kind {
+            CandidatesKind::Hla {
+                alleles,
+                genome,
+                xml,
+                allele_freq,
+                wes,
+                wgs,
+                output,
+            } => {
+                let caller = candidates::hla::CallerBuilder::default()
+                    .alleles(alleles)
+                    .genome(genome)
+                    .xml(xml)
+                    .allele_freq(allele_freq)
+                    .wes(wes)
+                    .wgs(wgs)
+                    .output(output)
+                    .build()
+                    .unwrap();
+                caller.call()?;
+                Ok(())
+            }
+            CandidatesKind::Virus {
+                alleles,
+                genome,
+                output,
+            } => {
+                let caller = candidates::virus::CallerBuilder::default()
+                    .alleles(alleles)
+                    .genome(genome)
+                    .output(output)
+                    .build()
+                    .unwrap();
+                caller.call()?;
+                Ok(())
+            }
+        },
         Orthanq::Preprocess { kind } => match kind {
             PreprocessKind::Hla {
                 genome,
