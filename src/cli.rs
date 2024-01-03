@@ -117,11 +117,19 @@ pub enum Orthanq {
         lp_cutoff: f64,
     },
     #[structopt(
-        name = "preprocess-hla",
-        about = "Preprocess raw reads including aligning to linear and pangenome.",
+        name = "preprocess",
+        about = "Preprocess raw reads.",
         setting = structopt::clap::AppSettings::ColoredHelp,
     )]
-    PreprocessHLA {
+    Preprocess {
+        #[structopt(subcommand)]
+        kind: PreprocessKind,
+    },
+}
+
+#[derive(Debug, StructOpt, Clone)]
+pub enum PreprocessKind {
+    Hla {
         #[structopt(
             long = "genome",
             required = true,
@@ -193,19 +201,21 @@ pub fn run(opt: Orthanq) -> Result<()> {
             caller.call()?;
             Ok(())
         }
-        Orthanq::PreprocessHLA {
-            genome,
-            reads,
-            // output,
-        } => {
-            preprocess_hla::CallerBuilder::default()
-                .genome(genome)
-                .reads(reads)
-                // .output(output)
-                .build()
-                .unwrap()
-                .call()?;
-            Ok(())
-        }
+        Orthanq::Preprocess { kind } => match kind {
+            PreprocessKind::Hla {
+                genome,
+                reads,
+                // output,
+            } => {
+                preprocess_hla::CallerBuilder::default()
+                    .genome(genome)
+                    .reads(reads)
+                    // .output(output)
+                    .build()
+                    .unwrap()
+                    .call()?;
+                Ok(())
+            }
+        },
     }
 }
