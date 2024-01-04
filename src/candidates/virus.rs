@@ -43,17 +43,11 @@ impl Caller {
     }
 
     fn write_to_vcf(&self, variant_table: &DataFrame, loci_table: &DataFrame) -> Result<()> {
+        // dbg!(&variant_table);
         //Create VCF header
         let mut header = Header::new();
         //push contig names to the header.
-        header.push_record(br#"##contig=<ID=1>"#);
-        header.push_record(br#"##contig=<ID=6>"#);
-        header.push_record(br#"##contig=<ID=7>"#);
-        header.push_record(br#"##contig=<ID=8>"#);
-        header.push_record(br#"##contig=<ID=9>"#);
-        header.push_record(br#"##contig=<ID=11>"#);
-        header.push_record(br#"##contig=<ID=16>"#);
-        header.push_record(br#"##contig=<ID=X>"#);
+        header.push_record(br#"##contig=<ID=NC_045512.2>"#);
 
         //push field names to the header.
         let header_gt_line = r#"##FORMAT=<ID=GT,Number=1,Type=String,Description="Variant is present in the haplotype (1) or not (0).">"#;
@@ -69,11 +63,7 @@ impl Caller {
         let mut vcf = Writer::from_path(
             format!(
                 "{}.vcf",
-                self.output
-                    .as_ref()
-                    .unwrap()
-                    .join("candidates.vcf")
-                    .display()
+                self.output.as_ref().unwrap().join("candidates").display()
             ),
             &header,
             true,

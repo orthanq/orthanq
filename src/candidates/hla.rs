@@ -687,7 +687,7 @@ pub fn find_variants_from_cigar(
         }
     }
     dbg!(&candidate_variants.len());
-    dbg!(&candidate_variants);
+    // dbg!(&candidate_variants);
     // //add MNV encoding: encode all variants, closer than x bases to each other (x=2,3 etc.)
     // // let candidate_variants_clone = candidate_variants.clone();
     // let mut mnv_variants = BTreeMap::new();
