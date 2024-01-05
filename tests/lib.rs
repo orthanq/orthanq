@@ -4,14 +4,14 @@ use rust_htslib::bcf;
 fn check_haplotype_fractions_5050() {
     let mut output = std::path::PathBuf::new();
     output.push("test_output.csv");
-    let _ = orthanq::calling::haplotypes::CallerBuilder::default()
+    let _ = orthanq::calling::haplotypes::hla::CallerBuilder::default()
         .haplotype_variants(bcf::Reader::from_path("tests/B.vcf").unwrap())
         .variant_calls(
             bcf::Reader::from_path("tests/Sample_HLA00318-0.5_HLA00319-0.5_B.bcf").unwrap(),
         )
         .xml("tests/hla.xml".into())
         .common_variants(false)
-        .outcsv(Some(output))
+        .outcsv(output)
         .prior("diploid".to_string())
         .lp_cutoff(0.01)
         .build()
