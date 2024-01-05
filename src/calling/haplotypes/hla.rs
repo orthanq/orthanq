@@ -119,26 +119,6 @@ impl Caller {
             //construct candidate matrix
             let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
-            //for diploid-subclonal priors, max N number of haplotypes should be selected
-            // let final_haplotypes = final_haplotypes[0..5].to_vec();
-            //
-
-            // //kallisto experimentation
-            // //prepare KallistoEstimates for only the haplotypes come from LP
-            // let kallisto_estimates = KallistoEstimates::new(&self.hdf5_reader, self.min_norm_counts, &final_haplotypes)?;
-            // dbg!(&kallisto_estimates);
-            // let kallisto_estimates = kallisto_estimates
-            //  .select_haplotypes(4)
-            //  .unwrap();
-            // dbg!(&kallisto_estimates);
-            // let kallisto_haplotypes = kallisto_estimates.keys().cloned().collect();
-            // let haplotype_variants =
-            // haplotype_variants.find_plausible_haplotypes(&variant_calls, &kallisto_haplotypes)?;
-            // let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
-            // let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-            // dbg!(&final_haplotypes); //the final ranking of haplotypes
-            // let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
-
             //1-) model computation for chosen prior
             let prior = PriorTypes::from_str(&self.prior).unwrap();
             let upper_bond = NotNan::new(1.0).unwrap();
@@ -332,109 +312,6 @@ impl Caller {
         Ok(g_to_alleles)
     }
 }
-
-// #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
-// pub(crate) struct KallistoEstimate {
-//     pub count: NotNan<f64>,
-//     pub dispersion: NotNan<f64>,
-// }
-
-// #[derive(Debug, Clone, Derefable, DerefMut)]
-// pub(crate) struct KallistoEstimates(#[deref] BTreeMap<Haplotype, KallistoEstimate>);
-
-// impl KallistoEstimates {
-//     /// Generate new instance.
-//     pub(crate) fn new(
-//         hdf5_reader: &hdf5::File,
-//         min_norm_counts: f64,
-//         haplotypes: &Vec<Haplotype>,
-//     ) -> Result<Self> {
-//         let seqnames = Self::filter_seqnames(hdf5_reader, min_norm_counts)?;
-//         let ids = hdf5_reader
-//             .dataset("aux/ids")?
-//             .read_1d::<hdf5::types::FixedAscii<255>>()?;
-//         let num_bootstraps = hdf5_reader.dataset("aux/num_bootstrap")?.read_1d::<i32>()?;
-//         let seq_length = hdf5_reader.dataset("aux/lengths")?.read_1d::<f64>()?;
-//         let mut estimates = BTreeMap::new();
-//         for seqname in seqnames {
-//             if haplotypes.contains(&Haplotype(seqname.clone())) {
-//                 let index = ids.iter().position(|x| x.as_str() == seqname).unwrap();
-//                 let mut bootstraps = Vec::new();
-//                 for i in 0..num_bootstraps[0] {
-//                     let dataset = hdf5_reader.dataset(&format!("bootstrap/bs{i}", i = i))?;
-//                     let est_counts = dataset.read_1d::<f64>()?;
-//                     let norm_counts = est_counts / &seq_length;
-//                     let norm_counts = norm_counts[index];
-//                     bootstraps.push(norm_counts);
-//                 }
-
-//                 //mean
-//                 let sum = bootstraps.iter().sum::<f64>();
-//                 let count = bootstraps.len();
-//                 let m = sum / count as f64;
-
-//                 //std dev
-//                 let variance = bootstraps
-//                     .iter()
-//                     .map(|value| {
-//                         let diff = m - (*value as f64);
-//                         diff * diff
-//                     })
-//                     .sum::<f64>()
-//                     / count as f64;
-//                 let std = variance.sqrt();
-//                 let t = std / m;
-//                 //retrieval of mle
-//                 let mle_dataset = hdf5_reader.dataset("est_counts")?.read_1d::<f64>()?;
-//                 let mle_norm = mle_dataset / &seq_length; //normalized mle counts by length
-//                 let m = mle_norm[index];
-//                 estimates.insert(
-//                     Haplotype(seqname.clone()),
-//                     KallistoEstimate {
-//                         dispersion: NotNan::new(t).unwrap(),
-//                         count: NotNan::new(m).unwrap(),
-//                     },
-//                 );
-//             }
-//         }
-//         Ok(KallistoEstimates(estimates))
-//     }
-
-//     //Return top N estimates according to --max-haplotypes
-//     fn select_haplotypes(self, max_haplotypes: i64) -> Result<Self> {
-//         let mut kallisto_estimates = self.clone();
-//         // kallisto_estimates.retain(|k, _| haplotypes.contains(&k));
-//         let mut estimates_vec: Vec<(&Haplotype, &KallistoEstimate)> =
-//             kallisto_estimates.iter().collect();
-//         estimates_vec.sort_by(|a, b| b.1.count.cmp(&a.1.count));
-//         if estimates_vec.len() >= max_haplotypes.try_into().unwrap() {
-//             let topn = estimates_vec[0..max_haplotypes as usize].to_vec();
-//             let mut top_estimates = BTreeMap::new();
-//             for (key, value) in topn {
-//                 top_estimates.insert(key.clone(), *value);
-//             }
-//             Ok(KallistoEstimates(top_estimates))
-//         } else {
-//             Ok(self)
-//         }
-//     }
-//     //Return a vector of filtered seqnames according to --min-norm-counts.
-//     fn filter_seqnames(hdf5_reader: &hdf5::File, min_norm_counts: f64) -> Result<Vec<String>> {
-//         let ids = hdf5_reader
-//             .dataset("aux/ids")?
-//             .read_1d::<hdf5::types::FixedAscii<255>>()?;
-//         let est_counts = hdf5_reader.dataset("est_counts")?.read_1d::<f64>()?;
-//         let seq_length = hdf5_reader.dataset("aux/lengths")?.read_1d::<f64>()?; //these two variables arrays have the same length.
-//         let norm_counts = est_counts / seq_length;
-//         let mut filtered_haplotypes: Vec<String> = Vec::new();
-//         for (num, id) in norm_counts.iter().zip(ids.iter()) {
-//             if num > &min_norm_counts {
-//                 filtered_haplotypes.push(id.to_string());
-//             }
-//         }
-//         Ok(filtered_haplotypes)
-//     }
-// }
 
 //convert_to_two_field function converts the event posteriors that contain three-field info by default, to two-field information
 //by summing densities of events that have identical explanation with the first two fields
