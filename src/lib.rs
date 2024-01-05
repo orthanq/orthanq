@@ -1,5 +1,5 @@
 pub mod calling;
-pub mod candidate_variants;
+pub mod candidates;
 pub mod cli;
 pub mod model;
-pub mod preprocess_hla;
+pub mod preprocess;

@@ -1,4 +1,4 @@
-use crate::calling::haplotypes::{
+use crate::calling::haplotypes::haplotypes::{
     AlleleFreqDist, CandidateMatrix, PriorTypes, VariantCalls, VariantStatus,
 };
 use bio::stats::probs::adaptive_integration;

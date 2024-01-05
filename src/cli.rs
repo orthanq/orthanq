@@ -1,6 +1,6 @@
 use crate::calling;
-use crate::candidate_variants;
-use crate::preprocess_hla;
+use crate::candidates;
+use crate::preprocess;
 use anyhow::Result;
 use rust_htslib::bcf;
 use std::path::PathBuf;
@@ -22,6 +22,69 @@ pub enum Orthanq {
         setting = structopt::clap::AppSettings::ColoredHelp,
     )]
     Candidates {
+        #[structopt(subcommand)]
+        kind: CandidatesKind,
+    },
+    #[structopt(
+        name = "call",
+        about = "Call haplotypes.",
+        setting = structopt::clap::AppSettings::ColoredHelp,
+    )]
+    Call {
+        #[structopt(subcommand)]
+        kind: CallKind,
+    },
+    #[structopt(
+        name = "preprocess",
+        about = "Preprocess raw reads.",
+        setting = structopt::clap::AppSettings::ColoredHelp,
+    )]
+    Preprocess {
+        #[structopt(subcommand)]
+        kind: PreprocessKind,
+    },
+}
+
+#[derive(Debug, StructOpt, Clone)]
+pub enum PreprocessKind {
+    Hla {
+        #[structopt(
+            long = "genome",
+            required = true,
+            help = "Reference genome that is used during candidate generation."
+        )]
+        genome: PathBuf,
+        #[structopt(
+            long = "reads",
+            required = true,
+            help = "Input FASTQ reads belonging to the sample."
+        )]
+        reads: Vec<PathBuf>,
+        // #[structopt(
+        //     long = "output BCF",
+        //     help = "Output BCF file to be used as input in the calling step."
+        // )]
+        // output: Option<PathBuf>,
+    },
+    Virus {
+        #[structopt(
+            long = "genome",
+            required = true,
+            help = "Reference genome that is used during candidate generation."
+        )]
+        genome: PathBuf,
+        #[structopt(
+            long = "reads",
+            required = true,
+            help = "Input FASTQ reads belonging to the sample."
+        )]
+        reads: Vec<PathBuf>,
+    },
+}
+
+#[derive(Debug, StructOpt, Clone)]
+pub enum CandidatesKind {
+    Hla {
         #[structopt(
             long = "genome",
             required = true,
@@ -56,12 +119,30 @@ pub enum Orthanq {
         )]
         output: Option<PathBuf>,
     },
-    #[structopt(
-        name = "call",
-        about = "Call haplotypes.",
-        setting = structopt::clap::AppSettings::ColoredHelp,
-    )]
-    Call {
+    Virus {
+        #[structopt(
+            long = "genome",
+            required = true,
+            help = "Reference genome to be used to align alleles or viral sequences (e.g. all existing HLA alleles) using minimap2."
+        )]
+        genome: PathBuf,
+        #[structopt(
+            long = "alleles",
+            required = true,
+            help = "All the alleles that exist for the gene of interest (e.g. HLA00001, HLA00002 .. for HLAs)"
+        )]
+        alleles: PathBuf,
+        #[structopt(
+            long,
+            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
+        )]
+        output: Option<PathBuf>,
+    },
+}
+
+#[derive(Debug, StructOpt, Clone)]
+pub enum CallKind {
+    Hla {
         #[structopt(
             parse(from_os_str),
             long = "haplotype-variants",
@@ -82,30 +163,11 @@ pub enum Orthanq {
             help = "xml file that is acquired from IMGT/HLA for the corresponding version"
         )]
         xml: PathBuf,
-        // #[structopt(
-        //     parse(from_os_str),
-        //     long = "observations",
-        //     required = true,
-        //     help = "Variant observations by Varlociraptor."
-        // )]
-        // observations: PathBuf,
-        // #[structopt(
-        //     default_value = "0.01",
-        //     long = "min-norm-counts",
-        //     help = "Minimum value for normalized Kallisto counts."
-        // )]
-        // min_norm_counts: f64,
-        // #[structopt(
-        //     default_value = "5",
-        //     long = "max-haplotypes",
-        //     help = "Expected maximum number of haplotype."
-        // )]
-        // max_haplotypes: i64,
         #[structopt(
             long,
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
         )]
-        output: Option<PathBuf>,
+        output: PathBuf,
         #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
         prior: String,
         #[structopt(
@@ -116,98 +178,141 @@ pub enum Orthanq {
         #[structopt(default_value = "0.01", help = "Cutoff for linear program solutions.")]
         lp_cutoff: f64,
     },
-    #[structopt(
-        name = "preprocess",
-        about = "Preprocess raw reads.",
-        setting = structopt::clap::AppSettings::ColoredHelp,
-    )]
-    Preprocess {
-        #[structopt(subcommand)]
-        kind: PreprocessKind,
-    },
-}
-
-#[derive(Debug, StructOpt, Clone)]
-pub enum PreprocessKind {
-    Hla {
+    Virus {
         #[structopt(
-            long = "genome",
+            parse(from_os_str),
+            long = "haplotype-variants",
             required = true,
-            help = "Reference genome that is used during candidate generation."
+            help = "Haplotype variants compared to a common reference.", // TODO later, we will add a subcommand to generate this file with Varlociraptor as well
         )]
-        genome: PathBuf,
+        haplotype_variants: PathBuf,
         #[structopt(
-            long = "reads",
+            parse(from_os_str),
+            long = "haplotype-calls",
             required = true,
-            help = "Input FASTQ reads belonging to the sample."
+            help = "Haplotype calls"
         )]
-        reads: Vec<PathBuf>,
-        // #[structopt(
-        //     long = "output BCF",
-        //     help = "Output BCF file to be used as input in the calling step."
-        // )]
-        // output: Option<PathBuf>,
+        variant_calls: PathBuf,
+        #[structopt(
+            long,
+            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
+        )]
+        output: PathBuf,
+        #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
+        prior: String,
+        #[structopt(default_value = "0.01", help = "Cutoff for linear program solutions.")]
+        lp_cutoff: f64,
     },
 }
 
 pub fn run(opt: Orthanq) -> Result<()> {
     let opt_clone = opt.clone();
     match opt_clone {
-        Orthanq::Call {
-            haplotype_variants,
-            variant_calls,
-            xml,
-            // max_haplotypes,
-            // min_norm_counts,
-            output,
-            prior,
-            common_variants,
-            lp_cutoff,
-        } => {
-            let mut caller = calling::haplotypes::CallerBuilder::default()
-                .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
-                .variant_calls(bcf::Reader::from_path(variant_calls)?)
-                .xml(xml)
-                // .max_haplotypes(max_haplotypes)
-                // .min_norm_counts(min_norm_counts)
-                .outcsv(output)
-                .prior(prior)
-                .common_variants(common_variants)
-                .lp_cutoff(lp_cutoff)
-                .build()
-                .unwrap();
-            caller.call()?;
-            Ok(())
-        }
-        Orthanq::Candidates {
-            alleles,
-            genome,
-            xml,
-            allele_freq,
-            wes,
-            wgs,
-            output,
-        } => {
-            let caller = candidate_variants::CallerBuilder::default()
-                .alleles(alleles)
-                .genome(genome)
-                .xml(xml)
-                .allele_freq(allele_freq)
-                .wes(wes)
-                .wgs(wgs)
-                .output(output)
-                .build()
-                .unwrap();
-            caller.call()?;
-            Ok(())
-        }
+        Orthanq::Call { kind } => match kind {
+            CallKind::Hla {
+                haplotype_variants,
+                variant_calls,
+                xml,
+                // max_haplotypes,
+                // min_norm_counts,
+                output,
+                prior,
+                common_variants,
+                lp_cutoff,
+            } => {
+                let mut caller = calling::haplotypes::hla::CallerBuilder::default()
+                    .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
+                    .variant_calls(bcf::Reader::from_path(variant_calls)?)
+                    .xml(xml)
+                    // .max_haplotypes(max_haplotypes)
+                    // .min_norm_counts(min_norm_counts)
+                    .outcsv(output)
+                    .prior(prior)
+                    .common_variants(common_variants)
+                    .lp_cutoff(lp_cutoff)
+                    .build()
+                    .unwrap();
+                caller.call()?;
+                Ok(())
+            }
+            CallKind::Virus {
+                haplotype_variants,
+                variant_calls,
+                output,
+                prior,
+                lp_cutoff,
+            } => {
+                let mut caller = calling::haplotypes::virus::CallerBuilder::default()
+                    .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
+                    .variant_calls(bcf::Reader::from_path(variant_calls)?)
+                    .outcsv(output)
+                    .prior(prior)
+                    .lp_cutoff(lp_cutoff)
+                    .build()
+                    .unwrap();
+                caller.call()?;
+                Ok(())
+            }
+        },
+        Orthanq::Candidates { kind } => match kind {
+            CandidatesKind::Hla {
+                alleles,
+                genome,
+                xml,
+                allele_freq,
+                wes,
+                wgs,
+                output,
+            } => {
+                let caller = candidates::hla::CallerBuilder::default()
+                    .alleles(alleles)
+                    .genome(genome)
+                    .xml(xml)
+                    .allele_freq(allele_freq)
+                    .wes(wes)
+                    .wgs(wgs)
+                    .output(output)
+                    .build()
+                    .unwrap();
+                caller.call()?;
+                Ok(())
+            }
+            CandidatesKind::Virus {
+                alleles,
+                genome,
+                output,
+            } => {
+                let caller = candidates::virus::CallerBuilder::default()
+                    .alleles(alleles)
+                    .genome(genome)
+                    .output(output)
+                    .build()
+                    .unwrap();
+                caller.call()?;
+                Ok(())
+            }
+        },
         Orthanq::Preprocess { kind } => match kind {
             PreprocessKind::Hla {
                 genome,
                 reads,
                 // output,
             } => {
-                preprocess_hla::CallerBuilder::default()
+                preprocess::hla::CallerBuilder::default()
+                    .genome(genome)
+                    .reads(reads)
+                    // .output(output)
+                    .build()
+                    .unwrap()
+                    .call()?;
+                Ok(())
+            }
+            PreprocessKind::Virus {
+                genome,
+                reads,
+                // output,
+            } => {
+                preprocess::virus::CallerBuilder::default()
                     .genome(genome)
                     .reads(reads)
                     // .output(output)
