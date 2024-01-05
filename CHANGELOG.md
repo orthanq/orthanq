@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://www.github.com/orthanq/orthanq/compare/v1.0.1...v1.1.0) (2024-01-05)
+
+
+### Features
+
+* enable viral quantification  ([#4](https://www.github.com/orthanq/orthanq/issues/4)) ([b945239](https://www.github.com/orthanq/orthanq/commit/b945239b81293f6520ad7cb0def6cbb235dca517))
+
 ### [1.0.1](https://www.github.com/orthanq/orthanq/compare/v1.0.0...v1.0.1) (2023-12-21)
 
 
