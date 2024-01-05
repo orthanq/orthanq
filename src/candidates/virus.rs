@@ -1,22 +1,22 @@
 use anyhow::Result;
 
-use bio_types::genome::AbstractInterval;
-use csv::Reader as CsvReader;
-use derive_builder::Builder;
-use ndarray::Array2;
-use ordered_float::NotNan;
-use polars::{df, frame::DataFrame, prelude::NamedFrom, series::Series};
-use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
-use rust_htslib::{bam, bam::ext::BamRecordExtensions, bam::record::Cigar, bam::Read, faidx};
-use serde::Deserialize;
-use std::collections::{BTreeMap, HashMap};
-use std::convert::TryInto;
 
-use std::iter::FromIterator;
+
+use derive_builder::Builder;
+
+
+use polars::{frame::DataFrame, prelude::NamedFrom};
+use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
+// use rust_htslib::{bam::Read};
+
+
+
+
+
 
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
+
 
 use crate::candidates::hla;
 
@@ -33,7 +33,7 @@ impl Caller {
         hla::alignment(&self.genome, &self.alleles)?;
 
         //find variants
-        let (mut genotype_df, mut loci_df) =
+        let (genotype_df, loci_df) =
             hla::find_variants_from_cigar(&self.genome, &"alignment_sorted.sam").unwrap();
 
         //write to vcf

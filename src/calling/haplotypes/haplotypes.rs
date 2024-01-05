@@ -1,10 +1,10 @@
-use crate::model::{AlleleFreq, Data, HaplotypeFractions, Likelihood, Marginal, Posterior, Prior};
+use crate::model::{AlleleFreq, Data, HaplotypeFractions};
 use anyhow::Result;
-use bio::stats::{bayesian::model::Model, probs::LogProb, PHREDProb, Prob};
+use bio::stats::{probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
-use core::cmp::Ordering;
+
 use derefable::Derefable;
-use derive_builder::Builder;
+
 use derive_deref::DerefMut;
 
 use ordered_float::NotNan;
@@ -146,7 +146,7 @@ pub enum VariantStatus {
 }
 
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, PartialOrd, DerefMut)]
-pub(crate) struct HaplotypeVariants(
+pub struct HaplotypeVariants(
     #[deref] BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>,
 );
 

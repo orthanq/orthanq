@@ -9,10 +9,10 @@ use derive_new::new;
 use ordered_float::NotNan;
 use std::collections::HashMap;
 
-pub(crate) type AlleleFreq = NotNan<f64>;
+pub type AlleleFreq = NotNan<f64>;
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable)]
-pub(crate) struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
+pub struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
 
 #[derive(Debug, new)]
 pub(crate) struct Marginal {
@@ -104,7 +104,7 @@ impl model::Marginal for Marginal {
 }
 
 #[derive(Debug, new)]
-pub(crate) struct Data {
+pub struct Data {
     pub candidate_matrix: CandidateMatrix,
     pub variant_calls: VariantCalls,
     // pub kallisto_estimates: Vec<KallistoEstimate>
