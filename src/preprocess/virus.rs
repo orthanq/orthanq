@@ -24,7 +24,7 @@ pub struct Caller {
 impl Caller {
     pub fn call(&self) -> Result<()> {
         //1) bgzip and tabix the candidates vcf then, perform vg autoindex (maybe add this part to the candidates virus subcommand.)
-        
+
         let thread_number = "10".to_string(); //TODO: do not hardcode
         let scenario = &"resources/scenarios/scenario.yaml"; //TODO: do not hardcode
 
@@ -122,12 +122,11 @@ impl Caller {
 
         //get rid of underscores (PE reads contain them) (the following section needs to be rethought)
         let mut sample_name = "sample".to_string();
-        if sample_name_ext.contains('_'){
+        if sample_name_ext.contains('_') {
             sample_name = sample_name_ext.split('_').collect::<Vec<&str>>()[0].to_string();
-        } 
-        else if sample_name_ext.contains('.'){
+        } else if sample_name_ext.contains('.') {
             sample_name = sample_name_ext.split('.').collect::<Vec<&str>>()[0].to_string();
-        } 
+        }
 
         //create the output file name in temp directory
         let file_aligned_pangenome = temp_dir.path().join(format!("{}_vg.bam", sample_name));
@@ -166,7 +165,10 @@ impl Caller {
 
         //sort the resulting vg aligned file
         let file_vg_aligned_sorted = outdir.join(format!("{}_sorted.bam", sample_name));
-        println!("file_vg_aligned_sorteds: {}", file_vg_aligned_sorted.display());
+        println!(
+            "file_vg_aligned_sorteds: {}",
+            file_vg_aligned_sorted.display()
+        );
 
         let vg_sort = {
             Command::new("samtools")
@@ -188,7 +190,10 @@ impl Caller {
         //preprocess
         //create the output file name
         let varlociraptor_prep_dir = outdir.join(format!("{}_obs.bcf", sample_name));
-        println!("varlociraptor_prep_dir: {}", varlociraptor_prep_dir.display());
+        println!(
+            "varlociraptor_prep_dir: {}",
+            varlociraptor_prep_dir.display()
+        );
 
         let varlociraptor_prep = {
             Command::new("varlociraptor")
@@ -207,17 +212,26 @@ impl Caller {
                 .status()
                 .expect("failed to execute the varlociraptor preprocessing")
         };
-        println!("The varlociraptor preprocessing was exited with: {}", varlociraptor_prep);
+        println!(
+            "The varlociraptor preprocessing was exited with: {}",
+            varlociraptor_prep
+        );
 
         //call
         // "varlociraptor call variants --omit-strand-bias --omit-read-position-bias --omit-read-orientation-bias --omit-softclip-bias --omit-homopolymer-artifact-detection --omit-alt-locus-bias generic --obs sample={input.obs} " ##varlociraptor v5.3.0
         // "--scenario {input.scenario} > {output} 2> {log}"
         //create the output file name
         let varlociraptor_call_dir = outdir.join(format!("{}.bcf", sample_name));
-        println!("varlociraptor_call_dir: {}", varlociraptor_call_dir.display());
+        println!(
+            "varlociraptor_call_dir: {}",
+            varlociraptor_call_dir.display()
+        );
 
         //scenario
-        println!("{}",format!("sample={}",&varlociraptor_prep_dir.display()));
+        println!(
+            "{}",
+            format!("sample={}", &varlociraptor_prep_dir.display())
+        );
 
         let varlociraptor_call = {
             Command::new("varlociraptor")
@@ -231,16 +245,21 @@ impl Caller {
                 .arg("--omit-alt-locus-bias")
                 .arg("generic")
                 .arg("--obs")
-                .arg(format!("sample={}",varlociraptor_prep_dir.display()))
-                .arg("--scenario") 
+                .arg(format!("sample={}", varlociraptor_prep_dir.display()))
+                .arg("--scenario")
                 .arg(&scenario)
                 .stdout(Stdio::piped())
                 .spawn()
                 .expect("failed to execute the varlociraptor calling process")
         };
-        println!("The varlociraptor calling was exited with: {:?}", varlociraptor_call);
-        
-        let output = varlociraptor_call.wait_with_output().expect("Varlociraptor: Failed to read stdout");
+        println!(
+            "The varlociraptor calling was exited with: {:?}",
+            varlociraptor_call
+        );
+
+        let output = varlociraptor_call
+            .wait_with_output()
+            .expect("Varlociraptor: Failed to read stdout");
         let mut called_file = std::fs::File::create(&varlociraptor_call_dir)?;
         called_file.write_all(&output.stdout)?; //write with bam writer
         called_file.flush()?;
