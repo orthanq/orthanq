@@ -79,6 +79,18 @@ pub enum PreprocessKind {
             help = "Input FASTQ reads belonging to the sample."
         )]
         reads: Vec<PathBuf>,
+        #[structopt(
+            parse(from_os_str),
+            long = "haplotype-variants",
+            required = true,
+            help = "Haplotype variants compared to a common reference.", // TODO later, we will add a subcommand to generate this file with Varlociraptor as well
+        )]
+        haplotype_variants: PathBuf,
+        #[structopt(
+            long = "output",
+            help = "Output folder file to store preprocessed BAM file to be used as input in the calling step."
+        )]
+        output: PathBuf,
     },
 }
 
@@ -310,12 +322,14 @@ pub fn run(opt: Orthanq) -> Result<()> {
             PreprocessKind::Virus {
                 genome,
                 reads,
-                // output,
+                haplotype_variants,
+                output,
             } => {
                 preprocess::virus::CallerBuilder::default()
                     .genome(genome)
                     .reads(reads)
-                    // .output(output)
+                    .haplotype_variants(haplotype_variants)
+                    .output(output)
                     .build()
                     .unwrap()
                     .call()?;
