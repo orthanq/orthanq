@@ -1,7 +1,7 @@
 use crate::calling::haplotypes::haplotypes;
 use crate::calling::haplotypes::haplotypes::{
-    CandidateMatrix, Haplotype, HaplotypeVariants, PriorTypes, VariantCalls,
-    VariantID, VariantStatus,
+    CandidateMatrix, Haplotype, HaplotypeVariants, PriorTypes, VariantCalls, VariantID,
+    VariantStatus,
 };
 use crate::model::{Data, HaplotypeFractions, Likelihood, Marginal, Posterior, Prior};
 use anyhow::Result;
@@ -11,16 +11,12 @@ use core::cmp::Ordering;
 
 use derive_builder::Builder;
 
-
 use ordered_float::NotNan;
 
 use quick_xml::events::Event;
 use quick_xml::reader::Reader as xml_reader;
 
-use rust_htslib::bcf::{
-    self,
-};
-
+use rust_htslib::bcf::{self};
 
 use std::collections::{BTreeMap, HashMap};
 

@@ -1,32 +1,18 @@
 use crate::calling::haplotypes::haplotypes;
 use crate::calling::haplotypes::haplotypes::{
-    CandidateMatrix, Haplotype, HaplotypeVariants, PriorTypes, VariantCalls,
-    VariantID, VariantStatus,
+    CandidateMatrix, Haplotype, HaplotypeVariants, PriorTypes, VariantCalls, VariantID,
+    VariantStatus,
 };
 use crate::model::{Data, Likelihood, Marginal, Posterior, Prior};
 use anyhow::Result;
-use bio::stats::{bayesian::model::Model};
+use bio::stats::bayesian::model::Model;
 use bv::BitVec;
-
 
 use derive_builder::Builder;
 
-
-
-
-
-
 use ordered_float::NotNan;
 
-
-
-
-use rust_htslib::bcf::{
-    self,
-};
-
-
-
+use rust_htslib::bcf::{self};
 
 use std::fs;
 use std::str::FromStr;
