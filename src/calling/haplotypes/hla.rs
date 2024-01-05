@@ -180,6 +180,7 @@ impl Caller {
                         event_posteriors.push((fractions.clone(), logprob.clone()));
                     }
                 });
+
             //first: 3-field
             haplotypes::write_results(
                 &self.outcsv,
@@ -192,7 +193,7 @@ impl Caller {
             //second: 2-field
             let (two_field_haplotypes, two_field_event_posteriors) =
                 convert_to_two_field(&event_posteriors, &final_haplotypes)?;
-            let mut path_for_two_fields = PathBuf::from(&self.outcsv);
+            let mut path_for_two_fields = PathBuf::from(&self.outcsv.parent().unwrap());
             path_for_two_fields.push("2-field.csv");
             haplotypes::write_results(
                 &path_for_two_fields,
