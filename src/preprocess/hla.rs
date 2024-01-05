@@ -305,6 +305,8 @@ impl Caller {
             samtools_extract
         );
 
+        //TODO: implement varlociraptor steps
+
         // close the file handle of the named temporary files
         // temp_index.close()?;
         temp_dir.close()?;

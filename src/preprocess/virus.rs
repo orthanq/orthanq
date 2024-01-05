@@ -24,7 +24,9 @@ pub struct Caller {
 impl Caller {
     pub fn call(&self) -> Result<()> {
         //1) bgzip and tabix the candidates vcf then, perform vg autoindex (maybe add this part to the candidates virus subcommand.)
-        let thread_number = "10".to_string();
+        
+        let thread_number = "10".to_string(); //TODO: do not hardcode
+        let scenario = &"resources/scenarios/scenario.yaml"; //TODO: do not hardcode
 
         //create the output file name in temp directory
 
@@ -78,14 +80,14 @@ impl Caller {
         };
         println!("Tabix was exited with: {:?}", tabix);
 
-        let output = tabix
+        let _ = tabix
             .wait_with_output()
             .expect("Tabix: Failed to read stdout");
 
         //vg indexing
 
         //create the output file name
-        let idx_dir = outdir.join(&"idx.giraffe.gbz");
+        let idx_name = outdir.join(&"idx");
         println!("{}", bgzip_dir.display());
 
         let vg_index = {
@@ -98,7 +100,7 @@ impl Caller {
                 .arg("-v")
                 .arg(&bgzip_dir)
                 .arg("-p")
-                .arg(&idx_dir)
+                .arg(&idx_name)
                 .arg("-t")
                 .arg(&thread_number)
                 .status()
@@ -118,8 +120,14 @@ impl Caller {
             .to_str()
             .unwrap();
 
-        //get rid of underscores (PE reads contain them)
-        let sample_name = sample_name_ext.split('_').collect::<Vec<&str>>()[0];
+        //get rid of underscores (PE reads contain them) (the following section needs to be rethought)
+        let mut sample_name = "sample".to_string();
+        if sample_name_ext.contains('_'){
+            sample_name = sample_name_ext.split('_').collect::<Vec<&str>>()[0].to_string();
+        } 
+        else if sample_name_ext.contains('.'){
+            sample_name = sample_name_ext.split('.').collect::<Vec<&str>>()[0].to_string();
+        } 
 
         //create the output file name in temp directory
         let file_aligned_pangenome = temp_dir.path().join(format!("{}_vg.bam", sample_name));
@@ -130,7 +138,7 @@ impl Caller {
             Command::new("vg")
                 .arg("giraffe")
                 .arg("-Z")
-                .arg(&idx_dir)
+                .arg(format!("{}.giraffe.gbz", &idx_name.display()))
                 .arg("-f")
                 .arg(&self.reads[0])
                 .arg("-f")
@@ -157,7 +165,8 @@ impl Caller {
         vg_bam.flush()?;
 
         //sort the resulting vg aligned file
-        let file_vg_aligned_sorted = temp_dir.path().join(format!("{}_sorted.bam", sample_name));
+        let file_vg_aligned_sorted = outdir.join(format!("{}_sorted.bam", sample_name));
+        println!("file_vg_aligned_sorteds: {}", file_vg_aligned_sorted.display());
 
         let vg_sort = {
             Command::new("samtools")
@@ -174,6 +183,69 @@ impl Caller {
         println!("The sorting was exited with: {}", vg_sort);
         println!("{}", file_vg_aligned_sorted.display());
 
+        //varlociraptor preprocess and call
+
+        //preprocess
+        //create the output file name
+        let varlociraptor_prep_dir = outdir.join(format!("{}_obs.bcf", sample_name));
+        println!("varlociraptor_prep_dir: {}", varlociraptor_prep_dir.display());
+
+        let varlociraptor_prep = {
+            Command::new("varlociraptor")
+                .arg("preprocess")
+                .arg("variants")
+                .arg("--report-fragment-ids")
+                .arg("--omit-mapq-adjustment")
+                .arg("--atomic-candidate-variants")
+                .arg("--candidates")
+                .arg(&self.haplotype_variants)
+                .arg(&self.genome)
+                .arg("--bam")
+                .arg(&file_vg_aligned_sorted)
+                .arg("--output")
+                .arg(&varlociraptor_prep_dir)
+                .status()
+                .expect("failed to execute the varlociraptor preprocessing")
+        };
+        println!("The varlociraptor preprocessing was exited with: {}", varlociraptor_prep);
+
+        //call
+        // "varlociraptor call variants --omit-strand-bias --omit-read-position-bias --omit-read-orientation-bias --omit-softclip-bias --omit-homopolymer-artifact-detection --omit-alt-locus-bias generic --obs sample={input.obs} " ##varlociraptor v5.3.0
+        // "--scenario {input.scenario} > {output} 2> {log}"
+        //create the output file name
+        let varlociraptor_call_dir = outdir.join(format!("{}.bcf", sample_name));
+        println!("varlociraptor_call_dir: {}", varlociraptor_call_dir.display());
+
+        //scenario
+        println!("{}",format!("sample={}",&varlociraptor_prep_dir.display()));
+
+        let varlociraptor_call = {
+            Command::new("varlociraptor")
+                .arg("call")
+                .arg("variants")
+                .arg("--omit-strand-bias")
+                .arg("--omit-read-position-bias")
+                .arg("--omit-read-orientation-bias")
+                .arg("--omit-softclip-bias")
+                .arg("--omit-homopolymer-artifact-detection")
+                .arg("--omit-alt-locus-bias")
+                .arg("generic")
+                .arg("--obs")
+                .arg(format!("sample={}",varlociraptor_prep_dir.display()))
+                .arg("--scenario") 
+                .arg(&scenario)
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("failed to execute the varlociraptor calling process")
+        };
+        println!("The varlociraptor calling was exited with: {:?}", varlociraptor_call);
+        
+        let output = varlociraptor_call.wait_with_output().expect("Varlociraptor: Failed to read stdout");
+        let mut called_file = std::fs::File::create(&varlociraptor_call_dir)?;
+        called_file.write_all(&output.stdout)?; //write with bam writer
+        called_file.flush()?;
+
+        //~fin
         Ok(())
     }
 }
