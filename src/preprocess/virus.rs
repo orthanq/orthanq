@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
 
-use rust_htslib::bcf;
 use std::path::Path;
 
 use tempfile::tempdir;

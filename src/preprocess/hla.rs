@@ -1,6 +1,7 @@
 use anyhow::Result;
 use derive_builder::Builder;
 
+use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -11,11 +12,17 @@ use tempfile::NamedTempFile;
 pub struct Caller {
     genome: PathBuf,
     reads: Vec<PathBuf>,
-    // output: Option<PathBuf>,
+    haplotype_variants: PathBuf,
+    output: PathBuf,
 }
 
 impl Caller {
     pub fn call(&self) -> Result<()> {
+        let outdir = &self.output;
+
+        //create the folder first if it doesn't exist
+        fs::create_dir_all(&outdir)?;
+
         //1-) index the linear genome
         //bwa index -p hs_genome -a bwtsw hs_genome.fasta
 
@@ -35,6 +42,8 @@ impl Caller {
         //         .expect("failed to execute indexing process")
         // };
         // println!("The index was created successfully: {}", index);
+
+        let scenario = &"resources/scenarios/scenario.yaml"; //TODO: do not hardcode
 
         // configure thread_number
         let thread_number = "10".to_string();
@@ -278,8 +287,7 @@ impl Caller {
         println!("The indexing was exited with: {}", samtools_index);
 
         //finally, extract only strandard chromosomes
-        let parent = &self.reads[0].parent().unwrap();
-        let final_bam = parent.join(format!("{}_processed.bam", sample_name));
+        let final_bam = outdir.join(format!("{}_processed.bam", sample_name));
         println!("{}", final_bam.display());
 
         let samtools_extract = {
@@ -305,8 +313,84 @@ impl Caller {
             samtools_extract
         );
 
-        //TODO: implement varlociraptor steps
+        //varlociraptor preprocess and call
 
+        //preprocess
+        //create the output file name
+        let varlociraptor_prep_dir = outdir.join(format!("{}_obs.bcf", sample_name));
+        println!(
+            "varlociraptor_prep_dir: {}",
+            varlociraptor_prep_dir.display()
+        );
+
+        let varlociraptor_prep = {
+            Command::new("varlociraptor")
+                .arg("preprocess")
+                .arg("variants")
+                .arg("--report-fragment-ids")
+                .arg("--omit-mapq-adjustment")
+                .arg("--atomic-candidate-variants")
+                .arg("--candidates")
+                .arg(&self.haplotype_variants)
+                .arg(&self.genome)
+                .arg("--bam")
+                .arg(&final_bam)
+                .arg("--output")
+                .arg(&varlociraptor_prep_dir)
+                .status()
+                .expect("failed to execute the varlociraptor preprocessing")
+        };
+        println!(
+            "The varlociraptor preprocessing was exited with: {}",
+            varlociraptor_prep
+        );
+
+        //call
+        // "varlociraptor call variants --omit-strand-bias --omit-read-position-bias --omit-read-orientation-bias --omit-softclip-bias --omit-homopolymer-artifact-detection --omit-alt-locus-bias generic --obs sample={input.obs} " ##varlociraptor v5.3.0
+        // "--scenario {input.scenario} > {output} 2> {log}"
+        //create the output file name
+        let varlociraptor_call_dir = outdir.join(format!("{}.bcf", sample_name));
+        println!(
+            "varlociraptor_call_dir: {}",
+            varlociraptor_call_dir.display()
+        );
+
+        //scenario
+        println!(
+            "{}",
+            format!("sample={}", &varlociraptor_prep_dir.display())
+        );
+
+        let varlociraptor_call = {
+            Command::new("varlociraptor")
+                .arg("call")
+                .arg("variants")
+                .arg("--omit-strand-bias")
+                .arg("--omit-read-position-bias")
+                .arg("--omit-read-orientation-bias")
+                .arg("--omit-softclip-bias")
+                .arg("--omit-homopolymer-artifact-detection")
+                .arg("--omit-alt-locus-bias")
+                .arg("generic")
+                .arg("--obs")
+                .arg(format!("sample={}", varlociraptor_prep_dir.display()))
+                .arg("--scenario")
+                .arg(&scenario)
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("failed to execute the varlociraptor calling process")
+        };
+        println!(
+            "The varlociraptor calling was exited with: {:?}",
+            varlociraptor_call
+        );
+
+        let output = varlociraptor_call
+            .wait_with_output()
+            .expect("Varlociraptor: Failed to read stdout");
+        let mut called_file = std::fs::File::create(&varlociraptor_call_dir)?;
+        called_file.write_all(&output.stdout)?; //write with bam writer
+        called_file.flush()?;
         // close the file handle of the named temporary files
         // temp_index.close()?;
         temp_dir.close()?;

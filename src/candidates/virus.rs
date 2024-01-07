@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use derive_builder::Builder;
 
-use polars::{frame::DataFrame, prelude::NamedFrom};
+use polars::frame::DataFrame;
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 // use rust_htslib::{bam::Read};
 
