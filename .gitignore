@@ -2,5 +2,6 @@
 /candidates
 /resources
 !resources/regions.bed
+!resources/scenarios/scenario.yaml
 /test_files
 /alignment_sorted.sam 
