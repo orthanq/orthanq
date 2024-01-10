@@ -113,6 +113,9 @@ impl Caller {
             //construct candidate matrix
             let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
+            //
+            haplotype_variants.find_equivalence_class("hla");
+
             //1-) model computation for chosen prior
             let prior = PriorTypes::from_str(&self.prior).unwrap();
             let upper_bond = NotNan::new(1.0).unwrap();

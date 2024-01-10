@@ -20,11 +20,16 @@ use good_lp::IntoAffineExpression;
 use good_lp::*;
 use good_lp::{variable, Expression};
 
+use petgraph::dot::{Config, Dot};
+use petgraph::graph::{Graph, NodeIndex, UnGraph};
+
 use serde::Serialize;
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap};
 
 use std::fs;
+use std::fs::File;
+use std::io::Write;
 use std::str::FromStr;
 use std::{path::PathBuf, str};
 
@@ -249,6 +254,83 @@ impl HaplotypeVariants {
             }
         }
         Ok(haplotype_variants_filtered)
+    }
+
+    pub fn find_equivalence_class(&self, application: &str) -> Result<()> {
+        //an edge in the graph representation for the equivalence classes is drawn if and only
+        //if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
+        let threshold = 1; //should be configured.
+
+        // BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>
+        let mut equivalence_classes: BTreeMap<Haplotype, Vec<VariantID>> = BTreeMap::new();
+        if &application == &"hla" {
+            for (variant, haplotype_map) in self.iter() {
+                for (haplotype, (variant_in_gt, variant_in_c)) in haplotype_map.iter() {
+                    match variant_in_gt {
+                        VariantStatus::Present => {
+                            if equivalence_classes.contains_key(&haplotype) {
+                                let mut variants_in_haplotype =
+                                    equivalence_classes[&haplotype].clone();
+                                variants_in_haplotype.push(variant.clone());
+                                equivalence_classes
+                                    .insert(haplotype.clone(), variants_in_haplotype);
+                            } else {
+                                equivalence_classes
+                                    .insert(haplotype.clone(), vec![variant.clone()]);
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+            }
+        }
+        dbg!(&equivalence_classes);
+
+        let mut deps = Graph::new();
+
+        for (haplotype, variants) in equivalence_classes.iter() {
+            let splitted = haplotype.split(':').collect::<Vec<&str>>();
+            let haplotype_group = splitted[0].to_owned() + &":" + splitted[1];
+            let item1 = deps.add_node((haplotype.clone(), haplotype_group.clone()));
+            let index = deps
+                .node_indices()
+                .find(|i| deps[*i] == (haplotype.clone(), haplotype_group.clone()))
+                .unwrap();
+            for idx in 0..deps.node_count() {
+                dbg!(&deps[NodeIndex::new(idx)]);
+                let node_at_index = &deps[NodeIndex::new(idx)];
+
+                let mut difference = vec![];
+
+                let variants_of_node_at_index = &equivalence_classes[&node_at_index.0];
+                let splitted = node_at_index.0.split(':').collect::<Vec<&str>>();
+                let haplotype_group_at_index = splitted[0].to_owned() + &":" + splitted[1];
+
+                for variant in variants_of_node_at_index.iter() {
+                    if !variants.contains(&variant) {
+                        difference.push(variant);
+                    }
+                }
+                dbg!(&haplotype_group);
+                dbg!(&haplotype_group_at_index);
+                if (difference.len() < threshold)
+                    && (haplotype_group == haplotype_group_at_index)
+                    && (index != NodeIndex::new(idx))
+                {
+                    //the last is to avoid drawing an edge to itself
+                    let edge = deps.add_edge(index, NodeIndex::new(idx), 1);
+                }
+            }
+        }
+        dbg!(&deps);
+        let mut f = File::create("example.dot").unwrap();
+        let output = format!("{:?}", Dot::with_config(&deps, &[Config::EdgeNoLabel]));
+        f.write_all(&output.as_bytes())
+            .expect("could not write file");
+
+        //todo: implement virus case.
+
+        Ok(())
     }
 }
 
