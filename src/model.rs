@@ -1,5 +1,5 @@
 use crate::calling::haplotypes::haplotypes::{
-    AlleleFreqDist, CandidateMatrix, PriorTypes, VariantCalls, VariantStatus,
+    AlleleFreqDist, CandidateMatrix, Haplotype, PriorTypes, VariantCalls, VariantStatus,
 };
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb, Prob};
@@ -7,9 +7,13 @@ use bv::BitVec;
 use derefable::Derefable;
 use derive_new::new;
 use ordered_float::NotNan;
-use std::collections::HashMap;
-
+use std::collections::{HashMap, HashSet};
+use petgraph::Graph;
+use petgraph::visit::{Bfs,Dfs};
+use petgraph::Undirected;                                                                                                                                                                                                 
 pub type AlleleFreq = NotNan<f64>;
+
+use std::collections::BTreeMap;                                                                                                                                                                                    
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable)]
 pub struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
@@ -17,8 +21,10 @@ pub struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
 #[derive(Debug, new)]
 pub(crate) struct Marginal {
     n_haplotypes: usize,
+    haplotypes: Vec<Haplotype>,
     upper_bond: NotNan<f64>,
     prior_info: PriorTypes,
+    haplotype_graph: Graph<(Haplotype, String), i32, Undirected>
 }
 
 impl Marginal {
@@ -29,8 +35,72 @@ impl Marginal {
         data: &Data,
         haplotype_index: usize,
         fractions: &mut [AlleleFreq],
+        mut haplotype_fraction_set: &mut HashSet<String>,
         joint_prob: &mut F,
     ) -> LogProb {
+        let mut order = &"continue";
+        dbg!(&haplotype_index);
+        // dbg!(&self.haplotypes[haplotype_index]);
+        dbg!(&fractions);
+
+        //record registry of each haplotype in the recursion
+        if (haplotype_index != 0) && (haplotype_index != self.n_haplotypes) {
+            let fraction_rounded = format!("{:.1}", fractions.last().copied().unwrap());
+            let key = format!("{}_{}", &self.haplotypes[haplotype_index].to_string(), fraction_rounded);
+            haplotype_fraction_set.insert(key.clone());
+            dbg!(&haplotype_fraction_set);    
+        
+            //halt the exploration if fractions contains haplotypes from the same equivalence class that has been searched before.
+            //first, determine haplotype group
+            dbg!(&self.haplotypes[haplotype_index]);
+            let splitted = &self.haplotypes[haplotype_index].split(':').collect::<Vec<&str>>();
+            let haplotype_group = splitted[0].to_owned() + &":" + splitted[1];
+
+            //find the index of the (haplotype, haplotype_group) in graph
+            let index = &self.haplotype_graph.node_indices().find(|i| &self.haplotype_graph[*i] == &(self.haplotypes[haplotype_index].clone(), haplotype_group.clone())).unwrap();
+
+            //find neighbors of the haplotype by its index
+            let neighbors_of_haplotype = self.haplotype_graph.neighbors(*index);
+            dbg!(&neighbors_of_haplotype);
+            // let edges = self.haplotype_graph.neighbors(*index).detach();
+            // while let Some(edge) = edges.next_edge(&haplotype_graph) {
+            //     dbg!(&gr[node]);
+            // }
+
+            // step through the graph and sum incoming edges into the node weight
+            let mut bfs = Bfs::new(&self.haplotype_graph, *index);
+            while let Some(nx) = bfs.next(&self.haplotype_graph) {
+                // we can access `graph` mutably here still
+                dbg!(&self.haplotype_graph[nx].0);
+                let fraction_rounded = format!("{:.1}", fractions.last().copied().unwrap());
+                dbg!(&fraction_rounded);
+                let haplotype_fraction_query = format!("{}_{}",&self.haplotype_graph[nx].0.to_string(), fraction_rounded);
+                dbg!(&haplotype_fraction_query);
+                if haplotype_fraction_set.contains(&haplotype_fraction_query){
+                    return LogProb::ln_one();
+                }
+            }
+
+            // dbg!(&walker_neighbors);
+            // for idx in walker_neighbors {
+            //     dbg!(&self.haplotype_graph[idx].0);
+            // }
+            // for idx in neighbors_of_haplotype {
+            //     dbg!(&self.haplotype_graph[idx].0);
+            //     let fraction_rounded = format!("{:.1}", fractions.last().copied().unwrap());
+            //     dbg!(&fraction_rounded);
+            //     let haplotype_fraction_query = format!("{}_{}",&self.haplotype_graph[idx].0.to_string(), fraction_rounded);
+            //     dbg!(&haplotype_fraction_query);
+            //     if haplotype_count.contains_key(&haplotype_fraction_query){
+            //         if haplotype_count[&haplotype_fraction_query] > 1 {
+            //             return LogProb::ln_one();
+            //         }
+            //     }
+
+            // }
+        }
+        dbg!(&"checkpoint");
+        // if (haplotype_count[&self.haplotypes[haplotype_index]] > 1)
         if haplotype_index == self.n_haplotypes {
             let event = HaplotypeFractions(fractions.to_vec());
             joint_prob(&event, data)
@@ -39,7 +109,7 @@ impl Marginal {
             let mut density = |fraction| {
                 let mut fractions = fractions.to_vec();
                 fractions.push(fraction);
-                self.calc_marginal(data, haplotype_index + 1, &mut fractions, joint_prob)
+                self.calc_marginal(data, haplotype_index + 1, &mut fractions, &mut haplotype_count, joint_prob)
             };
             if haplotype_index == self.n_haplotypes - 1 {
                 // let second_if = density(fraction_upper_bound);
@@ -99,7 +169,9 @@ impl model::Marginal for Marginal {
         joint_prob: &mut F,
     ) -> LogProb {
         let mut fractions: Vec<AlleleFreq> = Vec::new();
-        self.calc_marginal(data, 0, &mut fractions, joint_prob)
+        let mut haplotype_fraction_set: HashSet<String> = HashSet::new();
+
+        self.calc_marginal(data, 0, &mut fractions, &mut haplotype_fraction_set, joint_prob)
     }
 }
 

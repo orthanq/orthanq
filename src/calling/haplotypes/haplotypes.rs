@@ -256,7 +256,7 @@ impl HaplotypeVariants {
         Ok(haplotype_variants_filtered)
     }
 
-    pub fn find_equivalence_class(&self, application: &str) -> Result<()> {
+    pub fn find_equivalence_class(&self, application: &str) -> Result<Graph<(Haplotype,String),i32, petgraph::Undirected>> {
         //an edge in the graph representation for the equivalence classes is drawn if and only
         //if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
         let threshold = 1; //should be configured.
@@ -286,7 +286,7 @@ impl HaplotypeVariants {
         }
         dbg!(&equivalence_classes);
 
-        let mut deps = Graph::new();
+        let mut deps = Graph::new_undirected();
 
         for (haplotype, variants) in equivalence_classes.iter() {
             let splitted = haplotype.split(':').collect::<Vec<&str>>();
@@ -330,7 +330,7 @@ impl HaplotypeVariants {
 
         //todo: implement virus case.
 
-        Ok(())
+        Ok(deps)
     }
 }
 

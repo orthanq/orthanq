@@ -114,7 +114,8 @@ impl Caller {
             let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
             //
-            haplotype_variants.find_equivalence_class("hla");
+            let eq_graph = haplotype_variants.find_equivalence_class("hla").unwrap();
+            dbg!(&eq_graph);
 
             //1-) model computation for chosen prior
             let prior = PriorTypes::from_str(&self.prior).unwrap();
@@ -126,7 +127,7 @@ impl Caller {
             );
             let data = Data::new(candidate_matrix.clone(), variant_calls.clone());
             let computed_model = model.compute_from_marginal(
-                &Marginal::new(final_haplotypes.len(), upper_bond, prior),
+                &Marginal::new(final_haplotypes.len(), final_haplotypes.clone(), upper_bond, prior, eq_graph),
                 &data,
             );
             let mut event_posteriors = computed_model.event_posteriors();
