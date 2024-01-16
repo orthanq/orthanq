@@ -36,6 +36,7 @@ pub struct Caller {
     prior: String,
     common_variants: bool,
     lp_cutoff: f64,
+    enable_equivalence_class_constraint: bool
 }
 
 impl Caller {
@@ -127,7 +128,7 @@ impl Caller {
             );
             let data = Data::new(candidate_matrix.clone(), variant_calls.clone());
             let computed_model = model.compute_from_marginal(
-                &Marginal::new(final_haplotypes.len(), final_haplotypes.clone(), upper_bond, prior, eq_graph),
+                &Marginal::new(final_haplotypes.len(), final_haplotypes.clone(), upper_bond, prior, eq_graph, self.enable_equivalence_class_constraint),
                 &data,
             );
             let mut event_posteriors = computed_model.event_posteriors();
@@ -138,98 +139,98 @@ impl Caller {
             //         .collect::<Vec<f64>>();
             //     dbg!(&best_fractions);
             // }
-            // let (best_fractions, _) = event_posteriors.next().unwrap();
+            let (best_fractions, _) = event_posteriors.next().unwrap();
 
-            // //Step 2: plot the final solution
-            // let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
-            //     data.candidate_matrix.values().cloned().collect();
-            // let best_fractions = best_fractions
-            //     .iter()
-            //     .map(|f| NotNan::into_inner(*f))
-            //     .collect::<Vec<f64>>();
-            // haplotypes::plot_prediction(
-            //     &self.outcsv,
-            //     &"final",
-            //     &candidate_matrix_values,
-            //     &final_haplotypes,
-            //     &data.variant_calls,
-            //     &best_fractions,
-            // )?;
+            //Step 2: plot the final solution
+            let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
+                data.candidate_matrix.values().cloned().collect();
+            let best_fractions = best_fractions
+                .iter()
+                .map(|f| NotNan::into_inner(*f))
+                .collect::<Vec<f64>>();
+            haplotypes::plot_prediction(
+                &self.outcsv,
+                &"final",
+                &candidate_matrix_values,
+                &final_haplotypes,
+                &data.variant_calls,
+                &best_fractions,
+            )?;
 
-            // //write to tsv for nonzero densities
-            // let mut event_posteriors = Vec::new();
-            // computed_model
-            //     .event_posteriors()
-            //     .for_each(|(fractions, logprob)| {
-            //         if (logprob.exp() != 0.0) && (fractions.len() >= final_haplotypes.len()) {
-            //             event_posteriors.push((fractions.clone(), logprob.clone()));
-            //         }
-            //     });
-            // dbg!(&event_posteriors);
-            // //first: 3-field
-            // haplotypes::write_results(
-            //     &self.outcsv,
-            //     &data,
-            //     &event_posteriors,
-            //     &final_haplotypes,
-            //     self.prior.clone(),
-            //     false,
-            // )?;
-            // //second: 2-field
-            // let (two_field_haplotypes, two_field_event_posteriors) =
-            //     convert_to_two_field(&event_posteriors, &final_haplotypes)?;
-            // let mut path_for_two_fields = PathBuf::from(&self.outcsv.parent().unwrap());
-            // path_for_two_fields.push("2-field.csv");
-            // haplotypes::write_results(
-            //     &path_for_two_fields,
-            //     &data,
-            //     &two_field_event_posteriors,
-            //     &two_field_haplotypes,
-            //     self.prior.clone(),
-            //     false,
-            // )?;
+            //write to tsv for nonzero densities
+            let mut event_posteriors = Vec::new();
+            computed_model
+                .event_posteriors()
+                .for_each(|(fractions, logprob)| {
+                    if (logprob.exp() != 0.0) && (fractions.len() >= final_haplotypes.len()) {
+                        event_posteriors.push((fractions.clone(), logprob.clone()));
+                    }
+                });
+            dbg!(&event_posteriors);
+            //first: 3-field
+            haplotypes::write_results(
+                &self.outcsv,
+                &data,
+                &event_posteriors,
+                &final_haplotypes,
+                self.prior.clone(),
+                false,
+            )?;
+            //second: 2-field
+            let (two_field_haplotypes, two_field_event_posteriors) =
+                convert_to_two_field(&event_posteriors, &final_haplotypes)?;
+            let mut path_for_two_fields = PathBuf::from(&self.outcsv.parent().unwrap());
+            path_for_two_fields.push("2-field.csv");
+            haplotypes::write_results(
+                &path_for_two_fields,
+                &data,
+                &two_field_event_posteriors,
+                &two_field_haplotypes,
+                self.prior.clone(),
+                false,
+            )?;
 
-            // //plot first 10 posteriors of orthanq output
-            // haplotypes::plot_densities(
-            //     &self.outcsv,
-            //     &event_posteriors,
-            //     &final_haplotypes,
-            //     "3_field",
-            // )?;
-            // haplotypes::plot_densities(
-            //     &self.outcsv,
-            //     &two_field_event_posteriors,
-            //     &two_field_haplotypes,
-            //     "2_field",
-            // )?;
+            //plot first 10 posteriors of orthanq output
+            haplotypes::plot_densities(
+                &self.outcsv,
+                &event_posteriors,
+                &final_haplotypes,
+                "3_field",
+            )?;
+            haplotypes::plot_densities(
+                &self.outcsv,
+                &two_field_event_posteriors,
+                &two_field_haplotypes,
+                "2_field",
+            )?;
 
-            // //second: convert to G groups
-            // let mut converted_name = PathBuf::from(&self.outcsv.parent().unwrap());
-            // converted_name.push("G_groups.csv");
-            // let allele_to_g_groups = self.convert_to_g().unwrap();
-            // let mut final_haplotypes_converted: Vec<Haplotype> = Vec::new();
-            // final_haplotypes.iter().for_each(|haplotype| {
-            //     let mut conv_haplotype = Vec::new();
-            //     allele_to_g_groups.iter().for_each(|(allele, g_group)| {
-            //         if allele.starts_with(&haplotype.to_string()) {
-            //             conv_haplotype.push(g_group.to_string());
-            //         }
-            //     });
-            //     if conv_haplotype.is_empty() {
-            //         conv_haplotype.push(haplotype.to_string());
-            //     }
-            //     let conv_haplotype = Haplotype(conv_haplotype[0].clone());
-            //     final_haplotypes_converted.push(conv_haplotype);
-            // });
+            //second: convert to G groups
+            let mut converted_name = PathBuf::from(&self.outcsv.parent().unwrap());
+            converted_name.push("G_groups.csv");
+            let allele_to_g_groups = self.convert_to_g().unwrap();
+            let mut final_haplotypes_converted: Vec<Haplotype> = Vec::new();
+            final_haplotypes.iter().for_each(|haplotype| {
+                let mut conv_haplotype = Vec::new();
+                allele_to_g_groups.iter().for_each(|(allele, g_group)| {
+                    if allele.starts_with(&haplotype.to_string()) {
+                        conv_haplotype.push(g_group.to_string());
+                    }
+                });
+                if conv_haplotype.is_empty() {
+                    conv_haplotype.push(haplotype.to_string());
+                }
+                let conv_haplotype = Haplotype(conv_haplotype[0].clone());
+                final_haplotypes_converted.push(conv_haplotype);
+            });
 
-            // haplotypes::write_results(
-            //     &converted_name,
-            //     &data,
-            //     &event_posteriors,
-            //     &final_haplotypes_converted,
-            //     self.prior.clone(),
-            //     true,
-            // )?;
+            haplotypes::write_results(
+                &converted_name,
+                &data,
+                &event_posteriors,
+                &final_haplotypes_converted,
+                self.prior.clone(),
+                true,
+            )?;
             Ok(())
         }
     }

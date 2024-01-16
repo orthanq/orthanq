@@ -24,7 +24,8 @@ pub(crate) struct Marginal {
     haplotypes: Vec<Haplotype>,
     upper_bond: NotNan<f64>,
     prior_info: PriorTypes,
-    haplotype_graph: Graph<(Haplotype, String), i32, Undirected>
+    haplotype_graph: Graph<(Haplotype, String), i32, Undirected>,
+    enable_equivalence_class_constraint: bool
 }
 
 impl Marginal {
@@ -35,61 +36,42 @@ impl Marginal {
         data: &Data,
         haplotype_index: usize,
         fractions: &mut [AlleleFreq],
-        mut haplotype_fraction_set: &mut HashSet<String>,
         joint_prob: &mut F,
     ) -> LogProb {
         if haplotype_index == self.n_haplotypes {
-            // dbg!(&fractions);
             let event = HaplotypeFractions(fractions.to_vec());
             joint_prob(&event, data)
         } else {
-            let mut fraction_rounded = String::from("");
-            let mut key = String::from("");
-            if haplotype_index != 0 {
-                fraction_rounded = format!("{:.1}", fractions.last().copied().unwrap());
-                key = format!("{}_{}", &self.haplotypes[haplotype_index].to_string(), fraction_rounded);
-                // let mut haplotype_fraction_set = haplotype_fraction_set.clone();
-                haplotype_fraction_set.insert(key.clone());
-            }
-
             let fraction_upper_bound = self.upper_bond - fractions.iter().sum::<NotNan<f64>>();
             let mut density = |fraction| {
-                let mut fractions = fractions.to_vec();
-                fractions.push(fraction);
-                let mut haplotype_fraction_set = haplotype_fraction_set.clone();
-                self.calc_marginal(data, haplotype_index + 1, &mut fractions, &mut haplotype_fraction_set, joint_prob)
-            };
-
-            if haplotype_index != 0 {
+                if self.enable_equivalence_class_constraint && fraction > NotNan::new(0.0).unwrap() && fractions.len()>1 { // only if the fraction for the current has greater than 0.0{
+                    
+                    let current_haplotype = &self.haplotypes[haplotype_index];
+                    let splitted = &self.haplotypes[haplotype_index].split(':').collect::<Vec<&str>>();
+                    let haplotype_group = splitted[0].to_owned() + &":" + splitted[1];
+    
+                    //find the index of the (haplotype, haplotype_group) in graph
+                    let index = &self.haplotype_graph.node_indices().find(|i| &self.haplotype_graph[*i] == &(current_haplotype.clone(), haplotype_group.clone())).unwrap();
         
-                //halt the exploration if fractions contains haplotypes from the same equivalence class that has been searched before.
-                //first, determine haplotype group
-                let splitted = &self.haplotypes[haplotype_index].split(':').collect::<Vec<&str>>();
-                let haplotype_group = splitted[0].to_owned() + &":" + splitted[1];
+                    // step through the graph and sum incoming edges into the node weight
+                    let mut bfs = Bfs::new(&self.haplotype_graph, *index);
 
-                //find the index of the (haplotype, haplotype_group) in graph
-                let index = &self.haplotype_graph.node_indices().find(|i| &self.haplotype_graph[*i] == &(self.haplotypes[haplotype_index].clone(), haplotype_group.clone())).unwrap();
-    
-                // //find neighbors of the haplotype by its index
-                // let neighbors_of_haplotype = self.haplotype_graph.neighbors(*index);
-                // dbg!(&neighbors_of_haplotype);
-    
-                // step through the graph and sum incoming edges into the node weight
-                let mut bfs = Bfs::new(&self.haplotype_graph, *index);
-                while let Some(nx) = bfs.next(&self.haplotype_graph) {
-                    // we can access `graph` mutably here still
-                    let haplotype_fraction_query = format!("{}_{}",&self.haplotype_graph[nx].0.to_string(), fraction_rounded);
-                    let mut haplotype_fraction_set = haplotype_fraction_set.iter().cloned().collect::<HashSet<String>>();
-                    if haplotype_fraction_set.contains(&haplotype_fraction_query) && (key != haplotype_fraction_query){
-                        // return density(NotNan::new(0.0).unwrap());
-                        // let event = HaplotypeFractions(fractions.to_vec());
-                        // // dbg!(&event);
-                        // let join_prob = joint_prob(&event, data);
-                        // return join_prob;
-                        return LogProb::ln_zero();
+                    while let Some(nx) = bfs.next(&self.haplotype_graph) {
+                        // we can access `graph` mutably here still
+                        let haplotype_query = &self.haplotype_graph[nx].0;
+                        for (h,f) in self.haplotypes[0..haplotype_index].to_vec().iter().zip(fractions[0..haplotype_index].to_vec().iter()) {
+                            if (h == haplotype_query) && (f > &NotNan::new(0.0).unwrap()) {
+                                return LogProb::ln_zero();
+                            }
+                        }
+                        
                     }
                 }
-            }
+                let mut fractions = fractions.to_vec();
+                fractions.push(fraction);
+                self.calc_marginal(data, haplotype_index + 1, &mut fractions, joint_prob)
+            };
+
             if haplotype_index == self.n_haplotypes - 1 {
                 // let second_if = density(fraction_upper_bound);
                 // second_if //clippy gives a warning
@@ -148,9 +130,7 @@ impl model::Marginal for Marginal {
         joint_prob: &mut F,
     ) -> LogProb {
         let mut fractions: Vec<AlleleFreq> = Vec::new();
-        let mut haplotype_fraction_set: HashSet<String> = HashSet::new();
-
-        self.calc_marginal(data, 0, &mut fractions, &mut haplotype_fraction_set, joint_prob)
+        self.calc_marginal(data, 0, &mut fractions, joint_prob)
     }
 }
 
