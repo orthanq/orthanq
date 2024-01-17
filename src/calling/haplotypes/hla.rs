@@ -36,7 +36,7 @@ pub struct Caller {
     prior: String,
     common_variants: bool,
     lp_cutoff: f64,
-    enable_equivalence_class_constraint: bool
+    enable_equivalence_class_constraint: bool,
 }
 
 impl Caller {
@@ -128,7 +128,14 @@ impl Caller {
             );
             let data = Data::new(candidate_matrix.clone(), variant_calls.clone());
             let computed_model = model.compute_from_marginal(
-                &Marginal::new(final_haplotypes.len(), final_haplotypes.clone(), upper_bond, prior, eq_graph, self.enable_equivalence_class_constraint),
+                &Marginal::new(
+                    final_haplotypes.len(),
+                    final_haplotypes.clone(),
+                    upper_bond,
+                    prior,
+                    eq_graph,
+                    self.enable_equivalence_class_constraint,
+                ),
                 &data,
             );
             let mut event_posteriors = computed_model.event_posteriors();

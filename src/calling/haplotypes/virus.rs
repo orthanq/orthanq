@@ -26,7 +26,7 @@ pub struct Caller {
     outcsv: PathBuf,
     prior: String,
     lp_cutoff: f64,
-    enable_equivalence_class_constraint: bool
+    enable_equivalence_class_constraint: bool,
 }
 
 impl Caller {
@@ -87,7 +87,7 @@ impl Caller {
 
             //construct candidate matrix
             let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
-            
+
             //
             let eq_graph = haplotype_variants.find_equivalence_class("hla").unwrap();
             dbg!(&eq_graph);
@@ -102,7 +102,14 @@ impl Caller {
             );
             let data = Data::new(candidate_matrix.clone(), variant_calls.clone());
             let computed_model = model.compute_from_marginal(
-                &Marginal::new(final_haplotypes.len(), final_haplotypes.clone(), upper_bond, prior, eq_graph, self.enable_equivalence_class_constraint),
+                &Marginal::new(
+                    final_haplotypes.len(),
+                    final_haplotypes.clone(),
+                    upper_bond,
+                    prior,
+                    eq_graph,
+                    self.enable_equivalence_class_constraint,
+                ),
                 &data,
             );
             let mut event_posteriors = computed_model.event_posteriors();

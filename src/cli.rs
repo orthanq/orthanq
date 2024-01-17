@@ -196,8 +196,11 @@ pub enum CallKind {
         common_variants: bool,
         #[structopt(default_value = "0.01", help = "Cutoff for linear program solutions.")]
         lp_cutoff: f64,
-        #[structopt(long, help = "Enable equivalence based constrain during model exploration.")]
-        enable_equivalence_class_constraint: bool
+        #[structopt(
+            long,
+            help = "Enable equivalence based constrain during model exploration."
+        )]
+        enable_equivalence_class_constraint: bool,
     },
     Virus {
         #[structopt(
@@ -223,8 +226,11 @@ pub enum CallKind {
         prior: String,
         #[structopt(default_value = "0.01", help = "Cutoff for linear program solutions.")]
         lp_cutoff: f64,
-        #[structopt(long, help = "Enable equivalence based constrain during model exploration.")]
-        enable_equivalence_class_constraint: bool
+        #[structopt(
+            long,
+            help = "Enable equivalence based constrain during model exploration."
+        )]
+        enable_equivalence_class_constraint: bool,
     },
 }
 
@@ -242,7 +248,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 prior,
                 common_variants,
                 lp_cutoff,
-                enable_equivalence_class_constraint
+                enable_equivalence_class_constraint,
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
@@ -266,7 +272,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 output,
                 prior,
                 lp_cutoff,
-                enable_equivalence_class_constraint
+                enable_equivalence_class_constraint,
             } => {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)

@@ -7,13 +7,13 @@ use bv::BitVec;
 use derefable::Derefable;
 use derive_new::new;
 use ordered_float::NotNan;
-use std::collections::{HashMap, HashSet};
+use petgraph::visit::{Bfs, Dfs};
 use petgraph::Graph;
-use petgraph::visit::{Bfs,Dfs};
-use petgraph::Undirected;                                                                                                                                                                                                 
+use petgraph::Undirected;
+use std::collections::{HashMap, HashSet};
 pub type AlleleFreq = NotNan<f64>;
 
-use std::collections::BTreeMap;                                                                                                                                                                                    
+use std::collections::BTreeMap;
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable)]
 pub struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
@@ -25,7 +25,7 @@ pub(crate) struct Marginal {
     upper_bond: NotNan<f64>,
     prior_info: PriorTypes,
     haplotype_graph: Graph<(Haplotype, String), i32, Undirected>,
-    enable_equivalence_class_constraint: bool
+    enable_equivalence_class_constraint: bool,
 }
 
 impl Marginal {
@@ -44,27 +44,43 @@ impl Marginal {
         } else {
             let fraction_upper_bound = self.upper_bond - fractions.iter().sum::<NotNan<f64>>();
             let mut density = |fraction| {
-                if self.enable_equivalence_class_constraint && fraction > NotNan::new(0.0).unwrap() && fractions.len()>1 { // only if the fraction for the current has greater than 0.0{
-                    
+                if self.enable_equivalence_class_constraint
+                    && fraction > NotNan::new(0.0).unwrap()
+                    && fractions.len() > 1
+                {
+                    // only if the fraction for the current has greater than 0.0{
+
                     let current_haplotype = &self.haplotypes[haplotype_index];
-                    let splitted = &self.haplotypes[haplotype_index].split(':').collect::<Vec<&str>>();
+                    let splitted = &self.haplotypes[haplotype_index]
+                        .split(':')
+                        .collect::<Vec<&str>>();
                     let haplotype_group = splitted[0].to_owned() + &":" + splitted[1];
-    
+
                     //find the index of the (haplotype, haplotype_group) in graph
-                    let index = &self.haplotype_graph.node_indices().find(|i| &self.haplotype_graph[*i] == &(current_haplotype.clone(), haplotype_group.clone())).unwrap();
-        
+                    let index = &self
+                        .haplotype_graph
+                        .node_indices()
+                        .find(|i| {
+                            &self.haplotype_graph[*i]
+                                == &(current_haplotype.clone(), haplotype_group.clone())
+                        })
+                        .unwrap();
+
                     // step through the graph and sum incoming edges into the node weight
                     let mut bfs = Bfs::new(&self.haplotype_graph, *index);
 
                     while let Some(nx) = bfs.next(&self.haplotype_graph) {
                         // we can access `graph` mutably here still
                         let haplotype_query = &self.haplotype_graph[nx].0;
-                        for (h,f) in self.haplotypes[0..haplotype_index].to_vec().iter().zip(fractions[0..haplotype_index].to_vec().iter()) {
+                        for (h, f) in self.haplotypes[0..haplotype_index]
+                            .to_vec()
+                            .iter()
+                            .zip(fractions[0..haplotype_index].to_vec().iter())
+                        {
                             if (h == haplotype_query) && (f > &NotNan::new(0.0).unwrap()) {
                                 return LogProb::ln_zero();
                             }
                         }
-                        
                     }
                 }
                 let mut fractions = fractions.to_vec();

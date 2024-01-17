@@ -256,28 +256,32 @@ impl HaplotypeVariants {
         Ok(haplotype_variants_filtered)
     }
 
-    pub fn find_equivalence_class(&self, application: &str) -> Result<Graph<(Haplotype,String),i32, petgraph::Undirected>> {
+    pub fn find_equivalence_class(
+        &self,
+        application: &str,
+    ) -> Result<Graph<(Haplotype, String), i32, petgraph::Undirected>> {
         //an edge in the graph representation for the equivalence classes is drawn if and only
         //if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
         let threshold = 1; //should be configured.
 
         // BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>
         let mut equivalence_classes: BTreeMap<Haplotype, Vec<VariantID>> = BTreeMap::new();
+
+        //initialize equivalence classes with haplotypes (important for haplotypes that have no variant e.g. A*03:01)
+        self.iter().for_each(|(_, haplotype_map)| {
+            haplotype_map.iter().for_each(|(haplotype, _)| {
+                equivalence_classes.insert(haplotype.clone(), vec![]);
+            })
+        });
+
         if &application == &"hla" {
             for (variant, haplotype_map) in self.iter() {
                 for (haplotype, (variant_in_gt, variant_in_c)) in haplotype_map.iter() {
                     match variant_in_gt {
                         VariantStatus::Present => {
-                            if equivalence_classes.contains_key(&haplotype) {
-                                let mut variants_in_haplotype =
-                                    equivalence_classes[&haplotype].clone();
-                                variants_in_haplotype.push(variant.clone());
-                                equivalence_classes
-                                    .insert(haplotype.clone(), variants_in_haplotype);
-                            } else {
-                                equivalence_classes
-                                    .insert(haplotype.clone(), vec![variant.clone()]);
-                            }
+                            let mut variants_in_haplotype = equivalence_classes[&haplotype].clone();
+                            variants_in_haplotype.push(variant.clone());
+                            equivalence_classes.insert(haplotype.clone(), variants_in_haplotype);
                         }
                         _ => (),
                     }
