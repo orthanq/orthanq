@@ -54,6 +54,8 @@ pub enum PreprocessKind {
             help = "Reference genome that is used during candidate generation."
         )]
         genome: PathBuf,
+        #[structopt(long = "vg-index", required = true, help = "VG pangenome graph")]
+        vg_index: PathBuf,
         #[structopt(
             long = "reads",
             required = true,
@@ -68,7 +70,7 @@ pub enum PreprocessKind {
         )]
         haplotype_variants: PathBuf,
         #[structopt(
-            long = "output BCF",
+            long = "output",
             help = "Output BCF file to be used as input in the calling step."
         )]
         output: PathBuf,
@@ -316,10 +318,12 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 genome,
                 reads,
                 haplotype_variants,
+                vg_index,
                 output,
             } => {
                 preprocess::hla::CallerBuilder::default()
                     .genome(genome)
+                    .vg_index(vg_index)
                     .reads(reads)
                     .haplotype_variants(haplotype_variants)
                     .output(output)
