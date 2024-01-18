@@ -1,6 +1,6 @@
 [![DOI](https://zenodo.org/badge/475406908.svg)](https://zenodo.org/badge/latestdoi/475406908)
 
-# Orthanq(logo.svg)
+# ![Orthanq](logo.svg)
 
 Haplotype abundance quantification using a Bayesian model that is based on collecting evidences from Kallisto and Varlociraptor.
 
