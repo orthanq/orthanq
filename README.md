@@ -2,10 +2,9 @@
 
 # ![Orthanq](logo.svg)
 
-Haplotype abundance quantification using a Bayesian model that is based on collecting evidences from Kallisto and Varlociraptor.
+Haplotype abundance quantification using a Bayesian model that is based on collecting evidences from Varlociraptor.
 
-Orthanq is still a prototype and under active development.
-
+Orthanq is under active development.
 
 ## Building for development and manual installation
 
