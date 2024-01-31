@@ -1,6 +1,6 @@
 [![DOI](https://zenodo.org/badge/475406908.svg)](https://zenodo.org/badge/latestdoi/475406908)
 
-# ![Orthanq](logo.svg)
+# ![Orthanq](orthanq-black.svg)
 
 Uncerainty aware haplotype quantification using a Bayesian model that is based on collecting evidences from Varlociraptor.
 
