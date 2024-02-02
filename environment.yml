@@ -6,3 +6,4 @@ dependencies:
   - pkg-config
   - gsl =2.7
   - cmake
+  - ncbi-datasets-cli=16.4.4
