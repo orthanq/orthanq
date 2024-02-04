@@ -14,6 +14,8 @@ use std::process::{Command, Stdio};
 use std::process;
 use std::io::Write;
 use crate::candidates::hla;
+use polars::prelude::CsvWriter;
+use std::fs::File;
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]
@@ -77,18 +79,18 @@ impl Caller {
         
         //filter for complete genomes and non-null pangolin classification
 
+        //then, only include complete genomes
+        let filter_complete = virus_metadata_df["Completeness"].utf8().unwrap().into_iter().map(|x| 
+            if x.unwrap() == "COMPLETE" { true } else { false }).collect();
+        let filtered_df_complete = virus_metadata_df.filter(&filter_complete).unwrap();
+        dbg!(&filtered_df_complete);
+
         // create a mask to filter out null values
-        let mask = virus_metadata_df.column("Virus Pangolin Classification")?.is_not_null();
+        let mask = filtered_df_complete.column("Virus Pangolin Classification")?.is_not_null();
 
         // apply the filter on a DataFrame
-        let filtered_df_annotated = virus_metadata_df.filter(&mask)?;
+        let filtered_df_annotated = filtered_df_complete.filter(&mask)?;
         dbg!(&filtered_df_annotated);
-
-        //then, only include complete genomes
-        let filter_complete = filtered_df_annotated["Completeness"].utf8().unwrap().into_iter().map(|x| 
-            if x.unwrap() == "COMPLETE" { true } else { false }).collect();
-        let filtered_df_complete = filtered_df_annotated.filter(&filter_complete).unwrap();
-        dbg!(&filtered_df_complete);
 
         //group by pangolin lineage and sort by release date
 
@@ -97,7 +99,8 @@ impl Caller {
         // columns to sort by
         let by = &["Virus Pangolin Classification", "Release date"];
         // do the sort operation
-        let sorted = filtered_df_complete.sort(by, descending)?;
+        let sorted = filtered_df_annotated.sort(by, descending)?;
+        
         dbg!(&sorted);
 
         //group by pangolin lineage and get the first entry (which is the oldest)
@@ -134,6 +137,17 @@ impl Caller {
                 .expect("failed to download sequences")
         };
         println!("The download of sars-cov-2 genomes with given accession ids was exited with: {}", download_genomes);
+
+        //download the oldest submitted sars-cov-2 genome to use as reference
+        // first, sort by release
+        let mut sorted = filtered_df_complete.sort(&["Release date"], false)?;
+        dbg!(&sorted);
+        
+        //write to csv
+        let mut output_file: File = File::create("out.csv").unwrap();
+        CsvWriter::new(&mut output_file).has_header(true).finish(&mut sorted).unwrap();
+
+        //todo: prepare dirs of fasta belonging to all alleles and the oldest accession, to use in alignment 
 
         process::exit(0x0100);
 
