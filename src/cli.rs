@@ -142,18 +142,6 @@ pub enum CandidatesKind {
     },
     Virus {
         #[structopt(
-            long = "genome",
-            required = true,
-            help = "Reference genome to be used to align alleles or viral sequences (e.g. all existing HLA alleles) using minimap2."
-        )]
-        genome: PathBuf,
-        #[structopt(
-            long = "alleles",
-            required = true,
-            help = "All the alleles that exist for the gene of interest (e.g. HLA00001, HLA00002 .. for HLAs)"
-        )]
-        alleles: PathBuf,
-        #[structopt(
             long,
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
         )]
@@ -298,14 +286,8 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 caller.call()?;
                 Ok(())
             }
-            CandidatesKind::Virus {
-                alleles,
-                genome,
-                output,
-            } => {
+            CandidatesKind::Virus { output } => {
                 let caller = candidates::virus::CallerBuilder::default()
-                    .alleles(alleles)
-                    .genome(genome)
                     .output(output)
                     .build()
                     .unwrap();
