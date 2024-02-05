@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://www.github.com/orthanq/orthanq/compare/v1.1.0...v1.2.0) (2024-02-05)
+
+
+### Features
+
+* retrieve metadata and download data packages belonging to sarscov2 and use in candidate variant generation ([#6](https://www.github.com/orthanq/orthanq/issues/6)) ([dfce2a5](https://www.github.com/orthanq/orthanq/commit/dfce2a57d257e075765230b16cbaac1cd6d00ae7))
+
 ## [1.1.0](https://www.github.com/orthanq/orthanq/compare/v1.0.1...v1.1.0) (2024-01-05)
 
 
