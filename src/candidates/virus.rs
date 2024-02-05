@@ -13,7 +13,6 @@ use std::process::{Command, Stdio};
 
 use crate::candidates::hla;
 
-
 use std::io::Write;
 
 #[allow(dead_code)]
