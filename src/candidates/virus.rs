@@ -20,15 +20,13 @@ use std::fs::File;
 #[allow(dead_code)]
 #[derive(Builder, Clone)]
 pub struct Caller {
-    alleles: PathBuf,
-    genome: PathBuf,
     output: Option<PathBuf>,
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
         //prepare genome and alleles for the virus (currently, only sars-cov2) (ncbi-datasets-cli=16.4.4 package should be in the requiremenbts)
         //first, create the output dir for database setup
-        fs::create_dir_all(self.output.as_ref().unwrap())?;
+        // fs::create_dir_all(self.output.as_ref().unwrap())?;
 
         //output dir for metadata
         let virus_metadata_dir = self.output.as_ref().unwrap().join("metadata.tsv");
@@ -68,9 +66,9 @@ impl Caller {
             .expect("failed to wait on child");
         let mut f = std::fs::File::create(virus_metadata_dir.clone())?;
         f.write_all(&output.stdout)?;
-        println!("virus metada preparation is complete.");
+        println!("virus metadata preparation is complete.");
 
-        //comment out the next line
+        //comment out the next line for testing purposees (above process can take ~6 hours)
         // let virus_metadata_dir = &"metadata.tsv";
 
         //retrieve accession ids from each lineage with the oldest submission and complete genomes.
@@ -112,18 +110,20 @@ impl Caller {
         dbg!(&first["Accession_first"]);
         let accessions_opt: Vec<Option<&str>> = first["Accession_first"].utf8()?.into_iter().collect();
         let accessions: Vec<&str> = accessions_opt.iter().map(|a|a.unwrap()).collect();
-        dbg!(&accessions);
+        // dbg!(&accessions);
         dbg!(&accessions.len());
 
         //write accessions to file
         let accessions_input = self.output.as_ref().unwrap().join("accessions.csv");
         let mut wtr = csv::Writer::from_path(&accessions_input)?;
         for accession in accessions.iter(){
-            wtr.write_record(vec![accession.clone()])?;
+            wtr.write_record(vec![accession])?;
         }
-        wtr.flush(); //make sure everything is sucsessfully written to the file 
+        wtr.flush()?; //make sure everything is sucsessfully written to the file 
 
-        //download genomes given by accession
+        //download genomes given by accession, this will create a file called ncbi_datasets.zip
+        let data_package_lineages = self.output.as_ref().unwrap().join("ncbi_datasets_lineages.zip");
+
         let download_genomes = {
             Command::new("datasets")
                 .arg("download")
@@ -132,11 +132,24 @@ impl Caller {
                 .arg("accession")
                 .arg("--inputfile")
                 .arg(accessions_input)
+                .arg("--filename")
+                .arg(&data_package_lineages)
                 .arg("--debug")
                 .status()
                 .expect("failed to download sequences")
         };
         println!("The download of sars-cov-2 genomes with given accession ids was exited with: {}", download_genomes);
+
+        //unzip the downloaded package
+        let unzip_package = {
+            Command::new("unzip")
+                .arg(data_package_lineages)
+                .arg("-d")
+                .arg(self.output.as_ref().unwrap().join("lineages"))
+                .status()
+                .expect("failed to unzip ncbi data package")
+        };
+        println!("All genomes data package was unzipped: {}", unzip_package);
 
         //download the oldest submitted sars-cov-2 genome to use as reference
         // first, sort by release
@@ -147,16 +160,52 @@ impl Caller {
         let mut output_file: File = File::create("out.csv").unwrap();
         CsvWriter::new(&mut output_file).has_header(true).finish(&mut sorted).unwrap();
 
-        //todo: prepare dirs of fasta belonging to all alleles and the oldest accession, to use in alignment 
+        //download the oldest submitted genome to be used as reference genome
+        // let oldest_accession = sorted.select(["Accession"]).iter();
+        let accessions = sorted.column("Accession")?.utf8()?;
+        let accessions_to_vec: Vec<Option<&str>> = accessions.into_iter().collect();
+        let oldest_accession = accessions_to_vec[0];
 
-        process::exit(0x0100);
+        //download the genome
+        let data_package_reference = self.output.as_ref().unwrap().join("ncbi_datasets_reference_genome.zip");
+
+        let download_reference_genome = {
+            Command::new("datasets")
+                .arg("download")
+                .arg("virus")
+                .arg("genome")
+                .arg("accession")
+                .arg(oldest_accession.unwrap())
+                .arg("--filename")
+                .arg(&data_package_reference)
+                .arg("--debug")
+                .status()
+                .expect("failed to download sequences")
+        };
+        println!("The download of reference genome for sars-cov-2 was exited with: {}", download_reference_genome);
+
+        //unzip the downloaded package
+        let unzip_package = {
+            Command::new("unzip")
+                .arg(data_package_reference)
+                .arg("-d")
+                .arg(self.output.as_ref().unwrap().join("reference_genome"))
+                .status()
+                .expect("failed to unzip ncbi data package for reference genome")
+        };
+        println!("The reference genome data package was unzipped: {}", unzip_package);
+
+        //then, here are the dirs for reference genome and all lineages
+        let lineages_dir = self.output.as_ref().unwrap().join("lineages/ncbi_dataset/data/genomic.fna");
+        let reference_genome_dir = self.output.as_ref().unwrap().join("reference_genome/ncbi_dataset/data/genomic.fna");
 
         //align and sort
-        hla::alignment(&self.genome, &self.alleles)?;
+
+        hla::alignment(&reference_genome_dir, &lineages_dir)?;
 
         //find variants
         let (genotype_df, loci_df) =
-            hla::find_variants_from_cigar(&self.genome, &"alignment_sorted.sam").unwrap();
+            hla::find_variants_from_cigar(&reference_genome_dir, &"alignment_sorted.sam").unwrap();
 
         //write to vcf
         self.write_to_vcf(&genotype_df, &loci_df)?;
