@@ -6,7 +6,7 @@ use polars::frame::DataFrame;
 use polars::prelude::*;
 
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
-// use rust_htslib::{bam::Read};
+use std::fs;
 
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
