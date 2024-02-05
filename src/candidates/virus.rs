@@ -8,14 +8,13 @@ use polars::prelude::*;
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 // use rust_htslib::{bam::Read};
 
-
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use std::io::Write;
 use crate::candidates::hla;
 use polars::prelude::CsvWriter;
 use std::fs::File;
+use std::io::Write;
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]
@@ -33,7 +32,7 @@ impl Caller {
 
         //download and prepare required metadata as tsv
         //datasets summary virus genome taxon SARS-CoV-2 --as-json-lines | dataformat tsv virus-genome --fields accession,completeness,release-date,virus-pangolin > sarscov2.tsv
-        
+
         //first, download metada
         let download_metadata = {
             Command::new("datasets")
@@ -72,19 +71,34 @@ impl Caller {
         // let virus_metadata_dir = &"metadata.tsv";
 
         //retrieve accession ids from each lineage with the oldest submission and complete genomes.
-        let virus_metadata_df = CsvReader::from_path(virus_metadata_dir)?.with_delimiter(b'\t').has_header(true).finish()?;
+        let virus_metadata_df = CsvReader::from_path(virus_metadata_dir)?
+            .with_delimiter(b'\t')
+            .has_header(true)
+            .finish()?;
         dbg!(&virus_metadata_df);
-        
+
         //filter for complete genomes and non-null pangolin classification
 
         //then, only include complete genomes
-        let filter_complete = virus_metadata_df["Completeness"].utf8().unwrap().into_iter().map(|x| 
-            if x.unwrap() == "COMPLETE" { true } else { false }).collect();
+        let filter_complete = virus_metadata_df["Completeness"]
+            .utf8()
+            .unwrap()
+            .into_iter()
+            .map(|x| {
+                if x.unwrap() == "COMPLETE" {
+                    true
+                } else {
+                    false
+                }
+            })
+            .collect();
         let filtered_df_complete = virus_metadata_df.filter(&filter_complete).unwrap();
         dbg!(&filtered_df_complete);
 
         // create a mask to filter out null values
-        let mask = filtered_df_complete.column("Virus Pangolin Classification")?.is_not_null();
+        let mask = filtered_df_complete
+            .column("Virus Pangolin Classification")?
+            .is_not_null();
 
         // apply the filter on a DataFrame
         let filtered_df_annotated = filtered_df_complete.filter(&mask)?;
@@ -98,31 +112,39 @@ impl Caller {
         let by = &["Virus Pangolin Classification", "Release date"];
         // do the sort operation
         let sorted = filtered_df_annotated.sort(by, descending)?;
-        
+
         dbg!(&sorted);
 
         //group by pangolin lineage and get the first entry (which is the oldest)
-        let first = sorted.groupby(["Virus Pangolin Classification"])?.select(["Accession"]).first()?;
+        let first = sorted
+            .groupby(["Virus Pangolin Classification"])?
+            .select(["Accession"])
+            .first()?;
         dbg!(&first);
 
         //download genomes by the accession
         //e.g. datasets download virus genome accession OY726946.1,OY299705.1
         dbg!(&first["Accession_first"]);
-        let accessions_opt: Vec<Option<&str>> = first["Accession_first"].utf8()?.into_iter().collect();
-        let accessions: Vec<&str> = accessions_opt.iter().map(|a|a.unwrap()).collect();
+        let accessions_opt: Vec<Option<&str>> =
+            first["Accession_first"].utf8()?.into_iter().collect();
+        let accessions: Vec<&str> = accessions_opt.iter().map(|a| a.unwrap()).collect();
         // dbg!(&accessions);
         dbg!(&accessions.len());
 
         //write accessions to file
         let accessions_input = self.output.as_ref().unwrap().join("accessions.csv");
         let mut wtr = csv::Writer::from_path(&accessions_input)?;
-        for accession in accessions.iter(){
+        for accession in accessions.iter() {
             wtr.write_record(vec![accession])?;
         }
-        wtr.flush()?; //make sure everything is sucsessfully written to the file 
+        wtr.flush()?; //make sure everything is sucsessfully written to the file
 
         //download genomes given by accession, this will create a file called ncbi_datasets.zip
-        let data_package_lineages = self.output.as_ref().unwrap().join("ncbi_datasets_lineages.zip");
+        let data_package_lineages = self
+            .output
+            .as_ref()
+            .unwrap()
+            .join("ncbi_datasets_lineages.zip");
 
         let download_genomes = {
             Command::new("datasets")
@@ -138,7 +160,10 @@ impl Caller {
                 .status()
                 .expect("failed to download sequences")
         };
-        println!("The download of sars-cov-2 genomes with given accession ids was exited with: {}", download_genomes);
+        println!(
+            "The download of sars-cov-2 genomes with given accession ids was exited with: {}",
+            download_genomes
+        );
 
         //unzip the downloaded package
         let unzip_package = {
@@ -155,10 +180,13 @@ impl Caller {
         // first, sort by release
         let mut sorted = filtered_df_complete.sort(&["Release date"], false)?;
         dbg!(&sorted);
-        
+
         //write to csv
         let mut output_file: File = File::create("out.csv").unwrap();
-        CsvWriter::new(&mut output_file).has_header(true).finish(&mut sorted).unwrap();
+        CsvWriter::new(&mut output_file)
+            .has_header(true)
+            .finish(&mut sorted)
+            .unwrap();
 
         //download the oldest submitted genome to be used as reference genome
         // let oldest_accession = sorted.select(["Accession"]).iter();
@@ -167,7 +195,11 @@ impl Caller {
         let oldest_accession = accessions_to_vec[0];
 
         //download the genome
-        let data_package_reference = self.output.as_ref().unwrap().join("ncbi_datasets_reference_genome.zip");
+        let data_package_reference = self
+            .output
+            .as_ref()
+            .unwrap()
+            .join("ncbi_datasets_reference_genome.zip");
 
         let download_reference_genome = {
             Command::new("datasets")
@@ -182,7 +214,10 @@ impl Caller {
                 .status()
                 .expect("failed to download sequences")
         };
-        println!("The download of reference genome for sars-cov-2 was exited with: {}", download_reference_genome);
+        println!(
+            "The download of reference genome for sars-cov-2 was exited with: {}",
+            download_reference_genome
+        );
 
         //unzip the downloaded package
         let unzip_package = {
@@ -193,11 +228,22 @@ impl Caller {
                 .status()
                 .expect("failed to unzip ncbi data package for reference genome")
         };
-        println!("The reference genome data package was unzipped: {}", unzip_package);
+        println!(
+            "The reference genome data package was unzipped: {}",
+            unzip_package
+        );
 
         //then, here are the dirs for reference genome and all lineages
-        let lineages_dir = self.output.as_ref().unwrap().join("lineages/ncbi_dataset/data/genomic.fna");
-        let reference_genome_dir = self.output.as_ref().unwrap().join("reference_genome/ncbi_dataset/data/genomic.fna");
+        let lineages_dir = self
+            .output
+            .as_ref()
+            .unwrap()
+            .join("lineages/ncbi_dataset/data/genomic.fna");
+        let reference_genome_dir = self
+            .output
+            .as_ref()
+            .unwrap()
+            .join("reference_genome/ncbi_dataset/data/genomic.fna");
 
         //align and sort
 

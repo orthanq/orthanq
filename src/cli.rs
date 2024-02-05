@@ -286,9 +286,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 caller.call()?;
                 Ok(())
             }
-            CandidatesKind::Virus {
-                output,
-            } => {
+            CandidatesKind::Virus { output } => {
                 let caller = candidates::virus::CallerBuilder::default()
                     .output(output)
                     .build()
