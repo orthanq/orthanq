@@ -12,8 +12,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use crate::candidates::hla;
-use polars::prelude::CsvWriter;
-use std::fs::File;
+
+
 use std::io::Write;
 
 #[allow(dead_code)]
@@ -178,7 +178,7 @@ impl Caller {
 
         //download the oldest submitted sars-cov-2 genome to use as reference
         // first, sort by release
-        let mut sorted = filtered_df_complete.sort(&["Release date"], false)?;
+        let sorted = filtered_df_complete.sort(&["Release date"], false)?;
         dbg!(&sorted);
 
         //write to csv
