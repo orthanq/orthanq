@@ -4,14 +4,14 @@ use derive_builder::Builder;
 
 use polars::frame::DataFrame;
 use polars::prelude::*;
-use polars::df;
+
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 // use rust_htslib::{bam::Read};
-use std::ffi::OsStr;
-use std::fs;
+
+
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::process;
+
 use std::io::Write;
 use crate::candidates::hla;
 use polars::prelude::CsvWriter;
