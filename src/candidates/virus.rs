@@ -25,7 +25,7 @@ impl Caller {
     pub fn call(&self) -> Result<()> {
         //prepare genome and alleles for the virus (currently, only sars-cov2) (ncbi-datasets-cli=16.4.4 package should be in the requiremenbts)
         //first, create the output dir for database setup
-        // fs::create_dir_all(self.output.as_ref().unwrap())?;
+        fs::create_dir_all(self.output.as_ref().unwrap())?;
 
         //output dir for metadata
         let virus_metadata_dir = self.output.as_ref().unwrap().join("metadata.tsv");
@@ -182,11 +182,11 @@ impl Caller {
         dbg!(&sorted);
 
         //write to csv
-        let mut output_file: File = File::create("out.csv").unwrap();
-        CsvWriter::new(&mut output_file)
-            .has_header(true)
-            .finish(&mut sorted)
-            .unwrap();
+        // let mut output_file: File = File::create("out.csv").unwrap();
+        // CsvWriter::new(&mut output_file)
+        //     .has_header(true)
+        //     .finish(&mut sorted)
+        //     .unwrap();
 
         //download the oldest submitted genome to be used as reference genome
         // let oldest_accession = sorted.select(["Accession"]).iter();
