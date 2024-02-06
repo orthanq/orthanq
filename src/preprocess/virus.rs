@@ -14,9 +14,8 @@ use tempfile::tempdir;
 #[derive(Builder)]
 #[builder(pattern = "owned")]
 pub struct Caller {
-    genome: PathBuf,
+    candidates_folder: PathBuf,
     reads: Vec<PathBuf>,
-    haplotype_variants: PathBuf,
     output: PathBuf,
 }
 
@@ -27,11 +26,19 @@ impl Caller {
         let thread_number = "10".to_string(); //TODO: do not hardcode
         let scenario = &"resources/scenarios/scenario.yaml"; //TODO: do not hardcode
 
+        //genome must have been downloaded in the candidate generation step:
+        let ref_genome = self
+            .candidates_folder
+            .join("reference_genome/ncbi_dataset/data/genomic.fna");
+
+        //haplotype variantts must have been downloaded in the candidate generation step:
+        let haplotype_variants = self.candidates_folder.join("candidates.vcf");
+        dbg!(&haplotype_variants);
         //create the output file name in temp directory
 
         //get file name
         // let file_name = &self.output.file_stem().unwrap().to_str().unwrap();
-        let file_name = Path::new(&self.haplotype_variants)
+        let file_name = Path::new(&haplotype_variants)
             .file_name()
             .unwrap()
             .to_str()
@@ -51,7 +58,7 @@ impl Caller {
         let bgzip = {
             Command::new("bgzip")
                 .arg("-c")
-                .arg(&self.haplotype_variants)
+                .arg(&haplotype_variants)
                 .stdout(Stdio::piped())
                 .spawn()
                 .expect("failed to execute the sorting process")
@@ -95,7 +102,7 @@ impl Caller {
                 .arg("--workflow")
                 .arg("giraffe")
                 .arg("-r")
-                .arg(&self.genome)
+                .arg(&ref_genome)
                 .arg("-v")
                 .arg(&bgzip_dir)
                 .arg("-p")
@@ -202,8 +209,8 @@ impl Caller {
                 .arg("--omit-mapq-adjustment")
                 .arg("--atomic-candidate-variants")
                 .arg("--candidates")
-                .arg(&self.haplotype_variants)
-                .arg(&self.genome)
+                .arg(&haplotype_variants)
+                .arg(&ref_genome)
                 .arg("--bam")
                 .arg(&file_vg_aligned_sorted)
                 .arg("--output")

@@ -67,7 +67,7 @@ impl Caller {
         println!("virus metadata preparation is complete.");
 
         //comment out the next line for testing purposees (above process can take ~6 hours)
-        // let virus_metadata_dir = &"metadata.tsv";
+        // let virus_metadata_dir = &"test_prep/metadata.tsv";
 
         //retrieve accession ids from each lineage with the oldest submission and complete genomes.
         let virus_metadata_df = CsvReader::from_path(virus_metadata_dir)?
