@@ -21,7 +21,7 @@ use std::{path::PathBuf, str};
 #[derive(Builder)]
 #[builder(pattern = "owned")]
 pub struct Caller {
-    haplotype_variants: bcf::Reader,
+    candidates_folder: PathBuf,
     variant_calls: bcf::Reader,
     outcsv: PathBuf,
     prior: String,
@@ -33,6 +33,10 @@ impl Caller {
         //Step 1: Prepare data and compute the model
         //initially prepare haplotype_variants and variant_calls
         let variant_calls = VariantCalls::new(&mut self.variant_calls)?;
+
+        //read candidates vcf
+        let haplotype_variants_dir = self.candidates_folder.join("candidates.vcf");
+        let mut haplotype_variants_rdr = bcf::Reader::from_path(haplotype_variants_dir)?;
 
         //write blank plots and tsv table if no variants are available.
         if variant_calls.len() == 0 {
@@ -58,7 +62,7 @@ impl Caller {
         } else {
             let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
             let haplotype_variants =
-                HaplotypeVariants::new(&mut self.haplotype_variants, &variant_ids)?;
+                HaplotypeVariants::new(&mut haplotype_variants_rdr, &variant_ids)?;
             let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
             let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
             dbg!(&haplotypes);

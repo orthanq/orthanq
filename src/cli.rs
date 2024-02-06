@@ -77,24 +77,17 @@ pub enum PreprocessKind {
     },
     Virus {
         #[structopt(
-            long = "genome",
+            long = "candidates-folder",
             required = true,
-            help = "Reference genome that is used during candidate generation."
+            help = "Folder that is used to create candidate variants."
         )]
-        genome: PathBuf,
+        candidates_folder: PathBuf,
         #[structopt(
             long = "reads",
             required = true,
             help = "Input FASTQ reads belonging to the sample."
         )]
         reads: Vec<PathBuf>,
-        #[structopt(
-            parse(from_os_str),
-            long = "haplotype-variants",
-            required = true,
-            help = "Haplotype variants compared to a common reference.", // TODO later, we will add a subcommand to generate this file with Varlociraptor as well
-        )]
-        haplotype_variants: PathBuf,
         #[structopt(
             long = "output",
             help = "Output folder file to store preprocessed BAM file to be used as input in the calling step."
@@ -189,12 +182,11 @@ pub enum CallKind {
     },
     Virus {
         #[structopt(
-            parse(from_os_str),
-            long = "haplotype-variants",
+            long = "candidates-folder",
             required = true,
-            help = "Haplotype variants compared to a common reference.", // TODO later, we will add a subcommand to generate this file with Varlociraptor as well
+            help = "Folder that is used to create candidate variants."
         )]
-        haplotype_variants: PathBuf,
+        candidates_folder: PathBuf,
         #[structopt(
             parse(from_os_str),
             long = "haplotype-calls",
@@ -245,14 +237,14 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 Ok(())
             }
             CallKind::Virus {
-                haplotype_variants,
+                candidates_folder,
                 variant_calls,
                 output,
                 prior,
                 lp_cutoff,
             } => {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
-                    .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
+                    .candidates_folder(candidates_folder)
                     .variant_calls(bcf::Reader::from_path(variant_calls)?)
                     .outcsv(output)
                     .prior(prior)
@@ -315,15 +307,13 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 Ok(())
             }
             PreprocessKind::Virus {
-                genome,
+                candidates_folder,
                 reads,
-                haplotype_variants,
                 output,
             } => {
                 preprocess::virus::CallerBuilder::default()
-                    .genome(genome)
+                    .candidates_folder(candidates_folder)
                     .reads(reads)
-                    .haplotype_variants(haplotype_variants)
                     .output(output)
                     .build()
                     .unwrap()
