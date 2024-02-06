@@ -182,12 +182,11 @@ pub enum CallKind {
     },
     Virus {
         #[structopt(
-            parse(from_os_str),
-            long = "haplotype-variants",
+            long = "candidates-folder",
             required = true,
-            help = "Haplotype variants compared to a common reference.", // TODO later, we will add a subcommand to generate this file with Varlociraptor as well
+            help = "Folder that is used to create candidate variants."
         )]
-        haplotype_variants: PathBuf,
+        candidates_folder: PathBuf,
         #[structopt(
             parse(from_os_str),
             long = "haplotype-calls",
@@ -238,14 +237,14 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 Ok(())
             }
             CallKind::Virus {
-                haplotype_variants,
+                candidates_folder,
                 variant_calls,
                 output,
                 prior,
                 lp_cutoff,
             } => {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
-                    .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
+                    .candidates_folder(candidates_folder)
                     .variant_calls(bcf::Reader::from_path(variant_calls)?)
                     .outcsv(output)
                     .prior(prior)
