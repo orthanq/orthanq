@@ -116,17 +116,17 @@ impl Caller {
         dbg!(&sorted);
 
         //group by pangolin lineage and get the first entry (which is the oldest)
-        let first = sorted
+        let grouped_df = sorted
             .groupby(["Virus Pangolin Classification"])?
             .select(["Accession"])
             .first()?;
-        dbg!(&first);
+        dbg!(&grouped_df);
 
         //download genomes by the accession
         //e.g. datasets download virus genome accession OY726946.1,OY299705.1
-        dbg!(&first["Accession_first"]);
+        dbg!(&grouped_df["Accession_first"]);
         let accessions_opt: Vec<Option<&str>> =
-            first["Accession_first"].utf8()?.into_iter().collect();
+        grouped_df["Accession_first"].utf8()?.into_iter().collect();
         let accessions: Vec<&str> = accessions_opt.iter().map(|a| a.unwrap()).collect();
         // dbg!(&accessions);
         dbg!(&accessions.len());
@@ -264,8 +264,12 @@ impl Caller {
         let (genotype_df, loci_df) =
             hla::find_variants_from_cigar(&reference_genome_dir, &"alignment_sorted.sam").unwrap();
 
+        //replace accession ids with the corresponding lineage names
+        let genotype_lineages = accession_to_lineage(&genotype_df, &grouped_df)?;
+        let loci_lineages = accession_to_lineage(&loci_df, &grouped_df)?;
+
         //write to vcf
-        self.write_to_vcf(&genotype_df, &loci_df)?;
+        self.write_to_vcf(&genotype_lineages, &loci_lineages)?;
 
         Ok(())
     }
@@ -367,4 +371,39 @@ impl Caller {
         }
         Ok(())
     }
+}
+
+//accession_to_lineage simply converts accession ids that represent each lineage to lineage names as well as nextstrain clade
+fn accession_to_lineage(df: &DataFrame, accession_to_lineage_df: &DataFrame) -> Result<DataFrame> {
+    dbg!(&df);
+    dbg!(&accession_to_lineage_df);
+
+    //read lineage to clade resource
+    let lin_to_clade = CsvReader::from_path(&"resources/clade_to_lineages/cladeToLineages.tsv")?
+    .with_delimiter(b'\t')
+    .has_header(true)
+    .finish()?;
+    dbg!(&lin_to_clade);
+
+    //clone the input df 
+    let mut renamed_df = df.clone();
+
+    //prepare iterables of columns beforehand
+    let mut iter_pangolin = accession_to_lineage_df["Virus Pangolin Classification"].utf8().unwrap().into_iter();
+    let mut iter_accession = accession_to_lineage_df["Accession_first"].utf8().unwrap().into_iter();
+    let mut lineages_in_resource = lin_to_clade["lineage"].utf8().unwrap();
+    let mut clades_in_resource = lin_to_clade["clade"].utf8().unwrap();
+
+    //rename accessions to lineages and if present, clades
+    iter_pangolin.into_iter().zip(iter_accession).for_each(|(png, acc)| {
+        let mut rename_str = format!("no clade ({})", png.unwrap());
+        lineages_in_resource.into_iter().zip(clades_in_resource.into_iter()).for_each(|(lng, cld)| {
+            if png == lng {
+                rename_str = format!("{} ({})", cld.unwrap(), lng.unwrap());
+            }
+        });
+        renamed_df.rename(acc.unwrap(), &rename_str);
+    });
+    dbg!(&renamed_df);
+    Ok(renamed_df)
 }
