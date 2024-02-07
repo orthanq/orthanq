@@ -15,6 +15,7 @@ pub struct Caller {
     haplotype_variants: PathBuf,
     vg_index: PathBuf,
     output: PathBuf,
+    threads: String
 }
 
 impl Caller {
@@ -46,9 +47,6 @@ impl Caller {
         println!("The index was created successfully: {}", index);
 
         let scenario = &"resources/scenarios/scenario.yaml"; //TODO: do not hardcode
-
-        // configure thread_number
-        let thread_number = "10".to_string();
 
         //perform the alignment for paired end reads
         let _temp_aligned = NamedTempFile::new()?;
@@ -99,7 +97,7 @@ impl Caller {
                 .arg("-o")
                 .arg(&file_aligned_sorted)
                 .arg("-@")
-                .arg(&thread_number)
+                .arg(&self.threads)
                 .arg("--write-index")
                 .status()
                 .expect("failed to execute the sorting process")
@@ -170,7 +168,7 @@ impl Caller {
                 .arg("--output-format")
                 .arg("BAM")
                 .arg("-t")
-                .arg(&thread_number)
+                .arg(&self.threads)
                 .stdout(Stdio::piped())
                 .spawn()
                 .expect("failed to execute the vg giraffe process")
@@ -218,7 +216,7 @@ impl Caller {
                 .arg("-o")
                 .arg(&file_vg_aligned_sorted)
                 .arg("-@")
-                .arg(&thread_number)
+                .arg(&self.threads)
                 .arg("--write-index")
                 .status()
                 .expect("failed to execute the sorting process")
@@ -297,7 +295,7 @@ impl Caller {
                 .arg("-o")
                 .arg(&final_bam)
                 .arg("-@")
-                .arg(&thread_number)
+                .arg(&self.threads)
                 .arg("--write-index")
                 .status()
                 .expect("failed to execute the sorting process")

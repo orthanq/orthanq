@@ -30,6 +30,7 @@ pub struct Caller {
     wes: bool,
     wgs: bool,
     output: Option<PathBuf>,
+    threads: String
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
@@ -43,7 +44,7 @@ impl Caller {
         // self.write_to_fasta(&confirmed_alleles)?;
 
         //align and sort
-        // alignment(&self.genome, &self.alleles)?;
+        // alignment(&self.genome, &self.alleles, &self.threads)?;
 
         //find variants from cigar
         let (mut genotype_df, mut loci_df) =
@@ -515,7 +516,7 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
 }
 
 #[allow(dead_code)]
-pub fn alignment(genome: &PathBuf, alleles: &PathBuf) -> Result<()> {
+pub fn alignment(genome: &PathBuf, alleles: &PathBuf, thread_number: &str) -> Result<()> {
     let genome_name = format!(
         "{}{}",
         genome.file_name().unwrap().to_str().unwrap(),
@@ -533,7 +534,7 @@ pub fn alignment(genome: &PathBuf, alleles: &PathBuf) -> Result<()> {
 
     let align = {
         Command::new("minimap2")
-            .args(["-a", "-t", "36", "--eqx", "--MD"])
+            .args(["-a", "-t", &thread_number, "--eqx", "--MD", "--score-N", "0"])//--score-N: a low score for ambiguous bases in some virus assemblies
             .arg(&genome_name)
             .arg(alleles.clone())
             .output()
