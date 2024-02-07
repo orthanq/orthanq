@@ -17,13 +17,20 @@ pub struct Caller {
     candidates_folder: PathBuf,
     reads: Vec<PathBuf>,
     output: PathBuf,
+    threads: String,
 }
 
 impl Caller {
     pub fn call(&self) -> Result<()> {
+
+        //specify out dir
+        let outdir = &self.output;
+
+        // Create a directory inside of `std::env::temp_dir()` for temporary files
+        let temp_dir = tempdir()?;
+
         //1) bgzip and tabix the candidates vcf then, perform vg autoindex (maybe add this part to the candidates virus subcommand.)
 
-        let thread_number = "10".to_string(); //TODO: do not hardcode
         let scenario = &"resources/scenarios/scenario.yaml"; //TODO: do not hardcode
 
         //genome must have been downloaded in the candidate generation step:
@@ -47,12 +54,7 @@ impl Caller {
 
         //bgzip
 
-        let outdir = &self.output;
-
-        //create the folder first if it doesn't exist
-        fs::create_dir_all(&outdir)?;
-
-        let bgzip_dir = outdir.join(format!("{}.gz", file_name));
+        let bgzip_dir = temp_dir.path().join(format!("{}.gz", file_name));
         println!("{}", bgzip_dir.display());
 
         let bgzip = {
@@ -93,7 +95,7 @@ impl Caller {
         //vg indexing
 
         //create the output file name
-        let idx_name = outdir.join(&"idx");
+        let idx_name = temp_dir.path().join(&"idx");
         println!("{}", bgzip_dir.display());
 
         let vg_index = {
@@ -108,16 +110,13 @@ impl Caller {
                 .arg("-p")
                 .arg(&idx_name)
                 .arg("-t")
-                .arg(&thread_number)
+                .arg(&self.threads)
                 .status()
                 .expect("failed to execute the vg giraffe process")
         };
         println!("vg indexing was exited with: {:?}", vg_index);
 
         //2) vg giraffe, sorting, indexing and varlociraptor preprocess-call steps.
-
-        // Create a directory inside of `std::env::temp_dir()`
-        let temp_dir = tempdir()?;
 
         //find sample name of one of the fastq files from the read pair
         let sample_name_ext = Path::new(&self.reads[0])
@@ -151,7 +150,7 @@ impl Caller {
                 .arg("--output-format")
                 .arg("BAM")
                 .arg("-t")
-                .arg(&thread_number)
+                .arg(&self.threads)
                 .stdout(Stdio::piped())
                 .spawn()
                 .expect("failed to execute the vg giraffe process")
@@ -170,7 +169,7 @@ impl Caller {
         vg_bam.flush()?;
 
         //sort the resulting vg aligned file
-        let file_vg_aligned_sorted = outdir.join(format!("{}_sorted.bam", sample_name));
+        let file_vg_aligned_sorted = temp_dir.path().join(format!("{}_sorted.bam", sample_name));
         println!(
             "file_vg_aligned_sorteds: {}",
             file_vg_aligned_sorted.display()
@@ -183,7 +182,7 @@ impl Caller {
                 .arg("-o")
                 .arg(&file_vg_aligned_sorted)
                 .arg("-@")
-                .arg(&thread_number)
+                .arg(&self.threads)
                 .arg("--write-index")
                 .status()
                 .expect("failed to execute the sorting process")
@@ -195,7 +194,7 @@ impl Caller {
 
         //preprocess
         //create the output file name
-        let varlociraptor_prep_dir = outdir.join(format!("{}_obs.bcf", sample_name));
+        let varlociraptor_prep_dir = temp_dir.path().join(format!("{}_obs.bcf", sample_name));
         println!(
             "varlociraptor_prep_dir: {}",
             varlociraptor_prep_dir.display()
@@ -226,12 +225,6 @@ impl Caller {
         //call
         // "varlociraptor call variants --omit-strand-bias --omit-read-position-bias --omit-read-orientation-bias --omit-softclip-bias --omit-homopolymer-artifact-detection --omit-alt-locus-bias generic --obs sample={input.obs} " ##varlociraptor v5.3.0
         // "--scenario {input.scenario} > {output} 2> {log}"
-        //create the output file name
-        let varlociraptor_call_dir = outdir.join(format!("{}.bcf", sample_name));
-        println!(
-            "varlociraptor_call_dir: {}",
-            varlociraptor_call_dir.display()
-        );
 
         //scenario
         println!(
@@ -266,7 +259,7 @@ impl Caller {
         let output = varlociraptor_call
             .wait_with_output()
             .expect("Varlociraptor: Failed to read stdout");
-        let mut called_file = std::fs::File::create(&varlociraptor_call_dir)?;
+        let mut called_file = std::fs::File::create(&outdir)?;
         called_file.write_all(&output.stdout)?; //write with bam writer
         called_file.flush()?;
 
