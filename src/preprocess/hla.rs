@@ -15,7 +15,7 @@ pub struct Caller {
     haplotype_variants: PathBuf,
     vg_index: PathBuf,
     output: PathBuf,
-    threads: String
+    threads: String,
 }
 
 impl Caller {

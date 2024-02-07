@@ -19,6 +19,7 @@ use std::iter::FromIterator;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use tempfile::tempdir;
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]
@@ -30,7 +31,7 @@ pub struct Caller {
     wes: bool,
     wgs: bool,
     output: Option<PathBuf>,
-    threads: String
+    threads: String,
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
@@ -44,11 +45,14 @@ impl Caller {
         // self.write_to_fasta(&confirmed_alleles)?;
 
         //align and sort
-        // alignment(&self.genome, &self.alleles, &self.threads)?;
+        // alignment(&self.genome, &self.alleles, &self.threads, self.output.as_ref().unwrap())?;
 
         //find variants from cigar
-        let (mut genotype_df, mut loci_df) =
-            find_variants_from_cigar(&self.genome, &"alignment_sorted.sam").unwrap();
+        let (mut genotype_df, mut loci_df) = find_variants_from_cigar(
+            &self.genome,
+            &self.output.as_ref().unwrap().join("alignment_sorted.sam"),
+        )
+        .unwrap();
 
         //Unconfirmed alleles are removed from both dataframes
         unconfirmed_alleles.iter().for_each(|unconf_allele| {
@@ -516,51 +520,73 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
 }
 
 #[allow(dead_code)]
-pub fn alignment(genome: &PathBuf, alleles: &PathBuf, thread_number: &str) -> Result<()> {
-    let genome_name = format!(
+pub fn alignment(
+    genome: &PathBuf,
+    alleles: &PathBuf,
+    thread_number: &str,
+    output: &PathBuf,
+) -> Result<()> {
+    // Create a directory inside of `std::env::temp_dir()`
+    let temp_dir = tempdir()?;
+    let genome_index = temp_dir.path().join(format!(
         "{}{}",
         genome.file_name().unwrap().to_str().unwrap(),
         ".mmi"
-    );
+    ));
+
+    //first index the genome
     let index = {
         Command::new("minimap2")
             .arg("-d")
-            .arg(&genome_name)
+            .arg(&genome_index)
             .arg(genome.clone())
             .status()
             .expect("failed to execute indexing process")
     };
     println!("indexing process finished with: {}", index);
 
+    //then, align alleles/lineages to genome and write to temp
+    let aligned_file = temp_dir.path().join("alignment.sam");
+
     let align = {
         Command::new("minimap2")
-            .args(["-a", "-t", &thread_number, "--eqx", "--MD", "--score-N", "0"])//--score-N: a low score for ambiguous bases in some virus assemblies
-            .arg(&genome_name)
+            .args([
+                "-a",
+                "-t",
+                &thread_number,
+                "--eqx",
+                "--MD",
+                "--score-N",
+                "0",
+            ]) //--score-N: a low score for ambiguous bases in some virus assemblies
+            .arg(&genome_index)
             .arg(alleles.clone())
             .output()
             .expect("failed to execute alignment process")
     };
-    let stdout = String::from_utf8(align.stdout).unwrap();
     println!("alignment process finished!");
-    fs::write("alignment.sam", stdout).expect("Unable to write file");
 
-    //sort and convert the sam to bam
+    let stdout = String::from_utf8(align.stdout).unwrap();
+    fs::write(&aligned_file, stdout).expect("Unable to write minimap2 alignment to file");
+
+    //sort and convert the resulting sam to bam
+    let aligned_sorted = output.join("alignment_sorted.sam");
     let sort = {
         Command::new("samtools")
             .arg("sort")
-            .arg("alignment.sam")
+            .arg(aligned_file)
             .output()
             .expect("failed to execute alignment process")
     };
     let stdout = sort.stdout;
     println!("sorting process finished!");
-    fs::write("alignment_sorted.sam", stdout).expect("Unable to write file");
+    fs::write(aligned_sorted, stdout).expect("Unable to write file");
     Ok(())
 }
 
 pub fn find_variants_from_cigar(
     genome: &PathBuf,
-    alignment_path: &str,
+    alignment_path: &PathBuf,
 ) -> Result<(polars::frame::DataFrame, polars::frame::DataFrame)> {
     //todo: modify
     //1) first read the hla alleles for the locus and the reference genome.

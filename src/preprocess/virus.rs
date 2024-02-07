@@ -22,7 +22,6 @@ pub struct Caller {
 
 impl Caller {
     pub fn call(&self) -> Result<()> {
-
         //specify out dir
         let outdir = &self.output;
 

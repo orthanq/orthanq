@@ -19,7 +19,7 @@ use std::io::Write;
 #[derive(Builder, Clone)]
 pub struct Caller {
     output: Option<PathBuf>,
-    threads: String
+    threads: String,
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
@@ -68,7 +68,7 @@ impl Caller {
         println!("virus metadata preparation is complete.");
 
         //comment out the next line for testing purposees (above process can take ~6 hours)
-        // let virus_metadata_dir = &"test_prep/metadata.tsv";
+        // let virus_metadata_dir = "/home/uzuner/Documents/backup_orthanq_metadata/metadata.tsv";
 
         //retrieve accession ids from each lineage with the oldest submission and complete genomes.
         let virus_metadata_df = CsvReader::from_path(virus_metadata_dir)?
@@ -126,7 +126,7 @@ impl Caller {
         //e.g. datasets download virus genome accession OY726946.1,OY299705.1
         dbg!(&grouped_df["Accession_first"]);
         let accessions_opt: Vec<Option<&str>> =
-        grouped_df["Accession_first"].utf8()?.into_iter().collect();
+            grouped_df["Accession_first"].utf8()?.into_iter().collect();
         let accessions: Vec<&str> = accessions_opt.iter().map(|a| a.unwrap()).collect();
         // dbg!(&accessions);
         dbg!(&accessions.len());
@@ -254,15 +254,25 @@ impl Caller {
                 .expect("failed to unzip ncbi data package for reference genome")
         };
         println!(
-            "Samtools faidx for reference genome was exited with: {}", faidx);
+            "Samtools faidx for reference genome was exited with: {}",
+            faidx
+        );
 
         //align and sort
 
-        hla::alignment(&reference_genome_dir, &lineages_dir, &self.threads)?;
+        hla::alignment(
+            &reference_genome_dir,
+            &lineages_dir,
+            &self.threads,
+            self.output.as_ref().unwrap(),
+        )?;
 
         //find variants
-        let (genotype_df, loci_df) =
-            hla::find_variants_from_cigar(&reference_genome_dir, &"alignment_sorted.sam").unwrap();
+        let (genotype_df, loci_df) = hla::find_variants_from_cigar(
+            &reference_genome_dir,
+            &self.output.as_ref().unwrap().join("alignment_sorted.sam"),
+        )
+        .unwrap();
 
         //replace accession ids with the corresponding lineage names
         let genotype_lineages = accession_to_lineage(&genotype_df, &grouped_df)?;
@@ -280,7 +290,15 @@ impl Caller {
         let mut header = Header::new();
 
         //get contig name of the reference
-        let first_row_index = variant_table["Index"].utf8().unwrap().into_iter().nth(0).unwrap().unwrap().split(',').collect::<Vec<&str>>();
+        let first_row_index = variant_table["Index"]
+            .utf8()
+            .unwrap()
+            .into_iter()
+            .nth(0)
+            .unwrap()
+            .unwrap()
+            .split(',')
+            .collect::<Vec<&str>>();
 
         //push contig name to the header
         let header_contig_line = format!(r#"##contig=<ID={}>"#, first_row_index[0]);
@@ -380,30 +398,42 @@ fn accession_to_lineage(df: &DataFrame, accession_to_lineage_df: &DataFrame) -> 
 
     //read lineage to clade resource
     let lin_to_clade = CsvReader::from_path(&"resources/clade_to_lineages/cladeToLineages.tsv")?
-    .with_delimiter(b'\t')
-    .has_header(true)
-    .finish()?;
+        .with_delimiter(b'\t')
+        .has_header(true)
+        .finish()?;
     dbg!(&lin_to_clade);
 
-    //clone the input df 
+    //clone the input df
     let mut renamed_df = df.clone();
 
     //prepare iterables of columns beforehand
-    let mut iter_pangolin = accession_to_lineage_df["Virus Pangolin Classification"].utf8().unwrap().into_iter();
-    let mut iter_accession = accession_to_lineage_df["Accession_first"].utf8().unwrap().into_iter();
+    let mut iter_pangolin = accession_to_lineage_df["Virus Pangolin Classification"]
+        .utf8()
+        .unwrap()
+        .into_iter();
+    let mut iter_accession = accession_to_lineage_df["Accession_first"]
+        .utf8()
+        .unwrap()
+        .into_iter();
     let mut lineages_in_resource = lin_to_clade["lineage"].utf8().unwrap();
     let mut clades_in_resource = lin_to_clade["clade"].utf8().unwrap();
 
     //rename accessions to lineages and if present, clades
-    iter_pangolin.into_iter().zip(iter_accession).for_each(|(png, acc)| {
-        let mut rename_str = format!("no clade ({})", png.unwrap());
-        lineages_in_resource.into_iter().zip(clades_in_resource.into_iter()).for_each(|(lng, cld)| {
-            if png == lng {
-                rename_str = format!("{} ({})", cld.unwrap(), lng.unwrap());
-            }
+    iter_pangolin
+        .into_iter()
+        .zip(iter_accession)
+        .for_each(|(png, acc)| {
+            let mut rename_str = format!("no clade ({})", png.unwrap());
+            lineages_in_resource
+                .into_iter()
+                .zip(clades_in_resource.into_iter())
+                .for_each(|(lng, cld)| {
+                    if png == lng {
+                        rename_str = format!("{} ({})", cld.unwrap(), lng.unwrap());
+                    }
+                });
+            renamed_df.rename(acc.unwrap(), &rename_str);
         });
-        renamed_df.rename(acc.unwrap(), &rename_str);
-    });
     dbg!(&renamed_df);
     Ok(renamed_df)
 }
