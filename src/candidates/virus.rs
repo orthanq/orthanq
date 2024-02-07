@@ -19,6 +19,7 @@ use std::io::Write;
 #[derive(Builder, Clone)]
 pub struct Caller {
     output: Option<PathBuf>,
+    threads: String
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
@@ -244,9 +245,20 @@ impl Caller {
             .unwrap()
             .join("reference_genome/ncbi_dataset/data/genomic.fna");
 
+        //index reference genome
+        let faidx = {
+            Command::new("samtools")
+                .arg("faidx")
+                .arg(&reference_genome_dir)
+                .status()
+                .expect("failed to unzip ncbi data package for reference genome")
+        };
+        println!(
+            "Samtools faidx for reference genome was exited with: {}", faidx);
+
         //align and sort
 
-        hla::alignment(&reference_genome_dir, &lineages_dir)?;
+        hla::alignment(&reference_genome_dir, &lineages_dir, &self.threads)?;
 
         //find variants
         let (genotype_df, loci_df) =
@@ -262,8 +274,13 @@ impl Caller {
         // dbg!(&variant_table);
         //Create VCF header
         let mut header = Header::new();
-        //push contig names to the header.
-        header.push_record(br#"##contig=<ID=NC_045512.2>"#);
+
+        //get contig name of the reference
+        let first_row_index = variant_table["Index"].utf8().unwrap().into_iter().nth(0).unwrap().unwrap().split(',').collect::<Vec<&str>>();
+
+        //push contig name to the header
+        let header_contig_line = format!(r#"##contig=<ID={}>"#, first_row_index[0]);
+        header.push_record(header_contig_line.as_bytes());
 
         //push field names to the header.
         let header_gt_line = r#"##FORMAT=<ID=GT,Number=1,Type=String,Description="Variant is present in the haplotype (1) or not (0).">"#;
