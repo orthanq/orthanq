@@ -54,32 +54,8 @@ pub enum PreprocessKind {
             help = "Reference genome that is used during candidate generation."
         )]
         genome: PathBuf,
-        #[structopt(
-            long = "reads",
-            required = true,
-            help = "Input FASTQ reads belonging to the sample."
-        )]
-        reads: Vec<PathBuf>,
-        #[structopt(
-            parse(from_os_str),
-            long = "haplotype-variants",
-            required = true,
-            help = "Haplotype variants compared to a common reference.", // TODO later, we will add a subcommand to generate this file with Varlociraptor as well
-        )]
-        haplotype_variants: PathBuf,
-        #[structopt(
-            long = "output BCF",
-            help = "Output BCF file to be used as input in the calling step."
-        )]
-        output: PathBuf,
-    },
-    Virus {
-        #[structopt(
-            long = "genome",
-            required = true,
-            help = "Reference genome that is used during candidate generation."
-        )]
-        genome: PathBuf,
+        #[structopt(long = "vg-index", required = true, help = "VG pangenome graph")]
+        vg_index: PathBuf,
         #[structopt(
             long = "reads",
             required = true,
@@ -95,9 +71,38 @@ pub enum PreprocessKind {
         haplotype_variants: PathBuf,
         #[structopt(
             long = "output",
+            help = "Output BCF file to be used as input in the calling step."
+        )]
+        output: PathBuf,
+        #[structopt(
+            default_value = "2",
+            help = "Threads to use for tools used in preprocessing."
+        )]
+        threads: String,
+    },
+    Virus {
+        #[structopt(
+            long = "candidates-folder",
+            required = true,
+            help = "Folder that is used to create candidate variants."
+        )]
+        candidates_folder: PathBuf,
+        #[structopt(
+            long = "reads",
+            required = true,
+            help = "Input FASTQ reads belonging to the sample."
+        )]
+        reads: Vec<PathBuf>,
+        #[structopt(
+            long = "output",
             help = "Output folder file to store preprocessed BAM file to be used as input in the calling step."
         )]
         output: PathBuf,
+        #[structopt(
+            default_value = "2",
+            help = "Threads to use for tools used in preprocessing."
+        )]
+        threads: String,
     },
 }
 
@@ -137,25 +142,23 @@ pub enum CandidatesKind {
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
         )]
         output: Option<PathBuf>,
+        #[structopt(
+            default_value = "2",
+            help = "Threads to use for minimap2 used candidate generation."
+        )]
+        threads: String,
     },
     Virus {
-        #[structopt(
-            long = "genome",
-            required = true,
-            help = "Reference genome to be used to align alleles or viral sequences (e.g. all existing HLA alleles) using minimap2."
-        )]
-        genome: PathBuf,
-        #[structopt(
-            long = "alleles",
-            required = true,
-            help = "All the alleles that exist for the gene of interest (e.g. HLA00001, HLA00002 .. for HLAs)"
-        )]
-        alleles: PathBuf,
         #[structopt(
             long,
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
         )]
         output: Option<PathBuf>,
+        #[structopt(
+            default_value = "2",
+            help = "Threads to use for minimap2 used candidate generation."
+        )]
+        threads: String,
     },
 }
 
@@ -204,12 +207,11 @@ pub enum CallKind {
     },
     Virus {
         #[structopt(
-            parse(from_os_str),
-            long = "haplotype-variants",
+            long = "candidates-folder",
             required = true,
-            help = "Haplotype variants compared to a common reference.", // TODO later, we will add a subcommand to generate this file with Varlociraptor as well
+            help = "Folder that is used to create candidate variants."
         )]
-        haplotype_variants: PathBuf,
+        candidates_folder: PathBuf,
         #[structopt(
             parse(from_os_str),
             long = "haplotype-calls",
@@ -267,7 +269,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 Ok(())
             }
             CallKind::Virus {
-                haplotype_variants,
+                candidates_folder,
                 variant_calls,
                 output,
                 prior,
@@ -275,7 +277,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 enable_equivalence_class_constraint,
             } => {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
-                    .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
+                    .candidates_folder(candidates_folder)
                     .variant_calls(bcf::Reader::from_path(variant_calls)?)
                     .outcsv(output)
                     .prior(prior)
@@ -296,6 +298,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 wes,
                 wgs,
                 output,
+                threads,
             } => {
                 let caller = candidates::hla::CallerBuilder::default()
                     .alleles(alleles)
@@ -305,20 +308,16 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .wes(wes)
                     .wgs(wgs)
                     .output(output)
+                    .threads(threads)
                     .build()
                     .unwrap();
                 caller.call()?;
                 Ok(())
             }
-            CandidatesKind::Virus {
-                alleles,
-                genome,
-                output,
-            } => {
+            CandidatesKind::Virus { output, threads } => {
                 let caller = candidates::virus::CallerBuilder::default()
-                    .alleles(alleles)
-                    .genome(genome)
                     .output(output)
+                    .threads(threads)
                     .build()
                     .unwrap();
                 caller.call()?;
@@ -330,29 +329,33 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 genome,
                 reads,
                 haplotype_variants,
+                vg_index,
                 output,
+                threads,
             } => {
                 preprocess::hla::CallerBuilder::default()
                     .genome(genome)
+                    .vg_index(vg_index)
                     .reads(reads)
                     .haplotype_variants(haplotype_variants)
                     .output(output)
+                    .threads(threads)
                     .build()
                     .unwrap()
                     .call()?;
                 Ok(())
             }
             PreprocessKind::Virus {
-                genome,
+                candidates_folder,
                 reads,
-                haplotype_variants,
                 output,
+                threads,
             } => {
                 preprocess::virus::CallerBuilder::default()
-                    .genome(genome)
+                    .candidates_folder(candidates_folder)
                     .reads(reads)
-                    .haplotype_variants(haplotype_variants)
                     .output(output)
+                    .threads(threads)
                     .build()
                     .unwrap()
                     .call()?;

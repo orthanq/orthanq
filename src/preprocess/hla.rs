@@ -13,7 +13,9 @@ pub struct Caller {
     genome: PathBuf,
     reads: Vec<PathBuf>,
     haplotype_variants: PathBuf,
+    vg_index: PathBuf,
     output: PathBuf,
+    threads: String,
 }
 
 impl Caller {
@@ -23,36 +25,31 @@ impl Caller {
         //create the folder first if it doesn't exist
         fs::create_dir_all(&outdir)?;
 
-        //1-) index the linear genome
-        //bwa index -p hs_genome -a bwtsw hs_genome.fasta
-
-        //todo: uncomment the indexing part and consider caching.
+        //todo: consider caching for indexing.
 
         //create a temporary file for bwa index and execute bwa index
-        // let temp_index = NamedTempFile::new()?;
-        // let index = {
-        //     Command::new("bwa")
-        //         .arg("index")
-        //         .arg("-p")
-        //         .arg(temp_index.path())
-        //         .arg("-a")
-        //         .arg("bwtsw") //-a bwtsw' does not work for short genomes, lineage quantification?
-        //         .arg(self.genome.clone())
-        //         .status()
-        //         .expect("failed to execute indexing process")
-        // };
-        // println!("The index was created successfully: {}", index);
-
-        let scenario = &"resources/scenarios/scenario.yaml"; //TODO: do not hardcode
-
-        // configure thread_number
-        let thread_number = "10".to_string();
-
-        //perform the alignment for paired end reads
-        let _temp_aligned = NamedTempFile::new()?;
 
         // Create a directory inside of `std::env::temp_dir()`
         let temp_dir = tempdir()?;
+        let temp_index = temp_dir.path().join("hs_genome");
+
+        let index = {
+            Command::new("bwa")
+                .arg("index")
+                .arg("-p")
+                .arg(&temp_index)
+                .arg("-a")
+                .arg("bwtsw") //-a bwtsw' does not work for short genomes, lineage quantification?
+                .arg(self.genome.clone())
+                .status()
+                .expect("failed to execute indexing process")
+        };
+        println!("The index was created successfully: {}", index);
+
+        let scenario = &"resources/scenarios/scenario.yaml"; //TODO: do not hardcode
+
+        //perform the alignment for paired end reads
+        let _temp_aligned = NamedTempFile::new()?;
 
         //find sample name of one of the fastq files from the read pair
         let stem_of_sample_dir = &self.reads[0].file_stem().unwrap().to_str().unwrap();
@@ -67,9 +64,6 @@ impl Caller {
         //insert read_group info from the sample names
         let read_group = format!("@RG\\tID:{}\\tSM:{}", sample_name, sample_name);
 
-        //test the subcommand, for this skip the indexing part
-        let index = "/projects/koesterlab/orthanq/orthanq-evaluation/results/bwa-index/hs_genome";
-
         //Step-1: align reads to the bwa index
         let align = {
             Command::new("bwa")
@@ -79,7 +73,7 @@ impl Caller {
                 .arg("-R")
                 .arg(&read_group)
                 // .arg(&temp_index.path())
-                .arg(index)
+                .arg(temp_index)
                 .arg(&self.reads[0])
                 .arg(&self.reads[1])
                 .arg("-o")
@@ -103,7 +97,7 @@ impl Caller {
                 .arg("-o")
                 .arg(&file_aligned_sorted)
                 .arg("-@")
-                .arg(&thread_number)
+                .arg(&self.threads)
                 .arg("--write-index")
                 .status()
                 .expect("failed to execute the sorting process")
@@ -157,7 +151,7 @@ impl Caller {
         //Step-3: map extracted reads to the pangenome with vg giraffe
 
         //path to the index directory
-        let giraffe_index = "resources/hprc-v1.0-mc-grch38.xg";
+        // let vg_index = "resources/hprc-v1.0-mc-grch38.xg";
 
         //create the output file name in temp directory
         let file_aligned_pangenome = temp_dir.path().join(format!("{}_vg.bam", sample_name));
@@ -166,7 +160,7 @@ impl Caller {
             Command::new("vg")
                 .arg("giraffe")
                 .arg("-x")
-                .arg(giraffe_index)
+                .arg(self.vg_index.clone())
                 .arg("-f")
                 .arg(temp_extracted_fq_1)
                 .arg("-f")
@@ -174,7 +168,7 @@ impl Caller {
                 .arg("--output-format")
                 .arg("BAM")
                 .arg("-t")
-                .arg(&thread_number)
+                .arg(&self.threads)
                 .stdout(Stdio::piped())
                 .spawn()
                 .expect("failed to execute the vg giraffe process")
@@ -222,7 +216,7 @@ impl Caller {
                 .arg("-o")
                 .arg(&file_vg_aligned_sorted)
                 .arg("-@")
-                .arg(&thread_number)
+                .arg(&self.threads)
                 .arg("--write-index")
                 .status()
                 .expect("failed to execute the sorting process")
@@ -301,7 +295,7 @@ impl Caller {
                 .arg("-o")
                 .arg(&final_bam)
                 .arg("-@")
-                .arg(&thread_number)
+                .arg(&self.threads)
                 .arg("--write-index")
                 .status()
                 .expect("failed to execute the sorting process")
