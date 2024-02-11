@@ -62,7 +62,7 @@ impl Caller {
                 .arg(&haplotype_variants)
                 .stdout(Stdio::piped())
                 .spawn()
-                .expect("failed to execute the sorting process")
+                .expect("failed to execute the zipping process")
         };
         println!("Bgzip was exited with: {:?}", bgzip);
 
@@ -230,7 +230,7 @@ impl Caller {
             "{}",
             format!("sample={}", &varlociraptor_prep_dir.display())
         );
-
+        dbg!(&scenario);
         let varlociraptor_call = {
             Command::new("varlociraptor")
                 .arg("call")
@@ -246,21 +246,13 @@ impl Caller {
                 .arg(format!("sample={}", varlociraptor_prep_dir.display()))
                 .arg("--scenario")
                 .arg(&scenario)
-                .stdout(Stdio::piped())
-                .spawn()
+                .output()
                 .expect("failed to execute the varlociraptor calling process")
         };
-        println!(
-            "The varlociraptor calling was exited with: {:?}",
-            varlociraptor_call
-        );
+        println!("varlociraptor calling finished!");
 
-        let output = varlociraptor_call
-            .wait_with_output()
-            .expect("Varlociraptor: Failed to read stdout");
-        let mut called_file = std::fs::File::create(&outdir)?;
-        called_file.write_all(&output.stdout)?; //write with bam writer
-        called_file.flush()?;
+        let stdout = varlociraptor_call.stdout;
+        fs::write(outdir, stdout).expect("Unable to write file");
 
         //~fin
         Ok(())
