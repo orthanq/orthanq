@@ -560,13 +560,7 @@ pub fn alignment(
 
     let align = {
         Command::new("minimap2")
-            .args([
-                "-a",
-                "-t",
-                &thread_number,
-                "--eqx",
-                "--MD",
-            ])
+            .args(["-a", "-t", &thread_number, "--eqx", "--MD"])
             .arg(genome_input)
             .arg(alleles.clone())
             .output()
@@ -650,7 +644,8 @@ pub fn find_variants_from_cigar(
                                     .unwrap()
                                     .clone();
                                 haplotypes.push(j); //appending j informs the dict about the allele names eventually
-                                candidate_variants.insert((chrom, pos, ref_base, alt_base), haplotypes);
+                                candidate_variants
+                                    .insert((chrom, pos, ref_base, alt_base), haplotypes);
                             }
                         }
                         rcount += num; //to add mismatch length to the count
@@ -671,7 +666,10 @@ pub fn find_variants_from_cigar(
                             .iter()
                             .map(|pos| seq.seq()[*pos as usize] as char)
                             .collect::<String>();
-                        if alt_sequence.chars().all(|x|vec!["A", "G", "T", "C"].contains(&x.to_string().as_str())) {
+                        if alt_sequence
+                            .chars()
+                            .all(|x| vec!["A", "G", "T", "C"].contains(&x.to_string().as_str()))
+                        {
                             candidate_variants
                                 .entry((chrom.clone(), pos, ref_base.clone(), alt_sequence.clone()))
                                 .or_insert(vec![]);
@@ -680,8 +678,9 @@ pub fn find_variants_from_cigar(
                                 .unwrap()
                                 .clone();
                             haplotypes.push(j); //appending j informs the dict about the allele names eventually
-                            candidate_variants.insert((chrom, pos, ref_base, alt_sequence), haplotypes);
-                            }
+                            candidate_variants
+                                .insert((chrom, pos, ref_base, alt_sequence), haplotypes);
+                        }
                         // rcount; // no change
                         scount += num;
                     }
