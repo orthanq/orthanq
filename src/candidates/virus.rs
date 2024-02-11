@@ -397,7 +397,9 @@ fn accession_to_lineage(df: &DataFrame, accession_to_lineage_df: &DataFrame) -> 
     dbg!(&accession_to_lineage_df);
 
     //read lineage to clade resource
-    let lin_to_clade = CsvReader::from_path(&"resources/clade_to_lineages/cladeToLineages.tsv")?
+    let cargo_dir = env!("CARGO_MANIFEST_DIR");
+    let file_dir = format!("{}/resources/clade_to_lineages/cladeToLineages.tsv", cargo_dir);
+    let lin_to_clade = CsvReader::from_path(&file_dir)?
         .with_delimiter(b'\t')
         .has_header(true)
         .finish()?;
