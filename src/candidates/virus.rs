@@ -264,6 +264,7 @@ impl Caller {
             &reference_genome_dir,
             &lineages_dir,
             &self.threads,
+            false,
             self.output.as_ref().unwrap(),
         )?;
 
