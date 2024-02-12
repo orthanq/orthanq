@@ -29,8 +29,11 @@ impl Caller {
         let temp_dir = tempdir()?;
 
         //1) bgzip and tabix the candidates vcf then, perform vg autoindex (maybe add this part to the candidates virus subcommand.)
-
-        let scenario = &"resources/scenarios/scenario.yaml"; //TODO: do not hardcode
+        let cargo_dir = env!("CARGO_MANIFEST_DIR");
+        let scenario = format!(
+            "{}/resources/scenarios/scenario.yaml",
+            cargo_dir
+        );
 
         //genome must have been downloaded in the candidate generation step:
         let ref_genome = self
@@ -62,7 +65,7 @@ impl Caller {
                 .arg(&haplotype_variants)
                 .stdout(Stdio::piped())
                 .spawn()
-                .expect("failed to execute the sorting process")
+                .expect("failed to execute the zipping process")
         };
         println!("Bgzip was exited with: {:?}", bgzip);
 
@@ -226,15 +229,12 @@ impl Caller {
         // "--scenario {input.scenario} > {output} 2> {log}"
 
         //scenario
-        println!(
-            "{}",
-            format!("sample={}", &varlociraptor_prep_dir.display())
-        );
-
         let varlociraptor_call = {
             Command::new("varlociraptor")
                 .arg("call")
                 .arg("variants")
+                .arg("--output")
+                .arg(&outdir)
                 .arg("--omit-strand-bias")
                 .arg("--omit-read-position-bias")
                 .arg("--omit-read-orientation-bias")
@@ -246,21 +246,10 @@ impl Caller {
                 .arg(format!("sample={}", varlociraptor_prep_dir.display()))
                 .arg("--scenario")
                 .arg(&scenario)
-                .stdout(Stdio::piped())
-                .spawn()
+                .status()
                 .expect("failed to execute the varlociraptor calling process")
         };
-        println!(
-            "The varlociraptor calling was exited with: {:?}",
-            varlociraptor_call
-        );
-
-        let output = varlociraptor_call
-            .wait_with_output()
-            .expect("Varlociraptor: Failed to read stdout");
-        let mut called_file = std::fs::File::create(&outdir)?;
-        called_file.write_all(&output.stdout)?; //write with bam writer
-        called_file.flush()?;
+        println!("varlociraptor calling finished with exit status: {:?}", varlociraptor_call);
 
         //~fin
         Ok(())

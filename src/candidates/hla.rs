@@ -45,7 +45,7 @@ impl Caller {
         // self.write_to_fasta(&confirmed_alleles)?;
 
         //align and sort
-        // alignment(&self.genome, &self.alleles, &self.threads, self.output.as_ref().unwrap())?;
+        // alignment(&self.genome, &self.alleles, &self.threads, true, self.output.as_ref().unwrap())?;
 
         //find variants from cigar
         let (mut genotype_df, mut loci_df) = find_variants_from_cigar(
@@ -524,42 +524,44 @@ pub fn alignment(
     genome: &PathBuf,
     alleles: &PathBuf,
     thread_number: &str,
+    index: bool,
     output: &PathBuf,
 ) -> Result<()> {
     // Create a directory inside of `std::env::temp_dir()`
     let temp_dir = tempdir()?;
-    let genome_index = temp_dir.path().join(format!(
-        "{}{}",
-        genome.file_name().unwrap().to_str().unwrap(),
-        ".mmi"
-    ));
 
-    //first index the genome
-    let index = {
-        Command::new("minimap2")
-            .arg("-d")
-            .arg(&genome_index)
-            .arg(genome.clone())
-            .status()
-            .expect("failed to execute indexing process")
-    };
-    println!("indexing process finished with: {}", index);
+    //create index in case of hla, don't in case of virus
+    let mut genome_input = PathBuf::new();
+    if index {
+        let genome_index = temp_dir.path().join(format!(
+            "{}{}",
+            genome.file_name().unwrap().to_str().unwrap(),
+            ".mmi"
+        ));
+
+        //first index the genome
+        let index = {
+            Command::new("minimap2")
+                .arg("-d")
+                .arg(&genome_index)
+                .arg(genome.clone())
+                .status()
+                .expect("failed to execute indexing process")
+        };
+        println!("indexing process finished with: {}", index);
+        genome_input = genome_index;
+    } else {
+        genome_input = genome.clone();
+    }
+    dbg!(&genome_input);
 
     //then, align alleles/lineages to genome and write to temp
     let aligned_file = temp_dir.path().join("alignment.sam");
 
     let align = {
         Command::new("minimap2")
-            .args([
-                "-a",
-                "-t",
-                &thread_number,
-                "--eqx",
-                "--MD",
-                "--score-N",
-                "0",
-            ]) //--score-N: a low score for ambiguous bases in some virus assemblies
-            .arg(&genome_index)
+            .args(["-a", "-t", &thread_number, "--eqx", "--MD"])
+            .arg(genome_input)
             .arg(alleles.clone())
             .output()
             .expect("failed to execute alignment process")
@@ -633,15 +635,18 @@ pub fn find_variants_from_cigar(
                                 .fetch_seq_string(&seq.contig().to_string(), rpos - 1, rpos - 1)
                                 .unwrap();
                             let alt_base = (seq.seq()[spos as usize] as char).to_string();
-                            candidate_variants
-                                .entry((chrom.clone(), pos, ref_base.clone(), alt_base.clone()))
-                                .or_insert(vec![]);
-                            let mut haplotypes = candidate_variants
-                                .get(&(chrom.clone(), pos, ref_base.clone(), alt_base.clone()))
-                                .unwrap()
-                                .clone();
-                            haplotypes.push(j); //appending j informs the dict about the allele names eventually
-                            candidate_variants.insert((chrom, pos, ref_base, alt_base), haplotypes);
+                            if vec!["A", "G", "T", "C"].iter().any(|&x| x == alt_base) {
+                                candidate_variants
+                                    .entry((chrom.clone(), pos, ref_base.clone(), alt_base.clone()))
+                                    .or_insert(vec![]);
+                                let mut haplotypes = candidate_variants
+                                    .get(&(chrom.clone(), pos, ref_base.clone(), alt_base.clone()))
+                                    .unwrap()
+                                    .clone();
+                                haplotypes.push(j); //appending j informs the dict about the allele names eventually
+                                candidate_variants
+                                    .insert((chrom, pos, ref_base, alt_base), haplotypes);
+                            }
                         }
                         rcount += num; //to add mismatch length to the count
                         scount += num;
@@ -661,15 +666,21 @@ pub fn find_variants_from_cigar(
                             .iter()
                             .map(|pos| seq.seq()[*pos as usize] as char)
                             .collect::<String>();
-                        candidate_variants
-                            .entry((chrom.clone(), pos, ref_base.clone(), alt_sequence.clone()))
-                            .or_insert(vec![]);
-                        let mut haplotypes = candidate_variants
-                            .get(&(chrom.clone(), pos, ref_base.clone(), alt_sequence.clone()))
-                            .unwrap()
-                            .clone();
-                        haplotypes.push(j); //appending j informs the dict about the allele names eventually
-                        candidate_variants.insert((chrom, pos, ref_base, alt_sequence), haplotypes);
+                        if alt_sequence
+                            .chars()
+                            .all(|x| vec!["A", "G", "T", "C"].contains(&x.to_string().as_str()))
+                        {
+                            candidate_variants
+                                .entry((chrom.clone(), pos, ref_base.clone(), alt_sequence.clone()))
+                                .or_insert(vec![]);
+                            let mut haplotypes = candidate_variants
+                                .get(&(chrom.clone(), pos, ref_base.clone(), alt_sequence.clone()))
+                                .unwrap()
+                                .clone();
+                            haplotypes.push(j); //appending j informs the dict about the allele names eventually
+                            candidate_variants
+                                .insert((chrom, pos, ref_base, alt_sequence), haplotypes);
+                        }
                         // rcount; // no change
                         scount += num;
                     }
