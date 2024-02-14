@@ -5,16 +5,16 @@ use derive_builder::Builder;
 use polars::frame::DataFrame;
 use polars::prelude::*;
 
+use crate::candidates::hla;
+use bio::io::fasta::{Record, Writer as FastaWriter};
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
+use rust_htslib::faidx;
+use std::convert::TryInto;
 use std::fs;
 use std::io;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use rust_htslib::faidx;
-use bio::io::fasta::{Record, Writer as FastaWriter};
-use crate::candidates::hla;
-use std::convert::TryInto;
-use std::io::Write;
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]
@@ -257,17 +257,19 @@ impl Caller {
         //find the records that are above the threshold and write them to fasta
         let lineages_rdr = faidx::Reader::from_path(all_lineages_path).unwrap();
         for idx in 0..lineages_rdr.n_seqs() {
-
             //find the name, length and sequence of the fasta record
             let l_name = lineages_rdr.seq_name(idx as i32)?;
             let l_len = lineages_rdr.fetch_seq_len(&l_name);
             let l_seq = lineages_rdr.fetch_seq_string(&l_name, 0, l_len as usize)?;
 
             //find the number of ambiguous bases in the record
-            let n_ambiguous = l_seq.chars().filter(|x|!vec!["A", "G", "T", "C"].contains(&x.to_string().as_str())).count();
+            let n_ambiguous = l_seq
+                .chars()
+                .filter(|x| !vec!["A", "G", "T", "C"].contains(&x.to_string().as_str()))
+                .count();
 
             //calculate the ratio of ambiguous bases in the fasta record
-            let ratio_of_ambiguous = n_ambiguous as f32 /  l_len as f32;
+            let ratio_of_ambiguous = n_ambiguous as f32 / l_len as f32;
 
             //write the record to file if the ratio exceeds the defined threshold
             let threshold_ambiguous: f32 = 0.05; //todo: must be configured later
@@ -276,7 +278,6 @@ impl Caller {
                 let record = Record::with_attrs(&l_name, Some(""), l_seq.as_bytes());
                 let write_result = writer.write_record(&record);
             }
-
         }
         writer.flush()?;
 
