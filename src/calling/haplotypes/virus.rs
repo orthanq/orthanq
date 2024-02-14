@@ -93,7 +93,7 @@ impl Caller {
             let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
             //
-            let eq_graph = haplotype_variants.find_equivalence_class("hla").unwrap();
+            let eq_graph = haplotype_variants.find_equivalence_class("virus").unwrap();
             dbg!(&eq_graph);
 
             //1-) model computation for chosen prior

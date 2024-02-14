@@ -274,17 +274,15 @@ impl HaplotypeVariants {
             })
         });
 
-        if &application == &"hla" {
-            for (variant, haplotype_map) in self.iter() {
-                for (haplotype, (variant_in_gt, variant_in_c)) in haplotype_map.iter() {
-                    match variant_in_gt {
-                        VariantStatus::Present => {
-                            let mut variants_in_haplotype = equivalence_classes[&haplotype].clone();
-                            variants_in_haplotype.push(variant.clone());
-                            equivalence_classes.insert(haplotype.clone(), variants_in_haplotype);
-                        }
-                        _ => (),
+        for (variant, haplotype_map) in self.iter() {
+            for (haplotype, (variant_in_gt, variant_in_c)) in haplotype_map.iter() {
+                match variant_in_gt {
+                    VariantStatus::Present => {
+                        let mut variants_in_haplotype = equivalence_classes[&haplotype].clone();
+                        variants_in_haplotype.push(variant.clone());
+                        equivalence_classes.insert(haplotype.clone(), variants_in_haplotype);
                     }
+                    _ => (),
                 }
             }
         }
@@ -293,8 +291,17 @@ impl HaplotypeVariants {
         let mut deps = Graph::new_undirected();
 
         for (haplotype, variants) in equivalence_classes.iter() {
-            let splitted = haplotype.split(':').collect::<Vec<&str>>();
-            let haplotype_group = splitted[0].to_owned() + &":" + splitted[1];
+            //initialize variables
+            let mut splitted_1 = vec![];
+            let mut haplotype_group = String::from("");
+            if &application == &"hla" {
+                splitted_1 = haplotype.split(':').collect::<Vec<&str>>();
+                haplotype_group = splitted_1[0].to_owned() + &":" + splitted_1[1];
+            } else if &application == &"virus" {
+                splitted_1 = haplotype.split(' ').collect::<Vec<&str>>();
+                haplotype_group = splitted_1[0].to_owned();
+            }
+
             let item1 = deps.add_node((haplotype.clone(), haplotype_group.clone()));
             let index = deps
                 .node_indices()
@@ -305,10 +312,16 @@ impl HaplotypeVariants {
                 let node_at_index = &deps[NodeIndex::new(idx)];
 
                 let mut difference = vec![];
-
+                let mut splitted_2 = vec![];
+                let mut haplotype_group_at_index = String::from("");
                 let variants_of_node_at_index = &equivalence_classes[&node_at_index.0];
-                let splitted = node_at_index.0.split(':').collect::<Vec<&str>>();
-                let haplotype_group_at_index = splitted[0].to_owned() + &":" + splitted[1];
+                if &application == &"hla" {
+                    splitted_2 = node_at_index.0.split(':').collect::<Vec<&str>>();
+                    haplotype_group_at_index = splitted_2[0].to_owned() + &":" + splitted_2[1];
+                } else if &application == &"virus" {
+                    splitted_2 = node_at_index.0.split(' ').collect::<Vec<&str>>();
+                    haplotype_group_at_index = splitted_2[0].to_owned();
+                }
 
                 for variant in variants_of_node_at_index.iter() {
                     if !variants.contains(&variant) {
