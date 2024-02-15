@@ -30,10 +30,7 @@ impl Caller {
 
         //1) bgzip and tabix the candidates vcf then, perform vg autoindex (maybe add this part to the candidates virus subcommand.)
         let cargo_dir = env!("CARGO_MANIFEST_DIR");
-        let scenario = format!(
-            "{}/resources/scenarios/scenario.yaml",
-            cargo_dir
-        );
+        let scenario = format!("{}/resources/scenarios/scenario.yaml", cargo_dir);
 
         //genome must have been downloaded in the candidate generation step:
         let ref_genome = self
@@ -249,7 +246,10 @@ impl Caller {
                 .status()
                 .expect("failed to execute the varlociraptor calling process")
         };
-        println!("varlociraptor calling finished with exit status: {:?}", varlociraptor_call);
+        println!(
+            "varlociraptor calling finished with exit status: {:?}",
+            varlociraptor_call
+        );
 
         //~fin
         Ok(())

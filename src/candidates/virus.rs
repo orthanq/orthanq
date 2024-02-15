@@ -5,15 +5,16 @@ use derive_builder::Builder;
 use polars::frame::DataFrame;
 use polars::prelude::*;
 
+use crate::candidates::hla;
+use bio::io::fasta::{Record, Writer as FastaWriter};
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
+use rust_htslib::faidx;
+use std::convert::TryInto;
 use std::fs;
-
+use std::io;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-
-use crate::candidates::hla;
-
-use std::io::Write;
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]
@@ -28,7 +29,7 @@ impl Caller {
         fs::create_dir_all(self.output.as_ref().unwrap())?;
 
         //output dir for metadata
-        let virus_metadata_dir = self.output.as_ref().unwrap().join("metadata.tsv");
+        let virus_metadata_path = self.output.as_ref().unwrap().join("metadata.tsv");
 
         //download and prepare required metadata as tsv
         //datasets summary virus genome taxon SARS-CoV-2 --as-json-lines | dataformat tsv virus-genome --fields accession,completeness,release-date,virus-pangolin > sarscov2.tsv
@@ -63,15 +64,15 @@ impl Caller {
         let output = process_into_tsv
             .wait_with_output()
             .expect("failed to wait on child");
-        let mut f = std::fs::File::create(virus_metadata_dir.clone())?;
+        let mut f = std::fs::File::create(virus_metadata_path.clone())?;
         f.write_all(&output.stdout)?;
         println!("virus metadata preparation is complete.");
 
         //comment out the next line for testing purposees (above process can take ~6 hours)
-        // let virus_metadata_dir = "/home/uzuner/Documents/backup_orthanq_metadata/metadata.tsv";
+        // let virus_metadata_path = "/home/uzuner/Documents/backup_orthanq_metadata/metadata.tsv";
 
         //retrieve accession ids from each lineage with the oldest submission and complete genomes.
-        let virus_metadata_df = CsvReader::from_path(virus_metadata_dir)?
+        let virus_metadata_df = CsvReader::from_path(virus_metadata_path)?
             .with_delimiter(b'\t')
             .has_header(true)
             .finish()?;
@@ -233,13 +234,56 @@ impl Caller {
             unzip_package
         );
 
-        //then, here are the dirs for reference genome and all lineages
-        let lineages_dir = self
+        //select only fasta records containing less than a certain threshold for ambiguous bases, threshold = 0.05
+        //then write the filtered records to fasta
+        //for that, count the number of ambiguous bases i.e. N, R, etc. and divide them by the length of the fasta
+        let all_lineages_path = self
             .output
             .as_ref()
             .unwrap()
             .join("lineages/ncbi_dataset/data/genomic.fna");
-        let reference_genome_dir = self
+
+        let quality_lineages_path = self
+            .output
+            .as_ref()
+            .unwrap()
+            .join("lineages/ncbi_dataset/data/genomic_quality.fna");
+
+        //create the new fasta
+        let file = fs::File::create(&quality_lineages_path).unwrap();
+        let handle = io::BufWriter::new(file);
+        let mut writer = FastaWriter::new(handle);
+
+        //find the records that are above the threshold and write them to fasta
+        let lineages_rdr = faidx::Reader::from_path(all_lineages_path).unwrap();
+        for idx in 0..lineages_rdr.n_seqs() {
+            //find the name, length and sequence of the fasta record
+            let l_name = lineages_rdr.seq_name(idx as i32)?;
+            let l_len = lineages_rdr.fetch_seq_len(&l_name);
+            let l_seq = lineages_rdr.fetch_seq_string(&l_name, 0, l_len as usize)?;
+
+            //find the number of ambiguous bases in the record
+            let n_ambiguous = l_seq
+                .chars()
+                .filter(|x| !vec!["A", "G", "T", "C"].contains(&x.to_string().as_str()))
+                .count();
+
+            //calculate the ratio of ambiguous bases in the fasta record
+            let ratio_of_ambiguous = n_ambiguous as f32 / l_len as f32;
+
+            //write the record to file if the ratio exceeds the defined threshold
+            let threshold_ambiguous: f32 = 0.05; //todo: must be configured later
+
+            if ratio_of_ambiguous < threshold_ambiguous {
+                let record = Record::with_attrs(&l_name, Some(""), l_seq.as_bytes());
+                let write_result = writer.write_record(&record);
+            }
+        }
+        writer.flush()?;
+
+        //then, here are the dirs for reference genome and all lineages
+        let lineages_path = quality_lineages_path.clone();
+        let reference_genome_path = self
             .output
             .as_ref()
             .unwrap()
@@ -249,7 +293,7 @@ impl Caller {
         let faidx = {
             Command::new("samtools")
                 .arg("faidx")
-                .arg(&reference_genome_dir)
+                .arg(&reference_genome_path)
                 .status()
                 .expect("failed to unzip ncbi data package for reference genome")
         };
@@ -261,8 +305,8 @@ impl Caller {
         //align and sort
 
         hla::alignment(
-            &reference_genome_dir,
-            &lineages_dir,
+            &reference_genome_path,
+            &lineages_path,
             &self.threads,
             false,
             self.output.as_ref().unwrap(),
@@ -270,7 +314,7 @@ impl Caller {
 
         //find variants
         let (genotype_df, loci_df) = hla::find_variants_from_cigar(
-            &reference_genome_dir,
+            &reference_genome_path,
             &self.output.as_ref().unwrap().join("alignment_sorted.sam"),
         )
         .unwrap();
@@ -399,11 +443,11 @@ fn accession_to_lineage(df: &DataFrame, accession_to_lineage_df: &DataFrame) -> 
 
     //read lineage to clade resource
     let cargo_dir = env!("CARGO_MANIFEST_DIR");
-    let file_dir = format!(
+    let file_path = format!(
         "{}/resources/clade_to_lineages/cladeToLineages.tsv",
         cargo_dir
     );
-    let lin_to_clade = CsvReader::from_path(&file_dir)?
+    let lin_to_clade = CsvReader::from_path(&file_path)?
         .with_delimiter(b'\t')
         .has_header(true)
         .finish()?;

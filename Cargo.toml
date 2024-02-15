@@ -7,7 +7,7 @@ edition = "2018"
 
 [dependencies]
 bio-types = "0.13.0"
-rust-htslib = "0.39.5"
+rust-htslib = "0.45.0"
 log = "0.4"
 GSL = "6.0"
 itertools = "0.10"
