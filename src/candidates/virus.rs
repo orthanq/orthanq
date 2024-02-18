@@ -237,6 +237,8 @@ impl Caller {
         //select only fasta records containing less than a certain threshold for ambiguous bases, threshold = 0.05
         //then write the filtered records to fasta
         //for that, count the number of ambiguous bases i.e. N, R, etc. and divide them by the length of the fasta
+        //also, for a second check of genome completeness, some viral lineages might still be present in the database with genome length
+        //smaller than 29k, check LR877184.1, only include genome lenghts with greater than 29k ref:  (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7161481/)
         let all_lineages_path = self
             .output
             .as_ref()
@@ -274,7 +276,7 @@ impl Caller {
             //write the record to file if the ratio exceeds the defined threshold
             let threshold_ambiguous: f32 = 0.05; //todo: must be configured later
 
-            if ratio_of_ambiguous < threshold_ambiguous {
+            if (ratio_of_ambiguous < threshold_ambiguous) && (l_len > 29000) { //second check is necessary for double checking genome completeness
                 let record = Record::with_attrs(&l_name, Some(""), l_seq.as_bytes());
                 let write_result = writer.write_record(&record);
             }
