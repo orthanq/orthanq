@@ -397,6 +397,7 @@ pub fn linear_program(
     haplotypes: &Vec<Haplotype>,
     variant_calls: &VariantCalls,
     lp_cutoff: f64,
+    num_variant_distance: i64,
 ) -> Result<Vec<Haplotype>> {
     //first init the problem
     let mut problem = ProblemVariables::new();
@@ -470,8 +471,10 @@ pub fn linear_program(
         &best_variables,
     )?;
 
-    //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list
-    //and optionally, sort by hamming distance, take the closest x additional alleles according to 'permitted'
+    //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list.
+    //then sort by hamming distance, take the closest x additional alleles according to 'num_variant_distance'.
+    //this is done by storing only the variants that have GT:1 and C:1 for all haplotypes in haplotype_dict and remaining variants are not included.
+
     let mut extended_haplotypes = Vec::new();
     lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
         let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
@@ -482,16 +485,15 @@ pub fn linear_program(
                     //fix: the last operand '&&' is required to avoid duplicate additions
                     extended_haplotypes.push(haplotype.clone());
                 } else {
-                    let permitted: i64 = 3; //this number should be discussed.
                     let mut difference = vec![];
                     for i in haplotype_variants.iter() {
                         if !variants.contains(&i) {
                             difference.push(i);
                         }
                     }
-                    if (difference.len() as i64 <= permitted)
+                    if (difference.len() as i64 <= num_variant_distance)
                         && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
-                            <= permitted)
+                            <= num_variant_distance)
                         && !extended_haplotypes.contains(&haplotype)
                     //fix: the last operand '&&' is required to avoid duplicate additions
                     {
