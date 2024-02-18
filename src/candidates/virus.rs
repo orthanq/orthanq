@@ -276,7 +276,8 @@ impl Caller {
             //write the record to file if the ratio exceeds the defined threshold
             let threshold_ambiguous: f32 = 0.05; //todo: must be configured later
 
-            if (ratio_of_ambiguous < threshold_ambiguous) && (l_len > 29000) { //second check is necessary for double checking genome completeness
+            if (ratio_of_ambiguous < threshold_ambiguous) && (l_len > 29000) {
+                //second check is necessary for double checking genome completeness
                 let record = Record::with_attrs(&l_name, Some(""), l_seq.as_bytes());
                 let write_result = writer.write_record(&record);
             }
