@@ -70,12 +70,18 @@ impl Caller {
 
             //find the haplotypes to prioritize
             let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
+
+            //currently, ideal variant distance used for extension is 0 for viruses.
+            let num_variant_distance: i64 = 0;
+
+            //employ the lineaar program
             let lp_haplotypes = haplotypes::linear_program(
                 &self.outcsv,
                 &candidate_matrix,
                 &haplotypes,
                 &variant_calls,
                 self.lp_cutoff,
+                num_variant_distance,
             )?;
             dbg!(&lp_haplotypes);
 

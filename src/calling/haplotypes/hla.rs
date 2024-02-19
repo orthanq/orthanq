@@ -92,12 +92,18 @@ impl Caller {
             }
             //find the haplotypes to prioritize
             let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
+
+            //currently, ideal variant distance used for extension is 3 for hla typing.
+            let num_variant_distance: i64 = 3;
+
+            //employ the linear program
             let lp_haplotypes = haplotypes::linear_program(
                 &self.outcsv,
                 &candidate_matrix,
                 &haplotypes,
                 &variant_calls,
                 self.lp_cutoff,
+                num_variant_distance,
             )?;
             dbg!(&lp_haplotypes);
 

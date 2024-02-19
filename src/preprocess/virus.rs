@@ -168,7 +168,13 @@ impl Caller {
         vg_bam.flush()?;
 
         //sort the resulting vg aligned file
-        let file_vg_aligned_sorted = temp_dir.path().join(format!("{}_sorted.bam", sample_name));
+        // let file_vg_aligned_sorted = temp_dir.path().join(format!("{}_sorted.bam", sample_name));
+
+        //print it to the parent folder of resulting bcf for debugging purposes.
+        let mut parent = outdir.clone();
+        parent.pop();
+        let file_vg_aligned_sorted = parent.join(format!("{}_sorted.bam", sample_name));
+
         println!(
             "file_vg_aligned_sorteds: {}",
             file_vg_aligned_sorted.display()
