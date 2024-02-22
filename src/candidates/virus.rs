@@ -15,6 +15,7 @@ use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::fs::File;
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]
@@ -28,48 +29,48 @@ impl Caller {
         //first, create the output dir for database setup
         fs::create_dir_all(self.output.as_ref().unwrap())?;
 
-        //output dir for metadata
-        let virus_metadata_path = self.output.as_ref().unwrap().join("metadata.tsv");
+        // //output dir for metadata
+        // let virus_metadata_path = self.output.as_ref().unwrap().join("metadata.tsv");
 
-        //download and prepare required metadata as tsv
-        //datasets summary virus genome taxon SARS-CoV-2 --as-json-lines | dataformat tsv virus-genome --fields accession,completeness,release-date,virus-pangolin > sarscov2.tsv
+        // //download and prepare required metadata as tsv
+        // //datasets summary virus genome taxon SARS-CoV-2 --as-json-lines | dataformat tsv virus-genome --fields accession,completeness,release-date,virus-pangolin > sarscov2.tsv
 
-        //first, download metada
-        let download_metadata = {
-            Command::new("datasets")
-                .arg("summary")
-                .arg("virus")
-                .arg("genome")
-                .arg("taxon")
-                .arg("SARS-CoV-2")
-                .arg("--as-json-lines")
-                .stdout(Stdio::piped())
-                .spawn()
-                .expect("failed to execute the vg giraffe process")
-        };
-        println!("virus metada download is complete.");
+        // //first, download metada
+        // let download_metadata = {
+        //     Command::new("datasets")
+        //         .arg("summary")
+        //         .arg("virus")
+        //         .arg("genome")
+        //         .arg("taxon")
+        //         .arg("SARS-CoV-2")
+        //         .arg("--as-json-lines")
+        //         .stdout(Stdio::piped())
+        //         .spawn()
+        //         .expect("failed to execute the vg giraffe process")
+        // };
+        // println!("virus metada download is complete.");
 
-        //then, pipe the downloaded jsonl to tsv with dataformat
-        let process_into_tsv = Command::new("dataformat")
-            .arg("tsv")
-            .arg("virus-genome")
-            .stdin(download_metadata.stdout.unwrap())
-            .arg("--fields")
-            .arg("accession,completeness,release-date,virus-pangolin")
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
+        // //then, pipe the downloaded jsonl to tsv with dataformat
+        // let process_into_tsv = Command::new("dataformat")
+        //     .arg("tsv")
+        //     .arg("virus-genome")
+        //     .stdin(download_metadata.stdout.unwrap())
+        //     .arg("--fields")
+        //     .arg("accession,completeness,release-date,virus-pangolin")
+        //     .stdout(Stdio::piped())
+        //     .spawn()
+        //     .unwrap();
 
-        //write the prepared tsv to file
-        let output = process_into_tsv
-            .wait_with_output()
-            .expect("failed to wait on child");
-        let mut f = std::fs::File::create(virus_metadata_path.clone())?;
-        f.write_all(&output.stdout)?;
-        println!("virus metadata preparation is complete.");
+        // //write the prepared tsv to file
+        // let output = process_into_tsv
+        //     .wait_with_output()
+        //     .expect("failed to wait on child");
+        // let mut f = std::fs::File::create(virus_metadata_path.clone())?;
+        // f.write_all(&output.stdout)?;
+        // println!("virus metadata preparation is complete.");
 
         //comment out the next line for testing purposees (above process can take ~6 hours)
-        // let virus_metadata_path = "/home/uzuner/Documents/backup_orthanq_metadata/metadata.tsv";
+        let virus_metadata_path = "/home/uzuner/Documents/backup_orthanq_metadata/metadata.tsv";
 
         //retrieve accession ids from each lineage with the oldest submission and complete genomes.
         let virus_metadata_df = CsvReader::from_path(virus_metadata_path)?
@@ -121,13 +122,60 @@ impl Caller {
             .groupby(["Virus Pangolin Classification"])?
             .select(["Accession"])
             .first()?;
-        dbg!(&grouped_df);
+        dbg!(&grouped_df); 
+
+        //annotate each pango lineage by nextstrain lineage and create a new dataframe
+        //to contain only one representative sequence for each nextstrain lineage (the oldest)
+        let grouped_df_joined = grouped_df.inner_join(&sorted, ["Accession_first"], ["Accession"])?;
+        dbg!(&grouped_df_joined);
+
+        //read clade to lineages
+        let cargo_dir = env!("CARGO_MANIFEST_DIR");
+        let path_to_clade_to_lineages = format!(
+            "{}/resources/clade_to_lineages/cladeToLineages.tsv",
+            cargo_dir
+        );
+        let lin_to_clade = CsvReader::from_path(&path_to_clade_to_lineages)?
+        .with_delimiter(b'\t')
+        .has_header(true)
+        .finish()?;
+        dbg!(&lin_to_clade);
+
+        //join two df
+        let grouped_df_with_clades = grouped_df_joined.inner_join(&lin_to_clade, ["Virus Pangolin Classification"],["lineage"])?;
+        dbg!(&grouped_df_with_clades);
+
+        //group by clade and take the first accession
+        // columns to sort by
+        let mut final_sorted = grouped_df_with_clades.sort(&["Release date"], vec![false])?;
+
+        dbg!(&final_sorted);
+
+        let path_final_sorted = self.output.as_ref().unwrap().join("final_sorted.csv");
+        let mut output_file_1: File = File::create(path_final_sorted).unwrap();
+        CsvWriter::new(&mut output_file_1)
+            .has_header(true)
+            .finish(&mut final_sorted)
+            .unwrap();
+
+        //group by pangolin lineage and get the first entry (which is the oldest)
+        let mut final_grouped_df = final_sorted
+            .groupby(["clade"])?
+            .select(["Accession_first"])
+            .first()?;
+        dbg!(&final_grouped_df); 
+
+        let path_final_grouped_df = self.output.as_ref().unwrap().join("final_grouped_df.csv");
+        let mut output_file_2: File = File::create(path_final_grouped_df).unwrap();
+        CsvWriter::new(&mut output_file_2)
+            .has_header(true)
+            .finish(&mut final_grouped_df)
+            .unwrap();
 
         //download genomes by the accession
         //e.g. datasets download virus genome accession OY726946.1,OY299705.1
-        dbg!(&grouped_df["Accession_first"]);
         let accessions_opt: Vec<Option<&str>> =
-            grouped_df["Accession_first"].utf8()?.into_iter().collect();
+        final_grouped_df["Accession_first_first"].utf8()?.into_iter().collect();
         let accessions: Vec<&str> = accessions_opt.iter().map(|a| a.unwrap()).collect();
         // dbg!(&accessions);
         dbg!(&accessions.len());
@@ -245,47 +293,49 @@ impl Caller {
             .unwrap()
             .join("lineages/ncbi_dataset/data/genomic.fna");
 
-        let quality_lineages_path = self
-            .output
-            .as_ref()
-            .unwrap()
-            .join("lineages/ncbi_dataset/data/genomic_quality.fna");
+        // let quality_lineages_path = self
+        //     .output
+        //     .as_ref()
+        //     .unwrap()
+        //     .join("lineages/ncbi_dataset/data/genomic_quality.fna");
 
-        //create the new fasta
-        let file = fs::File::create(&quality_lineages_path).unwrap();
-        let handle = io::BufWriter::new(file);
-        let mut writer = FastaWriter::new(handle);
+        // //create the new fasta
+        // let file = fs::File::create(&quality_lineages_path).unwrap();
+        // let handle = io::BufWriter::new(file);
+        // let mut writer = FastaWriter::new(handle);
 
-        //find the records that are above the threshold and write them to fasta
-        let lineages_rdr = faidx::Reader::from_path(all_lineages_path).unwrap();
-        for idx in 0..lineages_rdr.n_seqs() {
-            //find the name, length and sequence of the fasta record
-            let l_name = lineages_rdr.seq_name(idx as i32)?;
-            let l_len = lineages_rdr.fetch_seq_len(&l_name);
-            let l_seq = lineages_rdr.fetch_seq_string(&l_name, 0, l_len as usize)?;
+        // //find the records that are above the threshold and write them to fasta
+        // let lineages_rdr = faidx::Reader::from_path(all_lineages_path).unwrap();
+        // for idx in 0..lineages_rdr.n_seqs() {
+        //     //find the name, length and sequence of the fasta record
+        //     let l_name = lineages_rdr.seq_name(idx as i32)?;
+        //     let l_len = lineages_rdr.fetch_seq_len(&l_name);
+        //     let l_seq = lineages_rdr.fetch_seq_string(&l_name, 0, l_len as usize)?;
 
-            //find the number of ambiguous bases in the record
-            let n_ambiguous = l_seq
-                .chars()
-                .filter(|x| !vec!["A", "G", "T", "C"].contains(&x.to_string().as_str()))
-                .count();
+        //     //find the number of ambiguous bases in the record
+        //     let n_ambiguous = l_seq
+        //         .chars()
+        //         .filter(|x| !vec!["A", "G", "T", "C"].contains(&x.to_string().as_str()))
+        //         .count();
 
-            //calculate the ratio of ambiguous bases in the fasta record
-            let ratio_of_ambiguous = n_ambiguous as f32 / l_len as f32;
+        //     //calculate the ratio of ambiguous bases in the fasta record
+        //     let ratio_of_ambiguous = n_ambiguous as f32 / l_len as f32;
 
-            //write the record to file if the ratio exceeds the defined threshold
-            let threshold_ambiguous: f32 = 0.05; //todo: must be configured later
+        //     //write the record to file if the ratio exceeds the defined threshold
+        //     let threshold_ambiguous: f32 = 0.05; //todo: must be configured later
 
-            if (ratio_of_ambiguous < threshold_ambiguous) && (l_len > 29000) {
-                //second check is necessary for double checking genome completeness
-                let record = Record::with_attrs(&l_name, Some(""), l_seq.as_bytes());
-                let write_result = writer.write_record(&record);
-            }
-        }
-        writer.flush()?;
+        //     if (ratio_of_ambiguous < threshold_ambiguous) && (l_len > 29000) {
+        //         //second check is necessary for double checking genome completeness
+        //         let record = Record::with_attrs(&l_name, Some(""), l_seq.as_bytes());
+        //         let write_result = writer.write_record(&record);
+        //     }
+        // }
+        // writer.flush()?;
 
         //then, here are the dirs for reference genome and all lineages
-        let lineages_path = quality_lineages_path.clone();
+        // let lineages_path = quality_lineages_path.clone();
+        let lineages_path = all_lineages_path.clone();
+
         let reference_genome_path = self
             .output
             .as_ref()
@@ -323,8 +373,11 @@ impl Caller {
         .unwrap();
 
         //replace accession ids with the corresponding lineage names
-        let genotype_lineages = accession_to_lineage(&genotype_df, &grouped_df)?;
-        let loci_lineages = accession_to_lineage(&loci_df, &grouped_df)?;
+        let grouped_df_with_other_info = final_grouped_df.inner_join(&final_sorted, ["Accession_first_first"],["Accession_first"])?;
+        dbg!(&grouped_df_with_other_info);
+
+        let genotype_lineages = accession_to_lineage(&genotype_df, &grouped_df_with_other_info)?;
+        let loci_lineages = accession_to_lineage(&loci_df, &grouped_df_with_other_info)?;
 
         //write to vcf
         self.write_to_vcf(&genotype_lineages, &loci_lineages)?;
@@ -464,7 +517,7 @@ fn accession_to_lineage(df: &DataFrame, accession_to_lineage_df: &DataFrame) -> 
         .utf8()
         .unwrap()
         .into_iter();
-    let mut iter_accession = accession_to_lineage_df["Accession_first"]
+    let mut iter_accession = accession_to_lineage_df["Accession_first_first"]
         .utf8()
         .unwrap()
         .into_iter();
