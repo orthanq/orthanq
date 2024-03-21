@@ -70,6 +70,7 @@ impl Caller {
 
         //comment out the next line for testing purposees (above process can take ~6 hours)
         // let virus_metadata_path = "/home/uzuner/Documents/backup_orthanq_metadata/metadata.tsv";
+        // let virus_metadata_path =  "/home/hamdiyeuzuner/Documents/test_orthanq/metadata.tsv";
 
         //retrieve accession ids from each lineage with the oldest submission and complete genomes.
         let virus_metadata_df = CsvReader::from_path(virus_metadata_path)?

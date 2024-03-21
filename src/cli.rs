@@ -133,10 +133,6 @@ pub enum CandidatesKind {
             help = "allele frequencies for filterin purposes"
         )]
         allele_freq: PathBuf,
-        #[structopt(long = "wes", help = "Specify the sample type.")]
-        wes: bool,
-        #[structopt(long = "wgs", help = "Specify the sample type (default).")]
-        wgs: bool,
         #[structopt(
             long,
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
@@ -281,8 +277,6 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 genome,
                 xml,
                 allele_freq,
-                wes,
-                wgs,
                 output,
                 threads,
             } => {
@@ -291,8 +285,6 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .genome(genome)
                     .xml(xml)
                     .allele_freq(allele_freq)
-                    .wes(wes)
-                    .wgs(wgs)
                     .output(output)
                     .threads(threads)
                     .build()
