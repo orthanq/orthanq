@@ -173,6 +173,21 @@ impl Caller {
     }
 
     fn write_loci_to_vcf(&self, variant_table: &DataFrame, loci_table: &DataFrame) -> Result<()> {
+        //check which format the reference has
+        let mut reference_format = "ensembl";
+        let mut variant_iter = variant_table["Index"].utf8().unwrap().into_iter();
+        let mut id_iter = variant_table["ID"].i64().unwrap().into_iter();
+        let splitted = variant_iter
+            .nth(0)
+            .unwrap()
+            .unwrap()
+            .split(',')
+            .collect::<Vec<&str>>();
+        let chrom = splitted[0];
+        if chrom.starts_with("chr") {
+            reference_format == "ucsc";
+        }
+
         let names = variant_table.get_column_names().to_vec();
 
         // for locus in vec![
@@ -195,15 +210,26 @@ impl Caller {
 
             //Create VCF header
             let mut header = Header::new();
-            //push contig names to the header.
-            header.push_record(br#"##contig=<ID=1>"#);
-            header.push_record(br#"##contig=<ID=6>"#);
-            header.push_record(br#"##contig=<ID=7>"#);
-            header.push_record(br#"##contig=<ID=8>"#);
-            header.push_record(br#"##contig=<ID=9>"#);
-            header.push_record(br#"##contig=<ID=11>"#);
-            header.push_record(br#"##contig=<ID=16>"#);
-            header.push_record(br#"##contig=<ID=X>"#);
+            //push contig names to the header depending on the reference format
+            if reference_format == "ensembl" {
+                header.push_record(br#"##contig=<ID=1>"#);
+                header.push_record(br#"##contig=<ID=6>"#);
+                header.push_record(br#"##contig=<ID=7>"#);
+                header.push_record(br#"##contig=<ID=8>"#);
+                header.push_record(br#"##contig=<ID=9>"#);
+                header.push_record(br#"##contig=<ID=11>"#);
+                header.push_record(br#"##contig=<ID=16>"#);
+                header.push_record(br#"##contig=<ID=X>"#);
+            } else {
+                header.push_record(br#"##contig=<ID=chr1>"#);
+                header.push_record(br#"##contig=<ID=chr6>"#);
+                header.push_record(br#"##contig=<ID=chr7>"#);
+                header.push_record(br#"##contig=<ID=chr8>"#);
+                header.push_record(br#"##contig=<ID=chr9>"#);
+                header.push_record(br#"##contig=<ID=chr11>"#);
+                header.push_record(br#"##contig=<ID=chr16>"#);
+                header.push_record(br#"##contig=<ID=chrX>"#);
+            }
 
             //push field names to the header.
             let header_gt_line = r#"##FORMAT=<ID=GT,Number=1,Type=String,Description="Variant is present in the haplotype (1) or not (0).">"#;
@@ -469,12 +495,12 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
         .collect::<HashMap<String, String>>();
     //include only alleles that have >0.01 AF in at least one population
     let mut unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
-    dbg!(&unconfirmed_alleles.len());
-    dbg!(&confirmed_alleles.len());
+    // dbg!(&unconfirmed_alleles.len());
+    // dbg!(&confirmed_alleles.len());
     let mut confirmed_alleles_clone = confirmed_alleles.clone();
     let mut allele_freq_rdr = CsvReader::from_path(af_path)?;
     let mut to_be_included = Vec::new();
-    dbg!(confirmed_alleles_clone.len());
+    // dbg!(confirmed_alleles_clone.len());
     confirmed_alleles_clone.retain(|&_, y| {
         y.starts_with('A')
             || y.starts_with('B')
@@ -482,7 +508,7 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
             || y.starts_with("DQA1")
             || y.starts_with("DQB1")
     });
-    dbg!(confirmed_alleles_clone.len());
+    // dbg!(confirmed_alleles_clone.len());
     // dbg!(&confirmed_alleles_clone);
     allele_freq_rdr.deserialize().for_each(|result| {
         let record: Record = result.unwrap();
@@ -513,18 +539,18 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
         });
     });
     // dbg!(&to_be_included);
-    dbg!(&to_be_included.len());
+    // dbg!(&to_be_included.len());
     let below_criterium: Vec<String> = confirmed_alleles_clone
         .iter()
         .filter(|(id, _)| !to_be_included.contains(id))
         .map(|(id, _)| id.clone())
         .collect();
-    dbg!(&below_criterium.len());
+    // dbg!(&below_criterium.len());
     //todo: confirmed_alleles
     let confirmed_alleles = confirmed_alleles.keys().cloned().collect::<Vec<String>>();
     unconfirmed_alleles.extend(below_criterium);
-    dbg!(&unconfirmed_alleles.len());
-    dbg!(&confirmed_alleles.len());
+    // dbg!(&unconfirmed_alleles.len());
+    // dbg!(&confirmed_alleles.len());
     Ok((confirmed_alleles, unconfirmed_alleles))
 }
 
@@ -564,7 +590,7 @@ pub fn alignment(
     } else {
         genome_input = genome.clone();
     }
-    dbg!(&genome_input);
+    // dbg!(&genome_input);
 
     //then, align alleles/lineages to genome and write to temp
     let aligned_file = temp_dir.path().join("alignment.sam");
@@ -735,7 +761,7 @@ pub fn find_variants_from_cigar(
             j += 1;
         }
     }
-    dbg!(&candidate_variants.len());
+    // dbg!(&candidate_variants.len());
     // dbg!(&candidate_variants);
     // //add MNV encoding: encode all variants, closer than x bases to each other (x=2,3 etc.)
     // // let candidate_variants_clone = candidate_variants.clone();
