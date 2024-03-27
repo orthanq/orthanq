@@ -185,7 +185,7 @@ impl Caller {
             .collect::<Vec<&str>>();
         let chrom = splitted[0];
         if chrom.starts_with("chr") {
-            reference_format == "ucsc";
+            reference_format = "ucsc";
         }
 
         let names = variant_table.get_column_names().to_vec();
