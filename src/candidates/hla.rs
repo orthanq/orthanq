@@ -173,21 +173,6 @@ impl Caller {
     }
 
     fn write_loci_to_vcf(&self, variant_table: &DataFrame, loci_table: &DataFrame) -> Result<()> {
-        //check which format the reference has
-        let mut reference_format = "ensembl";
-        let mut variant_iter = variant_table["Index"].utf8().unwrap().into_iter();
-        let mut id_iter = variant_table["ID"].i64().unwrap().into_iter();
-        let splitted = variant_iter
-            .nth(0)
-            .unwrap()
-            .unwrap()
-            .split(',')
-            .collect::<Vec<&str>>();
-        let chrom = splitted[0];
-        if chrom.starts_with("chr") {
-            reference_format = "ucsc";
-        }
-
         let names = variant_table.get_column_names().to_vec();
 
         // for locus in vec![
@@ -211,25 +196,14 @@ impl Caller {
             //Create VCF header
             let mut header = Header::new();
             //push contig names to the header depending on the reference format
-            if reference_format == "ensembl" {
-                header.push_record(br#"##contig=<ID=1>"#);
-                header.push_record(br#"##contig=<ID=6>"#);
-                header.push_record(br#"##contig=<ID=7>"#);
-                header.push_record(br#"##contig=<ID=8>"#);
-                header.push_record(br#"##contig=<ID=9>"#);
-                header.push_record(br#"##contig=<ID=11>"#);
-                header.push_record(br#"##contig=<ID=16>"#);
-                header.push_record(br#"##contig=<ID=X>"#);
-            } else {
-                header.push_record(br#"##contig=<ID=chr1>"#);
-                header.push_record(br#"##contig=<ID=chr6>"#);
-                header.push_record(br#"##contig=<ID=chr7>"#);
-                header.push_record(br#"##contig=<ID=chr8>"#);
-                header.push_record(br#"##contig=<ID=chr9>"#);
-                header.push_record(br#"##contig=<ID=chr11>"#);
-                header.push_record(br#"##contig=<ID=chr16>"#);
-                header.push_record(br#"##contig=<ID=chrX>"#);
-            }
+            variant_table["Index"]
+                .utf8()
+                .unwrap()
+                .into_iter()
+                .for_each(|record| {
+                    let index_splitted = record.unwrap().split(',').collect::<Vec<&str>>();
+                    header.push_record(format!("##contig=<ID={}>", index_splitted[0]).as_bytes());
+                });
 
             //push field names to the header.
             let header_gt_line = r#"##FORMAT=<ID=GT,Number=1,Type=String,Description="Variant is present in the haplotype (1) or not (0).">"#;
