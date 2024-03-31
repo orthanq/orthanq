@@ -7,13 +7,17 @@ use polars::prelude::*;
 
 use crate::candidates::hla;
 use bio::io::fasta::{Record, Writer as FastaWriter};
+use reqwest;
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 use rust_htslib::faidx;
+use seq_io::fasta::{Reader, Record as OtherRecord};
 use std::convert::TryInto;
+use std::error::Error;
 use std::fs;
 use std::io;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::process::ExitStatus;
 use std::process::{Command, Stdio};
 
 #[allow(dead_code)]
@@ -24,246 +28,187 @@ pub struct Caller {
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
-        //prepare genome and alleles for the virus (currently, only sars-cov2) (ncbi-datasets-cli=16.4.4 package should be in the requiremenbts)
+        //prepare genome and alleles for the virus (currently, only sars-cov2)
+
+        //define cargo dir and state the location of cladetolineages file.
+        let cargo_dir = env!("CARGO_MANIFEST_DIR");
+        let file_path_clade_to_lineages = format!(
+            "{}/resources/clade_to_lineages/cladeToLineages.tsv",
+            cargo_dir
+        );
+        dbg!(&file_path_clade_to_lineages);
+
         //first, create the output dir for database setup
         fs::create_dir_all(self.output.as_ref().unwrap())?;
 
-        //output dir for metadata
-        let virus_metadata_path = self.output.as_ref().unwrap().join("metadata.tsv");
+        //access sarscov2 data package via REST API of NCBI
+        let path_to_ncbi_dataset = self.output.as_ref().unwrap().join("ncbi_dataset.zip");
 
-        //download and prepare required metadata as tsv
-        //datasets summary virus genome taxon SARS-CoV-2 --as-json-lines | dataformat tsv virus-genome --fields accession,completeness,release-date,virus-pangolin > sarscov2.tsv
+        //the sarscov2 genome data package is downloaded and written to file.
 
-        //first, download metada
-        let download_metadata = {
-            Command::new("datasets")
-                .arg("summary")
-                .arg("virus")
-                .arg("genome")
-                .arg("taxon")
-                .arg("SARS-CoV-2")
-                .arg("--as-json-lines")
-                .stdout(Stdio::piped())
-                .spawn()
-                .expect("failed to execute the vg giraffe process")
-        };
-        println!("virus metada download is complete.");
+        // // --START-- ALTERNATIVE way to download data package (very very slow, might take days): download accessions separately and combine ( bc. downloading the whole sarscov2 data package at once might run into timeout errors on the server side.)
 
-        //then, pipe the downloaded jsonl to tsv with dataformat
-        let process_into_tsv = Command::new("dataformat")
-            .arg("tsv")
-            .arg("virus-genome")
-            .stdin(download_metadata.stdout.unwrap())
-            .arg("--fields")
-            .arg("accession,completeness,release-date,virus-pangolin")
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
+        // // //output dir for metadata
+        // // let virus_metadata_path = self.output.as_ref().unwrap().join("metadata.tsv");
 
-        //write the prepared tsv to file
-        let output = process_into_tsv
-            .wait_with_output()
-            .expect("failed to wait on child");
-        let mut f = std::fs::File::create(virus_metadata_path.clone())?;
-        f.write_all(&output.stdout)?;
-        println!("virus metadata preparation is complete.");
+        // // let download_metadata = {
+        // //     Command::new("datasets")
+        // //         .arg("summary")
+        // //         .arg("virus")
+        // //         .arg("genome")
+        // //         .arg("taxon")
+        // //         .arg("SARS-CoV-2")
+        // //         .arg("--as-json-lines")
+        // //         .stdout(Stdio::piped())
+        // //         .spawn()
+        // //         .expect("failed to execute the vg giraffe process")
+        // // };
+        // // println!("virus metada download is complete.");
 
-        //comment out the next line for testing purposees (above process can take ~6 hours)
-        // let virus_metadata_path = "/home/uzuner/Documents/backup_orthanq_metadata/metadata.tsv";
-        // let virus_metadata_path =  "/home/hamdiyeuzuner/Documents/test_orthanq/metadata.tsv";
+        // // //then, pipe the downloaded jsonl to tsv with dataformat
+        // // let process_into_tsv = Command::new("dataformat")
+        // //     .arg("tsv")
+        // //     .arg("virus-genome")
+        // //     .stdin(download_metadata.stdout.unwrap())
+        // //     .arg("--fields")
+        // //     .arg("accession")
+        // //     .stdout(Stdio::piped())
+        // //     .spawn()
+        // //     .unwrap();
 
-        //retrieve accession ids from each lineage with the oldest submission and complete genomes.
-        let virus_metadata_df = CsvReader::from_path(virus_metadata_path)?
-            .with_delimiter(b'\t')
-            .has_header(true)
-            .finish()?;
-        dbg!(&virus_metadata_df);
+        // // //write the prepared tsv to file
+        // // let output = process_into_tsv
+        // //     .wait_with_output()
+        // //     .expect("failed to wait on child");
+        // // let mut f = std::fs::File::create(virus_metadata_path.clone())?;
+        // // f.write_all(&output.stdout)?;
+        // // println!("virus metadata preparation is complete.");
 
-        //filter for complete genomes and non-null pangolin classification
+        // // //comment out the next line for testing purposees (above process can take ~6 hours)
+        // // let virus_metadata_path = "/home/hamdiyeuzuner/Documents/test_orthanq/metadata.tsv";
 
-        //then, only include complete genomes
-        let filter_complete = virus_metadata_df["Completeness"]
-            .utf8()
-            .unwrap()
-            .into_iter()
-            .map(|x| {
-                if x.unwrap() == "COMPLETE" {
-                    true
-                } else {
-                    false
-                }
-            })
-            .collect();
-        let filtered_df_complete = virus_metadata_df.filter(&filter_complete).unwrap();
-        dbg!(&filtered_df_complete);
+        // // //grab accession ids and download them one by one
 
-        // create a mask to filter out null values
-        let mask = filtered_df_complete
-            .column("Virus Pangolin Classification")?
-            .is_not_null();
+        // // let accessions_df = CsvReader::from_path(virus_metadata_path)?
+        // //     .with_delimiter(b'\t')
+        // //     .has_header(true)
+        // //     .finish()?;
+        // // dbg!(&accessions_df);
+        // // let accessions_vec: Vec<&str> = accessions_df[0]
+        // //     .utf8()
+        // //     .unwrap()
+        // //     .into_iter()
+        // //     .map(|a|a.unwrap())
+        // //     .collect();
+        // // dbg!(&accessions_df);
 
-        // apply the filter on a DataFrame
-        let filtered_df_annotated = filtered_df_complete.filter(&mask)?;
-        dbg!(&filtered_df_annotated);
+        // // let len_accessions = accessions_vec.len();
+        // // dbg!(&len_accessions);
+        // // println!("genomes to download: {}", len_accessions.to_string());
 
-        //group by pangolin lineage and sort by release date
+        // // //monitor the progress of download with the counter
+        // // let mut counter_progress = 0;
 
-        // ordering of the columns
-        let descending = vec![false, false];
-        // columns to sort by
-        let by = &["Virus Pangolin Classification", "Release date"];
-        // do the sort operation
-        let sorted = filtered_df_annotated.sort(by, descending)?;
+        // // for accession in accessions_vec.iter(){
+        // //     dbg!(&accession);
+        // //     //create the folder to collect all genomes
+        // //     let genomes_dir = self.output.as_ref().unwrap().join("genomes");
+        // //     fs::create_dir_all(genomes_dir)?;
 
-        dbg!(&sorted);
+        // //     let path_to_genome = self.output.as_ref().unwrap().join(format!("genomes/{}.zip", accession.to_string()));
 
-        //group by pangolin lineage and get the first entry (which is the oldest)
-        let grouped_df = sorted
-            .groupby(["Virus Pangolin Classification"])?
-            .select(["Accession"])
-            .first()?;
-        dbg!(&grouped_df);
+        // //     let download_genomes_status = download_accession(accession.to_string(), &path_to_genome).unwrap();
+        // //     // println!("status: {}", &download_genomes_status); //show status
 
-        //download genomes by the accession
-        //e.g. datasets download virus genome accession OY726946.1,OY299705.1
-        dbg!(&grouped_df["Accession_first"]);
-        let accessions_opt: Vec<Option<&str>> =
-            grouped_df["Accession_first"].utf8()?.into_iter().collect();
-        let accessions: Vec<&str> = accessions_opt.iter().map(|a| a.unwrap()).collect();
-        // dbg!(&accessions);
-        dbg!(&accessions.len());
+        // //     //if the download has success, print the progress info, if not try once again and if the process is still not successful error, then panic
+        // //     if download_genomes_status.success() {
+        // //         counter_progress += 1;
+        // //         println!("{}/{} genome downloaded", counter_progress.to_string(),len_accessions.to_string())
+        // //     } else {
+        // //         println!("genome could not be downloaded, retrying");
+        // //         let download_genomes_status = download_accession(accession.to_string(), &path_to_genome).unwrap();
+        // //         println!("status: {}", &download_genomes_status); //show status
+        // //         if !download_genomes_status.success() {
+        // //             panic!("genome could not be downloaded");
+        // //         }
+        // //     }
+        // // }
 
-        //write accessions to file
-        let accessions_input = self.output.as_ref().unwrap().join("accessions.csv");
-        let mut wtr = csv::Writer::from_path(&accessions_input)?;
-        for accession in accessions.iter() {
-            wtr.write_record(vec![accession])?;
+        // // println!("virus genome data download is complete.");
+
+        // // //download each genome by accession
+        // // let download_genomes = {
+        // //     Command::new("datasets")
+        // //         .arg("download")
+        // //         .arg("virus")
+        // //         .arg("genome")
+        // //         .arg("accession")
+        // //         .arg("--inputfile")
+        // //         .arg(virus_metadata_path)
+        // //         .status()
+        // //         .expect("failed to execute the download process")
+        // // };
+        // // println!("virus genome data download is complete.");
+        // //todo: combine all genomes to have the sars-cov-2 data package in the end.
+        // // --END-- ALTERNATIVE way
+
+        //Download the whole genome package at once (occasionally might run into timeout errors) (much faster than the alternative approach, not more half an hour usually)
+
+        if !path_to_ncbi_dataset.exists() {
+            let mut child = {
+                Command::new("datasets")
+                    .arg("download")
+                    .arg("virus")
+                    .arg("genome")
+                    .arg("taxon")
+                    .arg("SARS-CoV-2")
+                    .arg("--complete-only")
+                    .arg("--filename")
+                    .arg(&path_to_ncbi_dataset)
+                    .status()
+                    .expect("failed to download sequences")
+            };
+            println!("SARS-CoV-2 data package was downloaded.")
         }
-        wtr.flush()?; //make sure everything is sucsessfully written to the file
-
-        //download genomes given by accession, this will create a file called ncbi_datasets.zip
-        let data_package_lineages = self
-            .output
-            .as_ref()
-            .unwrap()
-            .join("ncbi_datasets_lineages.zip");
-
-        let download_genomes = {
-            Command::new("datasets")
-                .arg("download")
-                .arg("virus")
-                .arg("genome")
-                .arg("accession")
-                .arg("--inputfile")
-                .arg(accessions_input)
-                .arg("--filename")
-                .arg(&data_package_lineages)
-                .arg("--debug")
-                .status()
-                .expect("failed to download sequences")
-        };
-        println!(
-            "The download of sars-cov-2 genomes with given accession ids was exited with: {}",
-            download_genomes
-        );
 
         //unzip the downloaded package
         let unzip_package = {
             Command::new("unzip")
-                .arg(data_package_lineages)
+                .arg(path_to_ncbi_dataset)
                 .arg("-d")
-                .arg(self.output.as_ref().unwrap().join("lineages"))
+                .arg(self.output.as_ref().unwrap().join("ncbi_genomes_all"))
                 .status()
                 .expect("failed to unzip ncbi data package")
         };
         println!("All genomes data package was unzipped: {}", unzip_package);
 
-        //download the oldest submitted sars-cov-2 genome to use as reference
-        // first, sort by release
-        let sorted = filtered_df_complete.sort(&["Release date"], false)?;
-        dbg!(&sorted);
-
-        //write to csv
-        // let mut output_file: File = File::create("out.csv").unwrap();
-        // CsvWriter::new(&mut output_file)
-        //     .has_header(true)
-        //     .finish(&mut sorted)
-        //     .unwrap();
-
-        //download the oldest submitted genome to be used as reference genome
-        // let oldest_accession = sorted.select(["Accession"]).iter();
-        let accessions = sorted.column("Accession")?.utf8()?;
-        let accessions_to_vec: Vec<Option<&str>> = accessions.into_iter().collect();
-        let oldest_accession = accessions_to_vec[0];
-
-        //download the genome
-        let data_package_reference = self
-            .output
-            .as_ref()
-            .unwrap()
-            .join("ncbi_datasets_reference_genome.zip");
-
-        let download_reference_genome = {
-            Command::new("datasets")
-                .arg("download")
-                .arg("virus")
-                .arg("genome")
-                .arg("accession")
-                .arg(oldest_accession.unwrap())
-                .arg("--filename")
-                .arg(&data_package_reference)
-                .arg("--debug")
-                .status()
-                .expect("failed to download sequences")
-        };
-        println!(
-            "The download of reference genome for sars-cov-2 was exited with: {}",
-            download_reference_genome
-        );
-
-        //unzip the downloaded package
-        let unzip_package = {
-            Command::new("unzip")
-                .arg(data_package_reference)
-                .arg("-d")
-                .arg(self.output.as_ref().unwrap().join("reference_genome"))
-                .status()
-                .expect("failed to unzip ncbi data package for reference genome")
-        };
-        println!(
-            "The reference genome data package was unzipped: {}",
-            unzip_package
-        );
-
         //select only fasta records containing less than a certain threshold for ambiguous bases, threshold = 0.05
-        //then write the filtered records to fasta
         //for that, count the number of ambiguous bases i.e. N, R, etc. and divide them by the length of the fasta
-        //also, for a second check of genome completeness, some viral lineages might still be present in the database with genome length
-        //smaller than 29k, check LR877184.1, only include genome lenghts with greater than 29k ref:  (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7161481/)
-        let all_lineages_path = self
+        //also, for a check of genome completeness, check LR877184.1, only include genome lenghts with greater than 29k ref:  (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7161481/)
+
+        //location of fasta belonging to all genomes.
+        let all_genomes = self
             .output
             .as_ref()
             .unwrap()
-            .join("lineages/ncbi_dataset/data/genomic.fna");
+            .join("ncbi_genomes_all/ncbi_dataset/data/genomic.fna");
 
-        let quality_lineages_path = self
-            .output
-            .as_ref()
-            .unwrap()
-            .join("lineages/ncbi_dataset/data/genomic_quality.fna");
+        //initialize the vector to collect quality checked accession ids
+        let mut quality_accessions: Vec<String> = Vec::new();
 
-        //create the new fasta
-        let file = fs::File::create(&quality_lineages_path).unwrap();
-        let handle = io::BufWriter::new(file);
-        let mut writer = FastaWriter::new(handle);
+        //find the records that are above the threshold and collect accessions to vec.
+        //iterative operation over the reference genome is done with seq_io crate, instead of rust-htslib, because iterating over
+        //reference genome that is ~80GB leads to a memory overflow and system crash.
 
-        //find the records that are above the threshold and write them to fasta
-        let lineages_rdr = faidx::Reader::from_path(all_lineages_path).unwrap();
-        for idx in 0..lineages_rdr.n_seqs() {
+        let mut reader = seq_io::fasta::Reader::from_path(&all_genomes).unwrap();
+        println!("below process takes around half an hour.");
+        while let Some(record) = reader.next() {
+            let record = record.expect("Error reading record");
+
             //find the name, length and sequence of the fasta record
-            let l_name = lineages_rdr.seq_name(idx as i32)?;
-            let l_len = lineages_rdr.fetch_seq_len(&l_name);
-            let l_seq = lineages_rdr.fetch_seq_string(&l_name, 0, l_len as usize)?;
+            let l_name = record.id()?;
+            let l_len = record.seq_lines().fold(0, |l, seq| l + seq.len());
+            let l_seq = String::from_utf8(record.seq().to_vec()).unwrap();
 
             //find the number of ambiguous bases in the record
             let n_ambiguous = l_seq
@@ -279,19 +224,187 @@ impl Caller {
 
             if (ratio_of_ambiguous < threshold_ambiguous) && (l_len > 29000) {
                 //second check is necessary for double checking genome completeness
-                let record = Record::with_attrs(&l_name, Some(""), l_seq.as_bytes());
-                let write_result = writer.write_record(&record);
+                quality_accessions.push(l_name.to_string());
             }
         }
-        writer.flush()?;
+        println!("above process done.");
 
-        //then, here are the dirs for reference genome and all lineages
-        let lineages_path = quality_lineages_path.clone();
-        let reference_genome_path = self
-            .output
-            .as_ref()
+        //write accessions to file
+        let accessions_input = self.output.as_ref().unwrap().join("accessions.csv");
+        let mut wtr = csv::Writer::from_path(&accessions_input)?;
+        for accession in quality_accessions.iter() {
+            wtr.write_record(vec![accession])?;
+        }
+        wtr.flush()?; //make sure everything is sucsessfully written to the file
+
+        // //uncomment the next line, it's only for testing
+        // let accessions_input = self.output.as_ref().unwrap().join("accessions.csv");
+
+        println!("virus metada download started.");
+        let download_metadata = {
+            Command::new("datasets")
+                .arg("summary")
+                .arg("virus")
+                .arg("genome")
+                .arg("accession")
+                .arg("--inputfile")
+                .arg(accessions_input)
+                .arg("--as-json-lines")
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("failed to execute the vg giraffe process")
+        };
+        println!("virus metada download is complete.");
+
+        //then, pipe the downloaded jsonl to tsv with dataformat
+        println!("virus metadata preparation started.");
+
+        let process_into_tsv = Command::new("dataformat")
+            .arg("tsv")
+            .arg("virus-genome")
+            .stdin(download_metadata.stdout.unwrap())
+            .arg("--fields")
+            .arg("accession,completeness,release-date,virus-pangolin")
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        //write the prepared tsv to file
+
+        //output dir for metadata
+        let virus_metadata_path = self.output.as_ref().unwrap().join("metadata.tsv");
+
+        let output = process_into_tsv
+            .wait_with_output()
+            .expect("failed to wait on child");
+        let mut f = std::fs::File::create(virus_metadata_path.clone())?;
+        f.write_all(&output.stdout)?;
+        println!("virus metadata preparation is complete.");
+
+        //retrieve accession ids from each clade with the oldest submission.
+        let virus_metadata_df = CsvReader::from_path(virus_metadata_path)?
+            .with_delimiter(b'\t')
+            .has_header(true)
+            .finish()?;
+        dbg!(&virus_metadata_df.shape());
+
+        //merge with cladeToLineages.tsv to group for nextstrain clades
+        //read lineage to clade resource
+        let lin_to_clade = CsvReader::from_path(&file_path_clade_to_lineages)?
+            .with_delimiter(b'\t')
+            .has_header(true)
+            .finish()?;
+        dbg!(&lin_to_clade.shape());
+
+        //merge virus_metadata_df with lin_to_clade
+        let virus_metadata_wnextstrain = virus_metadata_df.inner_join(
+            &lin_to_clade,
+            ["Virus Pangolin Classification"],
+            ["lineage"],
+        )?;
+        dbg!(&virus_metadata_wnextstrain.shape());
+
+        //then, only include complete genomes
+        let filter_complete = virus_metadata_wnextstrain["Completeness"]
+            .utf8()
             .unwrap()
-            .join("reference_genome/ncbi_dataset/data/genomic.fna");
+            .into_iter()
+            .map(|x| {
+                if x.unwrap() == "COMPLETE" {
+                    true
+                } else {
+                    false
+                }
+            })
+            .collect();
+        let filtered_df_complete = virus_metadata_wnextstrain.filter(&filter_complete).unwrap();
+        dbg!(&filtered_df_complete.shape());
+
+        //group by clade and sort by release date
+
+        // ordering of the columns
+        let descending = vec![false, false];
+        // columns to sort by
+        let by = &["clade", "Release date"];
+        // do the sort operation
+        let sorted = filtered_df_complete.sort(by, descending)?;
+        dbg!(&sorted.shape());
+
+        //group by clade and get the first entry (which is the oldest)
+        let grouped_df = sorted.groupby(["clade"])?.select(["Accession"]).first()?;
+        dbg!(&grouped_df.shape());
+
+        //collect first accessions to a vector
+        let selected_accessions_opt: Vec<Option<&str>> =
+            grouped_df["Accession_first"].utf8()?.into_iter().collect();
+        let selected_accessions: Vec<&str> =
+            selected_accessions_opt.iter().map(|a| a.unwrap()).collect();
+        dbg!(&selected_accessions.len());
+
+        //find the oldest submitted sars-cov-2 genome
+        let sorted_df_by_release = filtered_df_complete.sort(&["Release date"], false)?;
+        let oldest_genome_accession: String = sorted_df_by_release["Accession"]
+            .utf8()?
+            .into_iter()
+            .collect::<Vec<_>>()
+            .iter()
+            .map(|a| a.unwrap().to_string())
+            .collect::<Vec<_>>()[0]
+            .to_string();
+
+        //create file & writer struct to store the reference genome
+        let reference_genome_path = self.output.as_ref().unwrap().join("reference_genome.fna");
+        let file_ref = fs::File::create(&reference_genome_path).unwrap();
+        let handle_ref = io::BufWriter::new(file_ref);
+        let mut writer_ref = FastaWriter::new(handle_ref);
+
+        //write accessions to file
+        let quality_accessions_csv = self.output.as_ref().unwrap().join("quality_accessions.csv");
+        let mut quality_accessions_wtr = csv::Writer::from_path(&quality_accessions_csv)?;
+
+        //iterate over the reference genome to find the accessions with the quality lineages &
+        //write the reference genome to file
+        while let Some(record) = reader.next() {
+            let record = record.expect("Error reading record");
+
+            //find the  name, length and sequence of the fasta record
+            let l_name = record.id()?;
+            let l_len = record.seq_lines().fold(0, |l, seq| l + seq.len());
+            let l_seq = record.seq();
+
+            if selected_accessions.contains(&l_name) {
+                quality_accessions_wtr.write_record(vec![l_name.clone()])?;
+            }
+
+            //check for the oldest submitted genome to use as reference
+            if l_name.to_string() == oldest_genome_accession {
+                let record = Record::with_attrs(&l_name, Some(""), l_seq);
+                writer_ref.write_record(&record)?;
+            }
+        }
+
+        println!("quality lineages & reference genome written to file.");
+
+        writer_ref.flush()?;
+        quality_accessions_wtr.flush()?; //make sure the file is closed (might occassionally run into issues with file writing if this is not done)
+
+        //then take subset of the main fasta with seqtk (fast)
+        let quality_lineages_path = self.output.as_ref().unwrap().join("quality_accessions.fna");
+
+        println!("subsetting of fasta with quality lineages started");
+        let seqtk_subset = {
+            Command::new("seqtk")
+                .arg("subseq")
+                .arg(&all_genomes)
+                .arg(quality_accessions_csv)
+                .output()
+                .expect("failed to take subset of FASTA")
+        };
+        println!("subsetting of fasta done.");
+
+        let stdout = String::from_utf8(seqtk_subset.stdout).unwrap();
+        fs::write(&quality_lineages_path, stdout).expect("Unable to write subsetted fasta to file");
+        println!("subsetted fasta written to file. ");
 
         //index reference genome
         let faidx = {
@@ -308,9 +421,13 @@ impl Caller {
 
         //align and sort
 
+        //following two lines must be commented out, they're only for testing.
+        // let quality_lineages_path = self.output.as_ref().unwrap().join("quality_accessions.fna");
+        // let reference_genome_path = self.output.as_ref().unwrap().join("reference_genome.fna");
+
         hla::alignment(
             &reference_genome_path,
-            &lineages_path,
+            &quality_lineages_path,
             &self.threads,
             false,
             self.output.as_ref().unwrap(),
@@ -324,8 +441,14 @@ impl Caller {
         .unwrap();
 
         //replace accession ids with the corresponding lineage names
-        let genotype_lineages = accession_to_lineage(&genotype_df, &grouped_df)?;
-        let loci_lineages = accession_to_lineage(&loci_df, &grouped_df)?;
+        //the performance of the following function usage can be improved for performance reasons (the whole virus_metadata_df might not have to be iterated over.)
+        let genotype_lineages = accession_to_lineage(
+            &genotype_df,
+            &virus_metadata_df,
+            &file_path_clade_to_lineages,
+        )?;
+        let loci_lineages =
+            accession_to_lineage(&loci_df, &virus_metadata_df, &file_path_clade_to_lineages)?;
 
         //write to vcf
         self.write_to_vcf(&genotype_lineages, &loci_lineages)?;
@@ -333,6 +456,32 @@ impl Caller {
         Ok(())
     }
 
+    #[tokio::main]
+    async fn get_data_ncbi(path_to_ncbi_dataset: &PathBuf) -> Result<()> {
+        //try the REST API of NCBI
+        // chaining .await will yield our query result
+        let url = format!(
+            "https://api.ncbi.nlm.nih.gov/datasets/v2alpha/virus/taxon/2697049/genome/download?refseq_only=false&annotated_only=false&complete_only=true&include_sequence=GENOME&pangolin_classification=XBB.1.5.109",
+        );
+        //first access this: NC_045512.2
+        // let url = format!(
+        //     "https://api.ncbi.nlm.nih.gov/datasets/v2alpha/virus/accession/NC_045512.2/genome/download?refseq_only=true&annotated_only=true&host=human&complete_only=true&include_sequence=GENOME&include_sequence=CDS&include_sequence=PROTEIN",
+        // );
+        let client = reqwest::Client::new();
+        let response = client
+            .get(url)
+            // confirm the request using send()
+            .send()
+            .await
+            // the rest is the same!
+            .unwrap()
+            .bytes()
+            .await;
+        // println!("{:?}", response);
+        let mut f = std::fs::File::create(path_to_ncbi_dataset)?;
+        f.write_all(&response?)?;
+        Ok(())
+    }
     fn write_to_vcf(&self, variant_table: &DataFrame, loci_table: &DataFrame) -> Result<()> {
         // dbg!(&variant_table);
         //Create VCF header
@@ -441,21 +590,20 @@ impl Caller {
 }
 
 //accession_to_lineage simply converts accession ids that represent each lineage to lineage names as well as nextstrain clade
-fn accession_to_lineage(df: &DataFrame, accession_to_lineage_df: &DataFrame) -> Result<DataFrame> {
-    dbg!(&df);
-    dbg!(&accession_to_lineage_df);
+fn accession_to_lineage(
+    df: &DataFrame,
+    accession_to_lineage_df: &DataFrame,
+    file_path_clade_to_lineages: &String,
+) -> Result<DataFrame> {
+    dbg!(&df.shape());
+    dbg!(&accession_to_lineage_df.shape());
 
     //read lineage to clade resource
-    let cargo_dir = env!("CARGO_MANIFEST_DIR");
-    let file_path = format!(
-        "{}/resources/clade_to_lineages/cladeToLineages.tsv",
-        cargo_dir
-    );
-    let lin_to_clade = CsvReader::from_path(&file_path)?
+    let lin_to_clade = CsvReader::from_path(file_path_clade_to_lineages)?
         .with_delimiter(b'\t')
         .has_header(true)
         .finish()?;
-    dbg!(&lin_to_clade);
+    dbg!(&lin_to_clade.shape());
 
     //clone the input df
     let mut renamed_df = df.clone();
@@ -465,29 +613,46 @@ fn accession_to_lineage(df: &DataFrame, accession_to_lineage_df: &DataFrame) -> 
         .utf8()
         .unwrap()
         .into_iter();
-    let mut iter_accession = accession_to_lineage_df["Accession_first"]
+    let mut iter_accession = accession_to_lineage_df["Accession"]
         .utf8()
         .unwrap()
         .into_iter();
     let mut lineages_in_resource = lin_to_clade["lineage"].utf8().unwrap();
     let mut clades_in_resource = lin_to_clade["clade"].utf8().unwrap();
 
-    //rename accessions to lineages and if present, clades
+    //rename accessions to clades, using pango lineages.
     iter_pangolin
         .into_iter()
         .zip(iter_accession)
         .for_each(|(png, acc)| {
-            let mut rename_str = format!("no clade ({})", png.unwrap());
+            let mut rename_str = format!("no clade");
             lineages_in_resource
                 .into_iter()
                 .zip(clades_in_resource.into_iter())
                 .for_each(|(lng, cld)| {
                     if png == lng {
-                        rename_str = format!("{} ({})", cld.unwrap(), lng.unwrap());
+                        rename_str = format!("{}", cld.unwrap());
                     }
                 });
             renamed_df.rename(acc.unwrap(), &rename_str);
         });
-    dbg!(&renamed_df);
+    dbg!(&renamed_df.shape());
     Ok(renamed_df)
+}
+
+fn download_accession(accession: String, path: &PathBuf) -> Result<ExitStatus> {
+    let download_genomes_status = {
+        Command::new("datasets")
+            .arg("download")
+            .arg("virus")
+            .arg("genome")
+            .arg("accession")
+            .arg(&accession)
+            .arg("--filename")
+            .arg(&path)
+            .status()
+            .expect("failed to execute the download process")
+    };
+
+    Ok(download_genomes_status)
 }

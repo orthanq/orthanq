@@ -7,6 +7,7 @@ dependencies:
   - gsl =2.7
   - cmake
   - ncbi-datasets-cli=16.4.4
+  - seqtk
   - samtools=1.17
   - varlociraptor=8.4.2
   - vg=1.50.1
