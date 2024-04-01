@@ -33,9 +33,7 @@ impl Caller {
         let scenario = format!("{}/resources/scenarios/scenario.yaml", cargo_dir);
 
         //genome must have been downloaded in the candidate generation step:
-        let ref_genome = self
-            .candidates_folder
-            .join("reference_genome.fna");
+        let ref_genome = self.candidates_folder.join("reference_genome.fna");
 
         //haplotype variantts must have been downloaded in the candidate generation step:
         let haplotype_variants = self.candidates_folder.join("candidates.vcf");

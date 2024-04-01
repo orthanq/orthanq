@@ -11,6 +11,7 @@ use reqwest;
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 use rust_htslib::faidx;
 use seq_io::fasta::{Reader, Record as OtherRecord};
+use std::collections::HashSet;
 use std::convert::TryInto;
 use std::error::Error;
 use std::fs;
@@ -280,9 +281,9 @@ impl Caller {
             .spawn()
             .unwrap();
 
-        // //write the prepared tsv to file
+        //write the prepared tsv to file
 
-        // //output dir for metadata
+        //output dir for metadata
         let virus_metadata_path = self.output.as_ref().unwrap().join("metadata.tsv");
 
         let output = process_into_tsv
@@ -342,8 +343,18 @@ impl Caller {
         // columns to sort by
         let by = &["clade", "Release date"];
         // do the sort operation
-        let sorted = filtered_df_complete.sort(by, descending)?;
+        let mut sorted = filtered_df_complete.sort(by, descending)?;
         dbg!(&sorted.shape());
+
+        //for debuggin, write merged_sorted_df to file
+        let merged_sorted_path = self.output.as_ref().unwrap().join("merged_sorted.csv");
+
+        let mut file = std::fs::File::create(merged_sorted_path).expect("could not create file");
+
+        CsvWriter::new(&mut file)
+            .has_header(true)
+            .with_delimiter(b',')
+            .finish(&mut sorted);
 
         //group by clade and get the first entry (which is the oldest)
         let grouped_df = sorted.groupby(["clade"])?.select(["Accession"]).first()?;
@@ -352,7 +363,10 @@ impl Caller {
         //collect first accessions to a vector
         let selected_accessions_opt: Vec<Option<&str>> =
             grouped_df["Accession_first"].utf8()?.into_iter().collect();
-        let selected_accessions: Vec<&str> =
+
+        //collect the accessions in a HashSet to avoid the same accessions that represent multiple clades to be added.
+        //todo: think about how to include other lineages
+        let selected_accessions: HashSet<_> =
             selected_accessions_opt.iter().map(|a| a.unwrap()).collect();
         dbg!(&selected_accessions.len());
 
