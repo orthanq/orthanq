@@ -35,7 +35,7 @@ impl Caller {
         //genome must have been downloaded in the candidate generation step:
         let ref_genome = self
             .candidates_folder
-            .join("reference_genome/ncbi_dataset/data/genomic.fna");
+            .join("reference_genome.fna");
 
         //haplotype variantts must have been downloaded in the candidate generation step:
         let haplotype_variants = self.candidates_folder.join("candidates.vcf");
