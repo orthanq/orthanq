@@ -152,8 +152,11 @@ impl Caller {
         // //todo: combine all genomes to have the sars-cov-2 data package in the end.
         // // --END-- ALTERNATIVE way
 
-        //Download the whole genome package at once (occasionally might run into timeout errors) (much faster than the alternative approach, not more half an hour usually)
+        /////////////////////////////////////////////////////////
+        //1-) Download the whole genome package for SARSCoV-2. //
+        /////////////////////////////////////////////////////////
 
+        //Download the whole genome package at once (occasionally might run into timeout errors) (much faster than the alternative approach, not more half an hour usually)
         if !path_to_ncbi_dataset.exists() {
             let mut child = {
                 Command::new("datasets")
@@ -181,6 +184,10 @@ impl Caller {
                 .expect("failed to unzip ncbi data package")
         };
         println!("All genomes data package was unzipped: {}", unzip_package);
+
+        /////////////////////////////////////////////////////////////////////////////////////////
+        //2-) Perform quality control on the sequences & write surviving accession IDs to file.//
+        /////////////////////////////////////////////////////////////////////////////////////////
 
         //select only fasta records containing less than a certain threshold for ambiguous bases, threshold = 0.05
         //for that, count the number of ambiguous bases i.e. N, R, etc. and divide them by the length of the fasta
@@ -240,6 +247,10 @@ impl Caller {
         // //uncomment the next line, it's only for testing
         // let accessions_input = self.output.as_ref().unwrap().join("accessions.csv");
 
+        ///////////////////////////////////////////////////////////////////////////////////////
+        //3-) Download metadata only for the accessions coming from the previous step.         //
+        ///////////////////////////////////////////////////////////////////////////////////////
+
         println!("virus metada download started.");
         let download_metadata = {
             Command::new("datasets")
@@ -269,9 +280,9 @@ impl Caller {
             .spawn()
             .unwrap();
 
-        //write the prepared tsv to file
+        // //write the prepared tsv to file
 
-        //output dir for metadata
+        // //output dir for metadata
         let virus_metadata_path = self.output.as_ref().unwrap().join("metadata.tsv");
 
         let output = process_into_tsv
@@ -281,7 +292,11 @@ impl Caller {
         f.write_all(&output.stdout)?;
         println!("virus metadata preparation is complete.");
 
-        //retrieve accession ids from each clade with the oldest submission.
+        //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //4-) Find representative accession IDs for each Nextstrain clade by taking the oldest submitted genome.    //
+        //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // //retrieve accession ids from each clade with the oldest submission.
         let virus_metadata_df = CsvReader::from_path(virus_metadata_path)?
             .with_delimiter(b'\t')
             .has_header(true)
@@ -341,6 +356,58 @@ impl Caller {
             selected_accessions_opt.iter().map(|a| a.unwrap()).collect();
         dbg!(&selected_accessions.len());
 
+        //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //5-) Write the representative accessions to csv and then take subset using seqtk and write to fasta (fast) //
+        //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        let selected_accessions_csv = self
+            .output
+            .as_ref()
+            .unwrap()
+            .join("selected_accessions.csv");
+        let mut selected_accessions_wtr = csv::Writer::from_path(&selected_accessions_csv)?;
+        for accession in selected_accessions.iter() {
+            selected_accessions_wtr.write_record(vec![accession])?;
+        }
+        selected_accessions_wtr.flush()?; //make sure everything is sucsessfully written to the file
+
+        //then take subset of the main fasta with seqtk (fast)
+        let selected_accessions_fna = self
+            .output
+            .as_ref()
+            .unwrap()
+            .join("selected_quality_accessions.fna");
+
+        //location of fasta belonging to all genomes.
+        let all_genomes = self
+            .output
+            .as_ref()
+            .unwrap()
+            .join("ncbi_genomes_all/ncbi_dataset/data/genomic.fna");
+
+        //take subset of selected accessions and write to file.
+        println!("subsetting of fasta with quality lineages started");
+        let seqtk_subset = {
+            Command::new("seqtk")
+                .arg("subseq")
+                .arg(&all_genomes)
+                .arg(selected_accessions_csv)
+                .output()
+                .expect("failed to take subset of FASTA")
+        };
+        println!("subsetting of fasta done.");
+
+        let stdout = String::from_utf8(seqtk_subset.stdout).unwrap();
+        fs::write(&selected_accessions_fna, stdout)
+            .expect("Unable to write subsetted fasta to file");
+        println!("subsetted fasta written to file. ");
+
+        //////////////////////////////////////////////////////
+        //6-) Find the reference genome and write to fasta. //
+        //////////////////////////////////////////////////////
+
+        let reference_fna = self.output.as_ref().unwrap().join("reference_genome.fna");
+
         //find the oldest submitted sars-cov-2 genome
         let sorted_df_by_release = filtered_df_complete.sort(&["Release date"], false)?;
         let oldest_genome_accession: String = sorted_df_by_release["Accession"]
@@ -352,65 +419,33 @@ impl Caller {
             .collect::<Vec<_>>()[0]
             .to_string();
 
-        //create file & writer struct to store the reference genome
-        let reference_genome_path = self.output.as_ref().unwrap().join("reference_genome.fna");
-        let file_ref = fs::File::create(&reference_genome_path).unwrap();
-        let handle_ref = io::BufWriter::new(file_ref);
-        let mut writer_ref = FastaWriter::new(handle_ref);
+        //write to csv (file input is required for seqtk)
+        let reference_csv = self.output.as_ref().unwrap().join("reference.csv");
+        let mut reference_wtr = csv::Writer::from_path(&reference_csv)?;
+        reference_wtr.write_record(vec![oldest_genome_accession.clone()])?;
+        reference_wtr.flush()?; //make sure everything is sucsessfully written to the file
 
-        //write accessions to file
-        let quality_accessions_csv = self.output.as_ref().unwrap().join("quality_accessions.csv");
-        let mut quality_accessions_wtr = csv::Writer::from_path(&quality_accessions_csv)?;
-
-        //iterate over the reference genome to find the accessions with the quality lineages &
-        //write the reference genome to file
-        while let Some(record) = reader.next() {
-            let record = record.expect("Error reading record");
-
-            //find the  name, length and sequence of the fasta record
-            let l_name = record.id()?;
-            let l_len = record.seq_lines().fold(0, |l, seq| l + seq.len());
-            let l_seq = record.seq();
-
-            if selected_accessions.contains(&l_name) {
-                quality_accessions_wtr.write_record(vec![l_name.clone()])?;
-            }
-
-            //check for the oldest submitted genome to use as reference
-            if l_name.to_string() == oldest_genome_accession {
-                let record = Record::with_attrs(&l_name, Some(""), l_seq);
-                writer_ref.write_record(&record)?;
-            }
-        }
-
-        println!("quality lineages & reference genome written to file.");
-
-        writer_ref.flush()?;
-        quality_accessions_wtr.flush()?; //make sure the file is closed (might occassionally run into issues with file writing if this is not done)
-
-        //then take subset of the main fasta with seqtk (fast)
-        let quality_lineages_path = self.output.as_ref().unwrap().join("quality_accessions.fna");
-
-        println!("subsetting of fasta with quality lineages started");
+        //take subset of the reference genome from selected quality lineages fasta.
+        println!("subsetting of fasta for the reference genome started");
         let seqtk_subset = {
             Command::new("seqtk")
                 .arg("subseq")
-                .arg(&all_genomes)
-                .arg(quality_accessions_csv)
+                .arg(&selected_accessions_fna)
+                .arg(reference_csv)
                 .output()
                 .expect("failed to take subset of FASTA")
         };
         println!("subsetting of fasta done.");
 
         let stdout = String::from_utf8(seqtk_subset.stdout).unwrap();
-        fs::write(&quality_lineages_path, stdout).expect("Unable to write subsetted fasta to file");
+        fs::write(&reference_fna, stdout).expect("Unable to write subsetted fasta to file");
         println!("subsetted fasta written to file. ");
 
         //index reference genome
         let faidx = {
             Command::new("samtools")
                 .arg("faidx")
-                .arg(&reference_genome_path)
+                .arg(&reference_fna)
                 .status()
                 .expect("failed to unzip ncbi data package for reference genome")
         };
@@ -419,23 +454,29 @@ impl Caller {
             faidx
         );
 
-        //align and sort
+        //////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //7-) Aligned selected quality accessions to the reference genome and sort the resulting alignment file.//
+        //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        //following two lines must be commented out, they're only for testing.
+        //DELETE AFTER TESTING ABOVE PART.
+        // //following two lines must be commented out, they're only for testing.
         // let quality_lineages_path = self.output.as_ref().unwrap().join("quality_accessions.fna");
         // let reference_genome_path = self.output.as_ref().unwrap().join("reference_genome.fna");
 
         hla::alignment(
-            &reference_genome_path,
-            &quality_lineages_path,
+            &reference_fna,
+            &selected_accessions_fna,
             &self.threads,
             false,
             self.output.as_ref().unwrap(),
         )?;
 
-        //find variants
+        //////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //8-) Find variants from the alignment, convert accessions to lineage names in the resulting dataframe. //
+        //////////////////////////////////////////////////////////////////////////////////////////////////////////
+
         let (genotype_df, loci_df) = hla::find_variants_from_cigar(
-            &reference_genome_path,
+            &reference_fna,
             &self.output.as_ref().unwrap().join("alignment_sorted.sam"),
         )
         .unwrap();
@@ -450,7 +491,10 @@ impl Caller {
         let loci_lineages =
             accession_to_lineage(&loci_df, &virus_metadata_df, &file_path_clade_to_lineages)?;
 
-        //write to vcf
+        ///////////////////////////////////////////////
+        //9-) Write the candidate variants to fasta. //
+        ///////////////////////////////////////////////
+
         self.write_to_vcf(&genotype_lineages, &loci_lineages)?;
 
         Ok(())
