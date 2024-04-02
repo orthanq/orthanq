@@ -143,7 +143,7 @@ impl Caller {
                 .arg("-f")
                 .arg(&self.reads[0])
                 .arg("-f")
-                .arg(&self.reads[0])
+                .arg(&self.reads[1])
                 .arg("--output-format")
                 .arg("BAM")
                 .arg("-t")
