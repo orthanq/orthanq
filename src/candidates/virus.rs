@@ -221,7 +221,7 @@ impl Caller {
             let n_ambiguous = record
                 .seq()
                 .iter()
-                .filter(|x| is_base(x))
+                .filter(|x| !is_base(x))
                 .count();
 
             //calculate the ratio of ambiguous bases in the fasta record
