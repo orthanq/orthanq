@@ -216,12 +216,12 @@ impl Caller {
             //find the name, length and sequence of the fasta record
             let l_name = record.id()?;
             let l_len = record.seq_lines().fold(0, |l, seq| l + seq.len());
-            let l_seq = String::from_utf8(record.seq().to_vec()).unwrap();
 
             //find the number of ambiguous bases in the record
-            let n_ambiguous = l_seq
-                .chars()
-                .filter(|x| !vec!["A", "G", "T", "C"].contains(&x.to_string().as_str()))
+            let n_ambiguous = record
+                .seq()
+                .iter()
+                .filter(|x| is_base(x))
                 .count();
 
             //calculate the ratio of ambiguous bases in the fasta record
@@ -645,6 +645,12 @@ impl Caller {
         }
         Ok(())
     }
+}
+
+const NUCLEOBASES: [u8; 4] = ['A' as u8, 'C' as u8, 'G' as u8, 'T' as u8];
+
+fn is_base(base: &u8) -> bool {
+    NUCLEOBASES.contains(base)
 }
 
 //accession_to_lineage simply converts accession ids that represent each lineage to lineage names as well as nextstrain clade
