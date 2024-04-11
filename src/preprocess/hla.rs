@@ -22,6 +22,8 @@ impl Caller {
     pub fn call(&self) -> Result<()> {
         let outdir = &self.output;
 
+        let cargo_dir = env!("CARGO_MANIFEST_DIR");
+        
         //create the folder first if it doesn't exist
         fs::create_dir_all(&outdir)?;
 
@@ -46,7 +48,7 @@ impl Caller {
         };
         println!("The index was created successfully: {}", index);
 
-        let scenario = &"resources/scenarios/scenario.yaml"; //TODO: do not hardcode
+        let scenario = format!("{}/resources/scenarios/scenario.yaml", cargo_dir);
 
         //perform the alignment for paired end reads
         let _temp_aligned = NamedTempFile::new()?;
@@ -111,9 +113,9 @@ impl Caller {
         let file_extracted = temp_dir
             .path()
             .join(format!("{}_extracted.bam", sample_name));
-
-        let regions = "resources/regions.bed";
-
+        
+        let regions = format!("{}/resources/regions.bed", cargo_dir);
+        
         let extract = {
             Command::new("samtools")
                 .arg("view")
