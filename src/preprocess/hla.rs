@@ -23,7 +23,7 @@ impl Caller {
         let outdir = &self.output;
 
         let cargo_dir = env!("CARGO_MANIFEST_DIR");
-        
+
         //create the folder first if it doesn't exist
         fs::create_dir_all(&outdir)?;
 
@@ -113,9 +113,9 @@ impl Caller {
         let file_extracted = temp_dir
             .path()
             .join(format!("{}_extracted.bam", sample_name));
-        
+
         let regions = format!("{}/resources/regions.bed", cargo_dir);
-        
+
         let extract = {
             Command::new("samtools")
                 .arg("view")
