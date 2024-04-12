@@ -6,6 +6,12 @@ Uncerainty aware haplotype quantification using a Bayesian model that is based o
 
 Orthanq is under active development.
 
+## Installation
+
+Orthanq is available as a Bioconda package and can be installed via:
+
+    mamba install orthanq
+
 ## Building for development and manual installation
 
 The easiest way to build Orthanq is via Conda/Mamba.
