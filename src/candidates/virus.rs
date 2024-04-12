@@ -11,6 +11,7 @@ use reqwest;
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 use rust_htslib::faidx;
 use seq_io::fasta::{Reader, Record as OtherRecord};
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::TryInto;
 use std::error::Error;
@@ -360,14 +361,19 @@ impl Caller {
         let grouped_df = sorted.groupby(["clade"])?.select(["Accession"]).first()?;
         dbg!(&grouped_df.shape());
 
-        //collect first accessions to a vector
+        //collect first accessions and clades to two vectors
         let selected_accessions_opt: Vec<Option<&str>> =
             grouped_df["Accession_first"].utf8()?.into_iter().collect();
 
-        //collect the accessions in a HashSet to avoid the same accessions that represent multiple clades to be added.
-        //todo: think about how to include other lineages
-        let selected_accessions: HashSet<_> =
-            selected_accessions_opt.iter().map(|a| a.unwrap()).collect();
+        let selected_clades_opt: Vec<Option<&str>> =
+            grouped_df["clade"].utf8()?.into_iter().collect();
+
+        //collect the accessions-clades in a HashMap to avoid the same accessions that represent multiple clades to be added.
+        let selected_accessions: HashMap<_, _> = selected_accessions_opt
+            .iter()
+            .zip(selected_clades_opt.iter())
+            .map(|(a, c)| (a.unwrap(), c.unwrap()))
+            .collect();
         dbg!(&selected_accessions.len());
 
         //////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -380,7 +386,8 @@ impl Caller {
             .unwrap()
             .join("selected_accessions.csv");
         let mut selected_accessions_wtr = csv::Writer::from_path(&selected_accessions_csv)?;
-        for accession in selected_accessions.iter() {
+
+        for (accession, _) in selected_accessions.iter() {
             selected_accessions_wtr.write_record(vec![accession])?;
         }
         selected_accessions_wtr.flush()?; //make sure everything is sucsessfully written to the file
@@ -495,21 +502,18 @@ impl Caller {
         )
         .unwrap();
 
-        //replace accession ids with the corresponding lineage names
-        //the performance of the following function usage can be improved for performance reasons (the whole virus_metadata_df might not have to be iterated over.)
-        let genotype_lineages = accession_to_lineage(
-            &genotype_df,
-            &virus_metadata_df,
-            &file_path_clade_to_lineages,
-        )?;
-        let loci_lineages =
-            accession_to_lineage(&loci_df, &virus_metadata_df, &file_path_clade_to_lineages)?;
+        //replace accession ids with the corresponding clade names and write mapping to csv
+        let output_path_to_mapping = &self.output.as_ref().unwrap().join("mapping.csv");
+        let genotype_with_clades =
+            accession_to_lineage(&genotype_df, &selected_accessions, &output_path_to_mapping)?;
+        let loci_with_clades =
+            accession_to_lineage(&loci_df, &selected_accessions, &output_path_to_mapping)?;
 
         ///////////////////////////////////////////////
-        //9-) Write the candidate variants to fasta. //
+        //9-) Write the candidate variants to vcf.   //
         ///////////////////////////////////////////////
 
-        self.write_to_vcf(&genotype_lineages, &loci_lineages)?;
+        self.write_to_vcf(&genotype_with_clades, &loci_with_clades)?;
 
         Ok(())
     }
@@ -656,51 +660,29 @@ fn is_base(base: &u8) -> bool {
 //accession_to_lineage simply converts accession ids that represent each lineage to lineage names as well as nextstrain clade
 fn accession_to_lineage(
     df: &DataFrame,
-    accession_to_lineage_df: &DataFrame,
-    file_path_clade_to_lineages: &String,
+    accession_to_clade_map: &HashMap<&str, &str>,
+    output_path_to_mapping: &PathBuf,
 ) -> Result<DataFrame> {
-    dbg!(&df.shape());
-    dbg!(&accession_to_lineage_df.shape());
-
-    //read lineage to clade resource
-    let lin_to_clade = CsvReader::from_path(file_path_clade_to_lineages)?
-        .with_delimiter(b'\t')
-        .has_header(true)
-        .finish()?;
-    dbg!(&lin_to_clade.shape());
-
     //clone the input df
     let mut renamed_df = df.clone();
 
-    //prepare iterables of columns beforehand
-    let mut iter_pangolin = accession_to_lineage_df["Virus Pangolin Classification"]
-        .utf8()
-        .unwrap()
-        .into_iter();
-    let mut iter_accession = accession_to_lineage_df["Accession"]
-        .utf8()
-        .unwrap()
-        .into_iter();
-    let mut lineages_in_resource = lin_to_clade["lineage"].utf8().unwrap();
-    let mut clades_in_resource = lin_to_clade["clade"].utf8().unwrap();
-
-    //rename accessions to clades, using pango lineages.
-    iter_pangolin
-        .into_iter()
-        .zip(iter_accession)
-        .for_each(|(png, acc)| {
-            let mut rename_str = format!("no clade");
-            lineages_in_resource
-                .into_iter()
-                .zip(clades_in_resource.into_iter())
-                .for_each(|(lng, cld)| {
-                    if png == lng {
-                        rename_str = format!("{}", cld.unwrap());
-                    }
-                });
-            renamed_df.rename(acc.unwrap(), &rename_str);
-        });
+    //rename accessions to clades and collect clade-accession mapping to a hashmap
+    let mut mapping: HashMap<&str, &str> = HashMap::new();
+    accession_to_clade_map.iter().for_each(|(acc, cld)| {
+        let mut rename_str = format!("no clade");
+        rename_str = format!("{}", cld.clone());
+        renamed_df.rename(acc.clone(), &rename_str);
+        mapping.insert(cld.clone(), acc.clone());
+    });
     dbg!(&renamed_df.shape());
+
+    //write mapping to file
+    let mut wtr = csv::Writer::from_path(output_path_to_mapping)?;
+    wtr.write_record(&vec!["Nexstrain_clade", "Accession"])?;
+    mapping
+        .iter()
+        .for_each(|(cld, acc)| wtr.write_record(&vec![cld, acc]).unwrap());
+
     Ok(renamed_df)
 }
 
