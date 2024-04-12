@@ -219,11 +219,7 @@ impl Caller {
             let l_len = record.seq_lines().fold(0, |l, seq| l + seq.len());
 
             //find the number of ambiguous bases in the record
-            let n_ambiguous = record
-                .seq()
-                .iter()
-                .filter(|x| !is_base(x))
-                .count();
+            let n_ambiguous = record.seq().iter().filter(|x| !is_base(x)).count();
 
             //calculate the ratio of ambiguous bases in the fasta record
             let ratio_of_ambiguous = n_ambiguous as f32 / l_len as f32;
