@@ -12,6 +12,10 @@ Orthanq is available as a Bioconda package and can be installed via:
 
     mamba install orthanq
 
+## Haplotype quantification & HLA typing
+
+Docs: https://orthanq.github.io/docs/index.html
+
 ## Building for development and manual installation
 
 The easiest way to build Orthanq is via Conda/Mamba.
