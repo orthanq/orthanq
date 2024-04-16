@@ -1191,3 +1191,20 @@ pub fn find_variants_from_cigar(
 
     Ok((genotype_df, loci_df))
 }
+pub fn convert_candidate_variants_to_array(
+    candidate_variants: BTreeMap<(String, usize, String, String), Vec<usize>>,
+    j: usize,
+) -> Result<Array2<i32>> {
+    //construct the first array having the same number of rows and columns as candidate variants map and locate the genotypes for each haplotype.
+    let mut genotypes_array = Array2::<i32>::zeros((candidate_variants.len(), j));
+    candidate_variants
+        .iter()
+        .enumerate()
+        .for_each(|(i, (_, haplotype_indices))| {
+            haplotype_indices
+                .iter()
+                .for_each(|haplotype| genotypes_array[[i, *haplotype]] = 1)
+        });
+
+    Ok(genotypes_array)
+}

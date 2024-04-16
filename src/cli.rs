@@ -149,7 +149,7 @@ pub enum CandidatesKind {
             long,
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
         )]
-        output: Option<PathBuf>,
+        output: PathBuf,
         #[structopt(
             default_value = "2",
             help = "Threads to use for minimap2 used candidate generation."
