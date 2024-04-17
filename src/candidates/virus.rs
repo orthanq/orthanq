@@ -8,6 +8,7 @@ use polars::prelude::*;
 
 use crate::candidates::hla::{self, convert_candidate_variants_to_array};
 use crate::model::Data;
+use bio::io::fasta;
 use csv::Trim;
 use ndarray::Array2;
 use petgraph::dot::{Config, Dot};
@@ -41,7 +42,7 @@ pub struct Caller {
     threads: String,
 }
 impl Caller {
-    pub fn call(&self) -> Result<()> {
+    pub fn call(&mut self) -> Result<()> {
         //prepare genome and alleles for the virus (currently, only sars-cov2)
 
         //first, create the output dir for database setup
@@ -49,14 +50,14 @@ impl Caller {
         fs::create_dir_all(&outdir)?;
 
         //download required resources
-        let (reference, clades) = download_resources(&outdir).unwrap();
+        let (reference_path, clades_path) = download_resources(&outdir).unwrap();
 
         //read the clades
         let mut rdr = csv::ReaderBuilder::new()
             .delimiter(b'\t')
             .flexible(true)
             .has_headers(true)
-            .from_path(clades)?;
+            .from_path(clades_path)?;
 
         //generate mutations per clade and create a graph for clade hierarchy
         let mut clade_mutations: HashMap<String, Vec<String>> = HashMap::new();
@@ -156,7 +157,7 @@ impl Caller {
         //create a map and an array as a template of upcoming vcf data structure
         let mut candidate_variants: BTreeMap<(String, usize, String, String), Vec<usize>> =
             BTreeMap::new();
-        let reference_genome = faidx::Reader::from_path(reference).unwrap();
+        let reference_genome = faidx::Reader::from_path(&reference_path).unwrap();
 
         //name of the sarscov2 accession to use as chrom
         let mut chrom = reference_genome.seq_name(0).unwrap().to_string();
@@ -218,6 +219,53 @@ impl Caller {
         //then write to vcf
         self.write_to_vcf(genotype_df, loci_df)?;
 
+        //convert mutations to sequences and write sequences for each clade to fasta
+        self.write_sequences_to_fasta(&clade_mutations_with_parents, &reference_path)?;
+        Ok(())
+    }
+    fn write_sequences_to_fasta(
+        &mut self,
+        clade_mutations: &HashMap<String, Vec<String>>,
+        reference_path: &PathBuf,
+    ) -> Result<()> {
+        //create a subdirectory for writing the sequences
+        let mut outdir = &mut self.output.clone();
+        outdir.push("sequences");
+        dbg!(&outdir);
+        fs::create_dir_all(&outdir);
+
+        //load genome into memory
+        let reference_genome = fasta::Reader::from_file(reference_path).unwrap();
+
+        //prepare the seq
+        let ref_seq_nth = reference_genome.records().nth(0).unwrap().unwrap();
+        let ref_seq = ref_seq_nth.seq().to_vec();
+
+        //iterate over candidate variants to create fasta for each clade with corresponding mutations
+        // let ref_seq = reference_genome.fetch_seq_string().unwrap();
+        clade_mutations.iter().for_each(|(clade, mutations)| {
+            //create the file and handle
+            let file = fs::File::create(format!("{}.fasta", outdir.join(clade.clone()).display()))
+                .unwrap();
+            let handle = io::BufWriter::new(file);
+            let mut writer = bio::io::fasta::Writer::new(handle);
+
+            //change the corresponding positions in the seq
+            let mut clade_seq = ref_seq.clone();
+            mutations.iter().for_each(|m| {
+                let splitted: Vec<&str> = m.split('_').collect();
+                let pos = splitted[0].parse::<usize>().unwrap();
+                let alt_base = splitted[1].as_bytes();
+                clade_seq[pos - 1] = alt_base[0];
+            });
+
+            //then write the record to file
+            let record = bio::io::fasta::Record::with_attrs(clade, Some(&""), &clade_seq);
+            writer
+                .write_record(&record)
+                .ok()
+                .expect("Error writing record.");
+        });
         Ok(())
     }
     fn write_to_vcf(&self, variant_table: DataFrame, loci_table: DataFrame) -> Result<()> {

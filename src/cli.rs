@@ -293,7 +293,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 Ok(())
             }
             CandidatesKind::Virus { output, threads } => {
-                let caller = candidates::virus::CallerBuilder::default()
+                let mut caller = candidates::virus::CallerBuilder::default()
                     .output(output)
                     .threads(threads)
                     .build()
