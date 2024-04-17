@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://www.github.com/orthanq/orthanq/compare/v1.2.0...v1.3.0) (2024-04-12)
+
+
+### Features
+
+* breaking change: orthanq virus candidates: use the oldest submitted genome to represent each nextstrain in candidate haplotypes avoiding  irrelevant pango lineages ([96f397b](https://www.github.com/orthanq/orthanq/commit/96f397b0ba99f0f695b93b75303da3ed0d269b52))
+
 ## [1.2.0](https://www.github.com/orthanq/orthanq/compare/v1.1.0...v1.2.0) (2024-02-05)
 
 
