@@ -6,8 +6,10 @@ use petgraph::Direction;
 use polars::frame::DataFrame;
 use polars::prelude::*;
 
-use crate::candidates::hla;
+use crate::candidates::hla::{self, convert_candidate_variants_to_array};
+use crate::model::Data;
 use csv::Trim;
+use ndarray::Array2;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, Node, NodeIndex, UnGraph};
 use petgraph::prelude::Dfs;
@@ -204,39 +206,21 @@ impl Caller {
         let genotypes_array =
             hla::convert_candidate_variants_to_array(candidate_variants.clone(), j).unwrap();
 
-        //first initialize the dataframes with index columns that contain variant information.
-        let mut genotype_df: DataFrame = df!("Index" => candidate_variants
-        .iter()
-        .map(|((chrom, pos, ref_base, alt_base), _)| {
-            format!(
-                "{},{},{},{}",
-                chrom, pos, ref_base, alt_base
-            )
-        })
-        .collect::<Series>())?;
+        //create loci array (all should be one because we base the sequences on one reference plus nuc conversions)
+        let mut loci_array = Array2::<i32>::ones((candidate_variants.len(), j));
 
-        //construct the genotype dataframe
+        //convert gt and lc arrays to df
         let clade_names: Vec<_> = clade_mutations_with_parents.keys().cloned().collect();
-        for (index, haplotype_name) in clade_names.iter().enumerate() {
-            genotype_df.with_column(Series::new(
-                haplotype_name.as_str(),
-                genotypes_array.column(index).to_vec(),
-            ))?;
-        }
-
-        //insert an ID column as many as the number of rows, right after the Index column
-        genotype_df.insert_at_idx(
-            1,
-            Series::new("ID", Vec::from_iter(0..genotype_df.shape().0 as i64)),
-        )?;
+        let genotype_df =
+            convert_to_dataframe(&candidate_variants, genotypes_array, &clade_names).unwrap();
+        let loci_df = convert_to_dataframe(&candidate_variants, loci_array, &clade_names).unwrap();
 
         //then write to vcf
-        self.write_to_vcf(&genotype_df, &genotype_df.clone())?;
+        self.write_to_vcf(genotype_df, loci_df)?;
 
         Ok(())
     }
-
-    fn write_to_vcf(&self, variant_table: &DataFrame, loci_table: &DataFrame) -> Result<()> {
+    fn write_to_vcf(&self, variant_table: DataFrame, loci_table: DataFrame) -> Result<()> {
         // dbg!(&variant_table);
         //Create VCF header
         let mut header = Header::new();
@@ -407,4 +391,36 @@ struct Record {
     gene: String,
     site: String,
     alt: Option<String>,
+}
+
+fn convert_to_dataframe(
+    candidate_variants: &BTreeMap<(String, usize, String, String), Vec<usize>>,
+    array: Array2<i32>,
+    haplotype_names: &Vec<String>,
+) -> Result<DataFrame> {
+    //first initialize the dataframes with index columns that contain variant information.
+    let mut genotype_df: DataFrame = df!("Index" => candidate_variants
+    .iter()
+    .map(|((chrom, pos, ref_base, alt_base), _)| {
+        format!(
+            "{},{},{},{}",
+            chrom, pos, ref_base, alt_base
+        )
+    })
+    .collect::<Series>())?;
+
+    //construct the genotype dataframe
+    for (index, haplotype_name) in haplotype_names.iter().enumerate() {
+        genotype_df.with_column(Series::new(
+            haplotype_name.as_str(),
+            array.column(index).to_vec(),
+        ))?;
+    }
+
+    //insert an ID column as many as the number of rows, right after the Index column
+    genotype_df.insert_at_idx(
+        1,
+        Series::new("ID", Vec::from_iter(0..genotype_df.shape().0 as i64)),
+    )?;
+    Ok(genotype_df)
 }

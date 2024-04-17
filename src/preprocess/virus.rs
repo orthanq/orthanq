@@ -25,6 +25,11 @@ impl Caller {
         //specify out dir
         let outdir = &self.output;
 
+        //create the parent dir
+        let mut parent = outdir.clone();
+        parent.pop();
+        fs::create_dir_all(parent)?;
+
         // Create a directory inside of `std::env::temp_dir()` for temporary files
         let temp_dir = tempdir()?;
 
@@ -33,7 +38,7 @@ impl Caller {
         let scenario = format!("{}/resources/scenarios/scenario.yaml", cargo_dir);
 
         //genome must have been downloaded in the candidate generation step:
-        let ref_genome = self.candidates_folder.join("reference_genome.fna");
+        let ref_genome = self.candidates_folder.join("reference.fasta");
 
         //haplotype variantts must have been downloaded in the candidate generation step:
         let haplotype_variants = self.candidates_folder.join("candidates.vcf");
