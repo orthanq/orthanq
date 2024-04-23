@@ -37,8 +37,6 @@ Fourth, conda lib location is set via
     
 Last, Orthanq can be built with:
 
-    cargo build
-    
-    or
-    
+    cargo build    
+or
     cargo build --release
