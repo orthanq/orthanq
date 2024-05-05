@@ -36,7 +36,7 @@ impl Caller {
         let temp_dir = tempdir()?;
 
         //linear genome index location by default is temporary
-        let mut linear_genome_index = temp_dir.path().join("hs_genome");
+        let mut linear_genome_index = outdir.join("hs_genome");
 
         // if bwa index is provided, linear genome index has to change
         if let Some(bwa_genome_index) = &self.bwa_index {
