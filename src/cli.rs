@@ -56,6 +56,8 @@ pub enum PreprocessKind {
         genome: PathBuf,
         #[structopt(long = "vg-index", required = true, help = "VG pangenome graph")]
         vg_index: PathBuf,
+        #[structopt(long = "bwa-index", help = "bwa index")]
+        bwa_index: Option<PathBuf>,
         #[structopt(
             long = "reads",
             required = true,
@@ -308,12 +310,14 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 reads,
                 haplotype_variants,
                 vg_index,
+                bwa_index,
                 output,
                 threads,
             } => {
                 preprocess::hla::CallerBuilder::default()
                     .genome(genome)
                     .vg_index(vg_index)
+                    .bwa_index(bwa_index)
                     .reads(reads)
                     .haplotype_variants(haplotype_variants)
                     .output(output)

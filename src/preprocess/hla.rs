@@ -13,6 +13,7 @@ pub struct Caller {
     genome: PathBuf,
     reads: Vec<PathBuf>,
     haplotype_variants: PathBuf,
+    bwa_index: Option<PathBuf>,
     vg_index: PathBuf,
     output: PathBuf,
     threads: String,
@@ -33,20 +34,36 @@ impl Caller {
 
         // Create a directory inside of `std::env::temp_dir()`
         let temp_dir = tempdir()?;
-        let temp_index = temp_dir.path().join("hs_genome");
 
-        let index = {
-            Command::new("bwa")
-                .arg("index")
-                .arg("-p")
-                .arg(&temp_index)
-                .arg("-a")
-                .arg("bwtsw") //-a bwtsw' does not work for short genomes, lineage quantification?
-                .arg(self.genome.clone())
-                .status()
-                .expect("failed to execute indexing process")
-        };
-        println!("The index was created successfully: {}", index);
+        //linear genome index location by default is temporary
+        let mut linear_genome_index = temp_dir.path().join("hs_genome");
+
+        // if bwa index is provided, linear genome index has to change
+        if let Some(bwa_genome_index) = &self.bwa_index {
+            linear_genome_index = bwa_genome_index.clone();
+            println!(
+                "using input bwa index at: {}",
+                linear_genome_index.display()
+            );
+        } else {
+            println!("building bwa index at: {}", linear_genome_index.display());
+            let index = {
+                Command::new("bwa")
+                    .arg("index")
+                    .arg("-p")
+                    .arg(&linear_genome_index)
+                    .arg("-a")
+                    .arg("bwtsw") //-a bwtsw' does not work for short genomes, lineage quantification?
+                    .arg(self.genome.clone())
+                    .status()
+                    .expect("failed to execute indexing process")
+            };
+            println!("The index was created successfully: {}", index);
+            println!(
+                "using input bwa index at: {}",
+                linear_genome_index.display()
+            );
+        }
 
         let scenario = format!("{}/resources/scenarios/scenario.yaml", cargo_dir);
 
@@ -74,8 +91,7 @@ impl Caller {
                 .arg("10")
                 .arg("-R")
                 .arg(&read_group)
-                // .arg(&temp_index.path())
-                .arg(temp_index)
+                .arg(linear_genome_index)
                 .arg(&self.reads[0])
                 .arg(&self.reads[1])
                 .arg("-o")
@@ -388,7 +404,6 @@ impl Caller {
         called_file.write_all(&output.stdout)?; //write with bam writer
         called_file.flush()?;
         // close the file handle of the named temporary files
-        // temp_index.close()?;
         temp_dir.close()?;
 
         Ok(())
