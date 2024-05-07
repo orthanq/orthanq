@@ -1,6 +1,7 @@
 use anyhow::Result;
 use derive_builder::Builder;
 
+use csv::ReaderBuilder;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -106,7 +107,9 @@ impl Caller {
         //sort the aligned reads by coordinate
 
         //create the output file name in temp directory
-        let file_aligned_sorted = temp_dir.path().join(format!("{}_sorted.bam", sample_name));
+        let file_aligned_sorted: PathBuf =
+            temp_dir.path().join(format!("{}_sorted.bam", sample_name));
+        // let file_aligned_sorted: PathBuf = outdir.join(format!("{}_sorted.bam", sample_name));
 
         let sort = {
             Command::new("samtools")
@@ -125,19 +128,83 @@ impl Caller {
 
         //Step-2: extract reads that map to HLA genes (classical and nonclassical class of genes)
 
+        //before the extraction with samtools, check if the used genome has has ensembl or ucsc style chr namings and write regions to file
+        let path_idxstats: PathBuf = temp_dir.path().join("stats.txt");
+        // let path_idxstats = outdir.join("stats.txt");
+        let mut file_idxstats = std::fs::File::create(path_idxstats.clone())?;
+
+        let idxstats = {
+            Command::new("samtools")
+                .arg("idxstats")
+                .arg(&file_aligned_sorted)
+                .output()
+                .expect("failed to execute idxstat process")
+        };
+        file_idxstats.write_all(&idxstats.stdout)?; //write with bam writer
+        file_idxstats.flush()?;
+
+        // Build the CSV reader and iterate over each record.
+        let mut chr_naming = &"ensembl";
+        let mut reader = ReaderBuilder::new()
+            .delimiter(b'\t')
+            .from_path(path_idxstats)?;
+        for result in reader.records() {
+            // break after the first record, because one record is enough to see the chr naming style
+            let record = result?;
+            let record_string = record[0].to_string();
+            // println!("{:?}", record_string);
+            if record_string.starts_with("chr") {
+                chr_naming = &"ucsc";
+            }
+            break;
+        }
+
+        println!("chr_naming format: {}", chr_naming);
+        let path_to_regions = outdir.join("regions.bed");
+        let mut regions_file = std::fs::File::create(&path_to_regions)?;
+        if chr_naming == &"ucsc" {
+            let regions_ensembl = "\
+chr6\t32659467\t32668383
+chr6\t32577902\t32589848
+chr6\t32628179\t32647062
+chr6\t31268749\t31272130
+chr6\t30489509\t30494194
+chr6\t29826967\t29831125
+chr6\t29722775\t29738528
+chr6\t29887752\t29890482
+chr6\t29941260\t29949572
+chr6\t31353872\t31367067";
+            regions_file.write_all(regions_ensembl.as_bytes())?;
+        } else if chr_naming == &"ensembl" {
+            let regions_ucsc = "\
+6\t32659467\t32668383
+6\t32577902\t32589848
+6\t32628179\t32647062
+6\t31268749\t31272130
+6\t30489509\t30494194
+6\t29826967\t29831125
+6\t29722775\t29738528
+6\t29887752\t29890482
+6\t29941260\t29949572
+6\t31353872\t31367067
+            ";
+            regions_file.write_all(regions_ucsc.as_bytes())?;
+        }
+        regions_file.flush()?;
+
         //create the output file name in temp directory
         let file_extracted = temp_dir
             .path()
             .join(format!("{}_extracted.bam", sample_name));
-
-        let regions = format!("{}/resources/regions.bed", cargo_dir);
+        // let file_extracted = outdir.join(format!("{}_extracted.bam", sample_name));
+        // let regions = format!("{}/resources/regions.bed", cargo_dir);
 
         let extract = {
             Command::new("samtools")
                 .arg("view")
                 .arg(file_aligned_sorted)
                 .arg("-L")
-                .arg(regions)
+                .arg(path_to_regions)
                 .arg("--write-index") //??
                 .arg("-o")
                 .arg(&file_extracted)
@@ -172,7 +239,7 @@ impl Caller {
         // let vg_index = "resources/hprc-v1.0-mc-grch38.xg";
 
         //create the output file name in temp directory
-        let file_aligned_pangenome = temp_dir.path().join(format!("{}_vg.bam", sample_name));
+        let file_aligned_pangenome = outdir.join(format!("{}_vg.bam", sample_name));
 
         let align_pangenome = {
             Command::new("vg")
@@ -262,9 +329,16 @@ impl Caller {
             .spawn()
             .unwrap();
 
-        //replace the 'GRCh38.chr' with ''
+        //replace the 'GRCh38.chr' with '' or "chr" prefices depending on the genome reference chr naming style
+        let mut regex = &"";
+        if chr_naming == &"ucsc" {
+            regex = &"s/GRCh38.//g";
+        } else if chr_naming == &"ensembl" {
+            regex = &"s/GRCh38.chr//g";
+        }
+        println!("regex for reheader: {}", regex);
         let sed_child_one = Command::new("sed")
-            .arg("s/GRCh38.chr//g")
+            .arg(regex)
             .stdin(Stdio::from(samtools_view_child.stdout.unwrap())) // Pipe through.
             .stdout(Stdio::piped())
             .spawn()
@@ -302,14 +376,27 @@ impl Caller {
         let final_bam = outdir.join(format!("{}_processed.bam", sample_name));
         println!("{}", final_bam.display());
 
+        //construct chromosome names according to the genome reference chr naming style
+        let mut chromosomes = vec![];
+        if chr_naming == &"ucsc" {
+            chromosomes = vec![
+                "chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10",
+                "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19",
+                "chr20", "chr21", "chr22", "chrX", "chrY", "chrM",
+            ]
+        } else if chr_naming == &"ensembl" {
+            chromosomes = vec![
+                "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15",
+                "16", "17", "18", "19", "20", "21", "22", "X", "Y", "M",
+            ]
+        }
+        println!("chromosomes to extract: {:?}", chromosomes);
+
         let samtools_extract = {
             Command::new("samtools")
                 .arg("view")
                 .arg(&file_reheadered)
-                .args([
-                    "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
-                    "15", "16", "17", "18", "19", "20", "21", "22", "X", "Y", "M",
-                ])
+                .args(chromosomes)
                 .arg("-o")
                 .arg(&final_bam)
                 .arg("-@")
