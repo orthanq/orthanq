@@ -148,15 +148,25 @@ impl Caller {
         let mut reader = ReaderBuilder::new()
             .delimiter(b'\t')
             .from_path(path_idxstats)?;
-        for result in reader.records() {
-            // break after the first record, because one record is enough to see the chr naming style
+
+        // for result in reader.records() {
+        //     // break after the first record, because one record is enough to see the chr naming style
+        //     let record = result?;
+        //     let record_string = record[0].to_string();
+        //     // println!("{:?}", record_string);
+        //     if record_string.starts_with("chr") {
+        //         chr_naming = &"ucsc";
+        //     }
+        //     break;
+        // }
+
+        if let Some(result) = reader.records().next() {
             let record = result?;
             let record_string = record[0].to_string();
             // println!("{:?}", record_string);
             if record_string.starts_with("chr") {
                 chr_naming = &"ucsc";
             }
-            break;
         }
 
         println!("chr_naming format: {}", chr_naming);
