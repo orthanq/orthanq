@@ -10,10 +10,8 @@ use crate::candidates::hla;
 use reqwest;
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 
-use seq_io::fasta::{Record as OtherRecord};
+use seq_io::fasta::Record as OtherRecord;
 use std::collections::HashMap;
-
-
 
 use std::fs;
 
