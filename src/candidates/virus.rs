@@ -6,17 +6,17 @@ use polars::frame::DataFrame;
 use polars::prelude::*;
 
 use crate::candidates::hla;
-use bio::io::fasta::{Record, Writer as FastaWriter};
+
 use reqwest;
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
-use rust_htslib::faidx;
-use seq_io::fasta::{Reader, Record as OtherRecord};
+
+use seq_io::fasta::{Record as OtherRecord};
 use std::collections::HashMap;
-use std::collections::HashSet;
-use std::convert::TryInto;
-use std::error::Error;
+
+
+
 use std::fs;
-use std::io;
+
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::ExitStatus;
@@ -160,7 +160,7 @@ impl Caller {
 
         //Download the whole genome package at once (occasionally might run into timeout errors) (much faster than the alternative approach, not more half an hour usually)
         if !path_to_ncbi_dataset.exists() {
-            let mut child = {
+            let _child = {
                 Command::new("datasets")
                     .arg("download")
                     .arg("virus")
