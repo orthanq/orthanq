@@ -31,7 +31,13 @@ Third, build Orthanq via
 
     HDF5_DIR=$CONDA_PREFIX RUSTFLAGS='-L $CONDA_PREFIX/include' cargo build
 
-Last, conda lib location is set via
+Fourth, conda lib location is set via
 
     export LD_LIBRARY_PATH=$CONDA_PREFIX/lib
     
+Last, Orthanq can be built with:
+
+    cargo build    
+or
+
+    cargo build --release

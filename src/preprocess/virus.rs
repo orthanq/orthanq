@@ -1,7 +1,6 @@
 use anyhow::Result;
 use derive_builder::Builder;
 
-use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
