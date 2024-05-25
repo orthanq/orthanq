@@ -122,9 +122,10 @@ impl Caller {
                 let mut mutations_with_parent = clade_mutations[clade].clone();
                 while let Some(visited) = dfs.next(&clade_hierarchy) {
                     let visited = clade_hierarchy[visited].clone();
+                    dbg!(&visited);
                     //the first visit is the node itself
                     //insert mutations coming from the parent nodes
-                    if visited != *clade {
+                    if visited != *clade && visited != "19A" { //19A is the reference itself - no mutations
                         mutations_with_parent.extend(clade_mutations[&visited].clone());
                     }
                 }
