@@ -165,6 +165,10 @@ impl Caller {
                               //examples include: 1) 19A and the variant,	nuc	8782 C, which supports reference (pos 8782 also has C in that position)
                               //2) 22F nuc 15461 A. this could be because 22F is a recombinant of two strains and one of them might have the same mutation 15461
 
+        //remove 22F for now. TODO: update this the following line according to the answers from the maintainers
+        clade_mutations_with_parents.remove("22F");
+
+        //loop over the graph to construct candidate variants map
         clade_mutations_with_parents
             .iter()
             .for_each(|(clade, mutations)| {
