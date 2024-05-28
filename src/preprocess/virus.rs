@@ -221,6 +221,8 @@ impl Caller {
                 .arg(&file_vg_aligned_sorted)
                 .arg("--output")
                 .arg(&varlociraptor_prep_dir)
+                .arg("--max-depth")
+                .arg("3000")
                 .status()
                 .expect("failed to execute the varlociraptor preprocessing")
         };
