@@ -2,36 +2,36 @@ use anyhow::Result;
 
 use derive_builder::Builder;
 
-use petgraph::Direction;
+
 use polars::frame::DataFrame;
 use polars::prelude::*;
 
-use crate::candidates::hla::{self, convert_candidate_variants_to_array};
-use crate::model::Data;
+use crate::candidates::hla::{self};
+
 use bio::io::fasta;
-use csv::Trim;
+
 use ndarray::Array2;
 use petgraph::dot::{Config, Dot};
-use petgraph::graph::{Graph, Node, NodeIndex, UnGraph};
+use petgraph::graph::{Graph, NodeIndex};
 use petgraph::prelude::Dfs;
-use petgraph::{Incoming, Outgoing};
+
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 use rust_htslib::faidx;
-use seq_io::fasta::{Reader, Record as OtherRecord};
+use seq_io::fasta::{Record as OtherRecord};
 use serde::Deserialize;
-use serde::Serialize;
+
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 use std::fs;
 use std::fs::File;
 use std::io;
-use std::io::BufReader;
-use std::io::{Read, Write};
+
+use std::io::{Write};
 use std::iter::FromIterator;
 use std::path::PathBuf;
-use std::process::ExitStatus;
-use std::process::{Command, Stdio};
+
+use std::process::{Command};
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]
@@ -66,7 +66,7 @@ impl Caller {
             let clade = record.clade.clone();
             if record.gene == "nuc" {
                 if let Some(alt) = record.alt.clone() {
-                    let mut mutation = format!("{}_{}", record.site, alt);
+                    let mutation = format!("{}_{}", record.site, alt);
                     if clade_mutations.contains_key(&clade) {
                         let mut existing_muts = clade_mutations[&clade].clone();
                         existing_muts.push(mutation);
@@ -112,7 +112,7 @@ impl Caller {
 
         //update clade mutations with parent mutations
         let mut clade_mutations_with_parents = clade_mutations.clone();
-        clade_mutations.iter().for_each(|(clade, mutations)| {
+        clade_mutations.iter().for_each(|(clade, _mutations)| {
             if let Some(index) = &clade_hierarchy
                 .node_indices()
                 .find(|i| &clade_hierarchy[*i] == clade)
@@ -160,7 +160,7 @@ impl Caller {
         let reference_genome = faidx::Reader::from_path(&reference_path).unwrap();
 
         //name of the sarscov2 accession to use as chrom
-        let mut chrom = reference_genome.seq_name(0).unwrap().to_string();
+        let chrom = reference_genome.seq_name(0).unwrap().to_string();
 
         let mut j: usize = 0; //the iterator that stores the index of clade
                               //some nuc conversions in the clades.tsv has are conversions that support the ref.
@@ -173,7 +173,7 @@ impl Caller {
         //loop over the graph to construct candidate variants map
         clade_mutations_with_parents
             .iter()
-            .for_each(|(clade, mutations)| {
+            .for_each(|(_clade, mutations)| {
                 //find record components
                 let mut pos: usize = 0;
                 let mut alt_base: String = "".to_string();
@@ -212,7 +212,7 @@ impl Caller {
             hla::convert_candidate_variants_to_array(candidate_variants.clone(), j).unwrap();
 
         //create loci array (all should be one because we base the sequences on one reference plus nuc conversions)
-        let mut loci_array = Array2::<i32>::ones((candidate_variants.len(), j));
+        let loci_array = Array2::<i32>::ones((candidate_variants.len(), j));
 
         //convert gt and lc arrays to df
         let clade_names: Vec<_> = clade_mutations_with_parents.keys().cloned().collect();
@@ -233,7 +233,7 @@ impl Caller {
         reference_path: &PathBuf,
     ) -> Result<()> {
         //create a subdirectory for writing the sequences
-        let mut outdir = &mut self.output.clone();
+        let outdir = &mut self.output.clone();
         outdir.push("sequences");
         dbg!(&outdir);
         fs::create_dir_all(&outdir);
@@ -414,7 +414,7 @@ fn download_resources(outdir: &PathBuf) -> Result<(PathBuf, PathBuf)> {
     let ref_path = outdir.join("reference.fasta");
     let clades_path = outdir.join("clades.tsv");
 
-    let download_ref = {
+    let _download_ref = {
         Command::new("wget")
             .arg("-c")
             .arg(&ref_link)
@@ -424,7 +424,7 @@ fn download_resources(outdir: &PathBuf) -> Result<(PathBuf, PathBuf)> {
             .expect("failed to execute the download process for reference")
     };
 
-    let download_clades = {
+    let _download_clades = {
         Command::new("wget")
             .arg("-c")
             .arg(&clades_link)
