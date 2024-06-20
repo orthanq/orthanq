@@ -2,7 +2,6 @@ use anyhow::Result;
 
 use derive_builder::Builder;
 
-
 use polars::frame::DataFrame;
 use polars::prelude::*;
 
@@ -17,7 +16,7 @@ use petgraph::prelude::Dfs;
 
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 use rust_htslib::faidx;
-use seq_io::fasta::{Record as OtherRecord};
+use seq_io::fasta::Record as OtherRecord;
 use serde::Deserialize;
 
 use std::collections::BTreeMap;
@@ -27,11 +26,11 @@ use std::fs;
 use std::fs::File;
 use std::io;
 
-use std::io::{Write};
+use std::io::Write;
 use std::iter::FromIterator;
 use std::path::PathBuf;
 
-use std::process::{Command};
+use std::process::Command;
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]
