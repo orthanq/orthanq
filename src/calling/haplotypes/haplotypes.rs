@@ -103,7 +103,7 @@ impl VariantCalls {
             let mut record = record_result?;
             record.unpack();
             let prob_absent = record.info(b"PROB_ABSENT").float().unwrap().unwrap()[0];
-            let prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
+            let _prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
             let read_depths = record.format(b"DP").integer().unwrap();

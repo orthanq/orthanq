@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://www.github.com/orthanq/orthanq/compare/v1.3.0...v1.4.0) (2024-06-20)
+
+
+### Features
+
+* download nextstrain resources and generate candidate variants from nuc conversions ([#12](https://www.github.com/orthanq/orthanq/issues/12)) ([f1ffda9](https://www.github.com/orthanq/orthanq/commit/f1ffda92f328d4078746b0b374b9e9dc93f8037e))
+
 ## [1.3.0](https://www.github.com/orthanq/orthanq/compare/v1.2.0...v1.3.0) (2024-04-12)
 
 
