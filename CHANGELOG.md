@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://www.github.com/orthanq/orthanq/compare/v1.4.0...v1.5.0) (2024-06-25)
+
+
+### Features
+
+* optimize model by pruning search space ([#8](https://www.github.com/orthanq/orthanq/issues/8)) ([d16cbe8](https://www.github.com/orthanq/orthanq/commit/d16cbe853f61e1ec9e517632a7453aae42f5ab97))
+
 ## [1.4.0](https://www.github.com/orthanq/orthanq/compare/v1.3.0...v1.4.0) (2024-06-20)
 
 
