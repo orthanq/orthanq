@@ -1,5 +1,5 @@
 use crate::calling::haplotypes::haplotypes::{
-    AlleleFreqDist, CandidateMatrix, PriorTypes, VariantCalls, VariantStatus,
+    AlleleFreqDist, CandidateMatrix, Haplotype, PriorTypes, VariantCalls, VariantStatus,
 };
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb, Prob};
@@ -7,9 +7,13 @@ use bv::BitVec;
 use derefable::Derefable;
 use derive_new::new;
 use ordered_float::NotNan;
-use std::collections::HashMap;
-
+use petgraph::visit::{Bfs, Dfs};
+use petgraph::Graph;
+use petgraph::Undirected;
+use std::collections::{HashMap, HashSet};
 pub type AlleleFreq = NotNan<f64>;
+
+use std::collections::BTreeMap;
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable)]
 pub struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
@@ -17,8 +21,12 @@ pub struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
 #[derive(Debug, new)]
 pub(crate) struct Marginal {
     n_haplotypes: usize,
+    haplotypes: Vec<Haplotype>,
     upper_bond: NotNan<f64>,
     prior_info: PriorTypes,
+    haplotype_graph: Graph<(Haplotype, Haplotype), i32, Undirected>,
+    enable_equivalence_class_constraint: bool,
+    application: String,
 }
 
 impl Marginal {
@@ -37,10 +45,57 @@ impl Marginal {
         } else {
             let fraction_upper_bound = self.upper_bond - fractions.iter().sum::<NotNan<f64>>();
             let mut density = |fraction| {
+                if self.enable_equivalence_class_constraint
+                    && fraction > NotNan::new(0.0).unwrap()
+                    && fractions.len() > 1
+                {
+                    // only if the fraction for the current has greater than 0.0
+                    let mut haplotype_group = Haplotype("".to_string());
+                    let current_haplotype = &self.haplotypes[haplotype_index];
+                    if self.application == "hla".to_string() {
+                        let splitted = &self.haplotypes[haplotype_index]
+                            .split(':')
+                            .collect::<Vec<&str>>();
+                        haplotype_group = Haplotype(splitted[0].to_owned() + &":" + splitted[1]);
+                    } else if self.application == "virus".to_string() {
+                        let splitted = &self.haplotypes[haplotype_index]
+                            .split(':')
+                            .collect::<Vec<&str>>();
+                        haplotype_group = current_haplotype.clone();
+                    }
+
+                    //find the index of the (haplotype, haplotype_group) in graph
+                    let index = &self
+                        .haplotype_graph
+                        .node_indices()
+                        .find(|i| {
+                            &self.haplotype_graph[*i]
+                                == &(current_haplotype.clone(), haplotype_group.clone())
+                        })
+                        .unwrap();
+
+                    // step through the graph and sum incoming edges into the node weight
+                    let mut bfs = Bfs::new(&self.haplotype_graph, *index);
+
+                    while let Some(nx) = bfs.next(&self.haplotype_graph) {
+                        // we can access `graph` mutably here still
+                        let haplotype_query = &self.haplotype_graph[nx].0;
+                        for (h, f) in self.haplotypes[0..haplotype_index]
+                            .to_vec()
+                            .iter()
+                            .zip(fractions[0..haplotype_index].to_vec().iter())
+                        {
+                            if (h == haplotype_query) && (f > &NotNan::new(0.0).unwrap()) {
+                                return LogProb::ln_zero();
+                            }
+                        }
+                    }
+                }
                 let mut fractions = fractions.to_vec();
                 fractions.push(fraction);
                 self.calc_marginal(data, haplotype_index + 1, &mut fractions, joint_prob)
             };
+
             if haplotype_index == self.n_haplotypes - 1 {
                 // let second_if = density(fraction_upper_bound);
                 // second_if //clippy gives a warning

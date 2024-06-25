@@ -36,6 +36,7 @@ pub struct Caller {
     prior: String,
     common_variants: bool,
     lp_cutoff: f64,
+    enable_equivalence_class_constraint: bool,
 }
 
 impl Caller {
@@ -119,6 +120,10 @@ impl Caller {
             //construct candidate matrix
             let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
+            //
+            let eq_graph = haplotype_variants.find_equivalence_class("hla").unwrap();
+            dbg!(&eq_graph);
+
             //1-) model computation for chosen prior
             let prior = PriorTypes::from_str(&self.prior).unwrap();
             let upper_bond = NotNan::new(1.0).unwrap();
@@ -129,10 +134,25 @@ impl Caller {
             );
             let data = Data::new(candidate_matrix.clone(), variant_calls.clone());
             let computed_model = model.compute_from_marginal(
-                &Marginal::new(final_haplotypes.len(), upper_bond, prior),
+                &Marginal::new(
+                    final_haplotypes.len(),
+                    final_haplotypes.clone(),
+                    upper_bond,
+                    prior,
+                    eq_graph,
+                    self.enable_equivalence_class_constraint,
+                    "hla".to_string(),
+                ),
                 &data,
             );
             let mut event_posteriors = computed_model.event_posteriors();
+            // for (fractions,prob) in event_posteriors {
+            //     let best_fractions = fractions
+            //         .iter()
+            //         .map(|f| NotNan::into_inner(*f))
+            //         .collect::<Vec<f64>>();
+            //     dbg!(&best_fractions);
+            // }
             let (best_fractions, _) = event_posteriors.next().unwrap();
 
             //Step 2: plot the final solution
@@ -156,11 +176,11 @@ impl Caller {
             computed_model
                 .event_posteriors()
                 .for_each(|(fractions, logprob)| {
-                    if logprob.exp() != 0.0 {
+                    if (logprob.exp() != 0.0) && (fractions.len() >= final_haplotypes.len()) {
                         event_posteriors.push((fractions.clone(), logprob.clone()));
                     }
                 });
-
+            dbg!(&event_posteriors);
             //first: 3-field
             haplotypes::write_results(
                 &self.outcsv,

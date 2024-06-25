@@ -20,11 +20,16 @@ use good_lp::IntoAffineExpression;
 use good_lp::*;
 use good_lp::{variable, Expression};
 
+use petgraph::dot::{Config, Dot};
+use petgraph::graph::{Graph, NodeIndex, UnGraph};
+
 use serde::Serialize;
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap};
 
 use std::fs;
+use std::fs::File;
+use std::io::Write;
 use std::str::FromStr;
 use std::{path::PathBuf, str};
 
@@ -249,6 +254,99 @@ impl HaplotypeVariants {
             }
         }
         Ok(haplotype_variants_filtered)
+    }
+
+    pub fn find_equivalence_class(
+        &self,
+        application: &str,
+    ) -> Result<Graph<(Haplotype, Haplotype), i32, petgraph::Undirected>> {
+        //an edge in the graph representation for the equivalence classes is drawn if and only
+        //if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
+        let threshold = 1; //should be configured.
+
+        // BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>
+        let mut equivalence_classes: BTreeMap<Haplotype, Vec<VariantID>> = BTreeMap::new();
+
+        //initialize equivalence classes with haplotypes (important for haplotypes that have no variant e.g. A*03:01)
+        self.iter().for_each(|(_, haplotype_map)| {
+            haplotype_map.iter().for_each(|(haplotype, _)| {
+                equivalence_classes.insert(haplotype.clone(), vec![]);
+            })
+        });
+
+        for (variant, haplotype_map) in self.iter() {
+            for (haplotype, (variant_in_gt, variant_in_c)) in haplotype_map.iter() {
+                match variant_in_gt {
+                    VariantStatus::Present => {
+                        let mut variants_in_haplotype = equivalence_classes[&haplotype].clone();
+                        variants_in_haplotype.push(variant.clone());
+                        equivalence_classes.insert(haplotype.clone(), variants_in_haplotype);
+                    }
+                    _ => (),
+                }
+            }
+        }
+        dbg!(&equivalence_classes);
+
+        let mut deps = Graph::new_undirected();
+
+        for (haplotype, variants) in equivalence_classes.iter() {
+            //initialize variables
+            let mut splitted_1 = vec![];
+            let mut haplotype_group = Haplotype(String::from(""));
+            if &application == &"hla" {
+                splitted_1 = haplotype.split(':').collect::<Vec<&str>>();
+                haplotype_group = Haplotype(splitted_1[0].to_owned() + &":" + splitted_1[1]);
+            } else if &application == &"virus" {
+                haplotype_group = haplotype.clone();
+            }
+
+            let item1 = deps.add_node((haplotype.clone(), haplotype_group.clone()));
+            let index = deps
+                .node_indices()
+                .find(|i| deps[*i] == (haplotype.clone(), haplotype_group.clone()))
+                .unwrap();
+            for idx in 0..deps.node_count() {
+                dbg!(&deps[NodeIndex::new(idx)]);
+                let node_at_index = &deps[NodeIndex::new(idx)];
+
+                let mut difference = vec![];
+                let mut splitted_2 = vec![];
+                let mut haplotype_group_at_index = Haplotype(String::from(""));
+                let variants_of_node_at_index = &equivalence_classes[&node_at_index.0];
+                if &application == &"hla" {
+                    splitted_2 = node_at_index.0.split(':').collect::<Vec<&str>>();
+                    haplotype_group_at_index =
+                        Haplotype(splitted_2[0].to_owned() + &":" + splitted_2[1]);
+                } else if &application == &"virus" {
+                    haplotype_group_at_index = node_at_index.0.clone();
+                }
+
+                for variant in variants_of_node_at_index.iter() {
+                    if !variants.contains(&variant) {
+                        difference.push(variant);
+                    }
+                }
+                dbg!(&haplotype_group);
+                dbg!(&haplotype_group_at_index);
+                if (difference.len() < threshold)
+                    && (haplotype_group == haplotype_group_at_index)
+                    && (index != NodeIndex::new(idx))
+                {
+                    //the last is to avoid drawing an edge to itself
+                    let edge = deps.add_edge(index, NodeIndex::new(idx), 1);
+                }
+            }
+        }
+        dbg!(&deps);
+        let mut f = File::create("example.dot").unwrap();
+        let output = format!("{:?}", Dot::with_config(&deps, &[Config::EdgeNoLabel]));
+        f.write_all(&output.as_bytes())
+            .expect("could not write file");
+
+        //todo: implement virus case.
+
+        Ok(deps)
     }
 }
 
