@@ -5,334 +5,273 @@ use derive_builder::Builder;
 use polars::frame::DataFrame;
 use polars::prelude::*;
 
-use crate::candidates::hla;
-use bio::io::fasta::{Record, Writer as FastaWriter};
+use crate::candidates::hla::{self};
+
+use bio::io::fasta;
+
+use ndarray::Array2;
+use petgraph::dot::{Config, Dot};
+use petgraph::graph::{Graph, NodeIndex};
+use petgraph::prelude::Dfs;
+
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 use rust_htslib::faidx;
-use std::convert::TryInto;
+use seq_io::fasta::Record as OtherRecord;
+use serde::Deserialize;
+
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+
 use std::fs;
+use std::fs::File;
 use std::io;
+
 use std::io::Write;
+use std::iter::FromIterator;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+
+use std::process::Command;
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]
 pub struct Caller {
-    output: Option<PathBuf>,
+    output: PathBuf,
     threads: String,
 }
 impl Caller {
-    pub fn call(&self) -> Result<()> {
-        //prepare genome and alleles for the virus (currently, only sars-cov2) (ncbi-datasets-cli=16.4.4 package should be in the requiremenbts)
+    pub fn call(&mut self) -> Result<()> {
+        //prepare genome and alleles for the virus (currently, only sars-cov2)
+
         //first, create the output dir for database setup
-        fs::create_dir_all(self.output.as_ref().unwrap())?;
+        let outdir = &self.output;
+        fs::create_dir_all(&outdir)?;
 
-        //output dir for metadata
-        let virus_metadata_path = self.output.as_ref().unwrap().join("metadata.tsv");
+        //download required resources
+        let (reference_path, clades_path) = download_resources(&outdir).unwrap();
 
-        //download and prepare required metadata as tsv
-        //datasets summary virus genome taxon SARS-CoV-2 --as-json-lines | dataformat tsv virus-genome --fields accession,completeness,release-date,virus-pangolin > sarscov2.tsv
+        //read the clades
+        let mut rdr = csv::ReaderBuilder::new()
+            .delimiter(b'\t')
+            .flexible(true)
+            .has_headers(true)
+            .from_path(clades_path)?;
 
-        //first, download metada
-        let download_metadata = {
-            Command::new("datasets")
-                .arg("summary")
-                .arg("virus")
-                .arg("genome")
-                .arg("taxon")
-                .arg("SARS-CoV-2")
-                .arg("--as-json-lines")
-                .stdout(Stdio::piped())
-                .spawn()
-                .expect("failed to execute the vg giraffe process")
-        };
-        println!("virus metada download is complete.");
-
-        //then, pipe the downloaded jsonl to tsv with dataformat
-        let process_into_tsv = Command::new("dataformat")
-            .arg("tsv")
-            .arg("virus-genome")
-            .stdin(download_metadata.stdout.unwrap())
-            .arg("--fields")
-            .arg("accession,completeness,release-date,virus-pangolin")
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
-
-        //write the prepared tsv to file
-        let output = process_into_tsv
-            .wait_with_output()
-            .expect("failed to wait on child");
-        let mut f = std::fs::File::create(virus_metadata_path.clone())?;
-        f.write_all(&output.stdout)?;
-        println!("virus metadata preparation is complete.");
-
-        //comment out the next line for testing purposees (above process can take ~6 hours)
-        // let virus_metadata_path = "/home/uzuner/Documents/backup_orthanq_metadata/metadata.tsv";
-
-        //retrieve accession ids from each lineage with the oldest submission and complete genomes.
-        let virus_metadata_df = CsvReader::from_path(virus_metadata_path)?
-            .with_delimiter(b'\t')
-            .has_header(true)
-            .finish()?;
-        dbg!(&virus_metadata_df);
-
-        //filter for complete genomes and non-null pangolin classification
-
-        //then, only include complete genomes
-        let filter_complete = virus_metadata_df["Completeness"]
-            .utf8()
-            .unwrap()
-            .into_iter()
-            .map(|x| {
-                if x.unwrap() == "COMPLETE" {
-                    true
-                } else {
-                    false
+        //generate mutations per clade and create a graph for clade hierarchy
+        let mut clade_mutations: HashMap<String, Vec<String>> = HashMap::new();
+        let mut clade_hierarchy: Graph<String, String> = Graph::new();
+        for result in rdr.deserialize() {
+            let record: Record = result?;
+            // println!("{:?}", record);
+            let clade = record.clade.clone();
+            if record.gene == "nuc" {
+                if let Some(alt) = record.alt.clone() {
+                    let mutation = format!("{}_{}", record.site, alt);
+                    if clade_mutations.contains_key(&clade) {
+                        let mut existing_muts = clade_mutations[&clade].clone();
+                        existing_muts.push(mutation);
+                        clade_mutations.insert(clade.clone(), existing_muts);
+                    } else {
+                        clade_mutations.insert(clade.clone(), vec![mutation]);
+                    }
                 }
-            })
-            .collect();
-        let filtered_df_complete = virus_metadata_df.filter(&filter_complete).unwrap();
-        dbg!(&filtered_df_complete);
+            } else if record.gene == "clade" {
+                //add parent and child nodes if they are not present
+                let mut parent_presence = false;
+                let mut child_presence = false;
 
-        // create a mask to filter out null values
-        let mask = filtered_df_complete
-            .column("Virus Pangolin Classification")?
-            .is_not_null();
+                for idx in 0..clade_hierarchy.node_count() {
+                    if clade_hierarchy[NodeIndex::new(idx)] == clade {
+                        parent_presence = true
+                    }
+                    if clade_hierarchy[NodeIndex::new(idx)] == record.site {
+                        child_presence = true
+                    }
+                }
+                if parent_presence == false {
+                    clade_hierarchy.add_node(clade.clone());
+                }
+                if child_presence == false {
+                    clade_hierarchy.add_node(record.site.clone());
+                }
 
-        // apply the filter on a DataFrame
-        let filtered_df_annotated = filtered_df_complete.filter(&mask)?;
-        dbg!(&filtered_df_annotated);
-
-        //group by pangolin lineage and sort by release date
-
-        // ordering of the columns
-        let descending = vec![false, false];
-        // columns to sort by
-        let by = &["Virus Pangolin Classification", "Release date"];
-        // do the sort operation
-        let sorted = filtered_df_annotated.sort(by, descending)?;
-
-        dbg!(&sorted);
-
-        //group by pangolin lineage and get the first entry (which is the oldest)
-        let grouped_df = sorted
-            .groupby(["Virus Pangolin Classification"])?
-            .select(["Accession"])
-            .first()?;
-        dbg!(&grouped_df);
-
-        //download genomes by the accession
-        //e.g. datasets download virus genome accession OY726946.1,OY299705.1
-        dbg!(&grouped_df["Accession_first"]);
-        let accessions_opt: Vec<Option<&str>> =
-            grouped_df["Accession_first"].utf8()?.into_iter().collect();
-        let accessions: Vec<&str> = accessions_opt.iter().map(|a| a.unwrap()).collect();
-        // dbg!(&accessions);
-        dbg!(&accessions.len());
-
-        //write accessions to file
-        let accessions_input = self.output.as_ref().unwrap().join("accessions.csv");
-        let mut wtr = csv::Writer::from_path(&accessions_input)?;
-        for accession in accessions.iter() {
-            wtr.write_record(vec![accession])?;
-        }
-        wtr.flush()?; //make sure everything is sucsessfully written to the file
-
-        //download genomes given by accession, this will create a file called ncbi_datasets.zip
-        let data_package_lineages = self
-            .output
-            .as_ref()
-            .unwrap()
-            .join("ncbi_datasets_lineages.zip");
-
-        let download_genomes = {
-            Command::new("datasets")
-                .arg("download")
-                .arg("virus")
-                .arg("genome")
-                .arg("accession")
-                .arg("--inputfile")
-                .arg(accessions_input)
-                .arg("--filename")
-                .arg(&data_package_lineages)
-                .arg("--debug")
-                .status()
-                .expect("failed to download sequences")
-        };
-        println!(
-            "The download of sars-cov-2 genomes with given accession ids was exited with: {}",
-            download_genomes
-        );
-
-        //unzip the downloaded package
-        let unzip_package = {
-            Command::new("unzip")
-                .arg(data_package_lineages)
-                .arg("-d")
-                .arg(self.output.as_ref().unwrap().join("lineages"))
-                .status()
-                .expect("failed to unzip ncbi data package")
-        };
-        println!("All genomes data package was unzipped: {}", unzip_package);
-
-        //download the oldest submitted sars-cov-2 genome to use as reference
-        // first, sort by release
-        let sorted = filtered_df_complete.sort(&["Release date"], false)?;
-        dbg!(&sorted);
-
-        //write to csv
-        // let mut output_file: File = File::create("out.csv").unwrap();
-        // CsvWriter::new(&mut output_file)
-        //     .has_header(true)
-        //     .finish(&mut sorted)
-        //     .unwrap();
-
-        //download the oldest submitted genome to be used as reference genome
-        // let oldest_accession = sorted.select(["Accession"]).iter();
-        let accessions = sorted.column("Accession")?.utf8()?;
-        let accessions_to_vec: Vec<Option<&str>> = accessions.into_iter().collect();
-        let oldest_accession = accessions_to_vec[0];
-
-        //download the genome
-        let data_package_reference = self
-            .output
-            .as_ref()
-            .unwrap()
-            .join("ncbi_datasets_reference_genome.zip");
-
-        let download_reference_genome = {
-            Command::new("datasets")
-                .arg("download")
-                .arg("virus")
-                .arg("genome")
-                .arg("accession")
-                .arg(oldest_accession.unwrap())
-                .arg("--filename")
-                .arg(&data_package_reference)
-                .arg("--debug")
-                .status()
-                .expect("failed to download sequences")
-        };
-        println!(
-            "The download of reference genome for sars-cov-2 was exited with: {}",
-            download_reference_genome
-        );
-
-        //unzip the downloaded package
-        let unzip_package = {
-            Command::new("unzip")
-                .arg(data_package_reference)
-                .arg("-d")
-                .arg(self.output.as_ref().unwrap().join("reference_genome"))
-                .status()
-                .expect("failed to unzip ncbi data package for reference genome")
-        };
-        println!(
-            "The reference genome data package was unzipped: {}",
-            unzip_package
-        );
-
-        //select only fasta records containing less than a certain threshold for ambiguous bases, threshold = 0.05
-        //then write the filtered records to fasta
-        //for that, count the number of ambiguous bases i.e. N, R, etc. and divide them by the length of the fasta
-        //also, for a second check of genome completeness, some viral lineages might still be present in the database with genome length
-        //smaller than 29k, check LR877184.1, only include genome lenghts with greater than 29k ref:  (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7161481/)
-        let all_lineages_path = self
-            .output
-            .as_ref()
-            .unwrap()
-            .join("lineages/ncbi_dataset/data/genomic.fna");
-
-        let quality_lineages_path = self
-            .output
-            .as_ref()
-            .unwrap()
-            .join("lineages/ncbi_dataset/data/genomic_quality.fna");
-
-        //create the new fasta
-        let file = fs::File::create(&quality_lineages_path).unwrap();
-        let handle = io::BufWriter::new(file);
-        let mut writer = FastaWriter::new(handle);
-
-        //find the records that are above the threshold and write them to fasta
-        let lineages_rdr = faidx::Reader::from_path(all_lineages_path).unwrap();
-        for idx in 0..lineages_rdr.n_seqs() {
-            //find the name, length and sequence of the fasta record
-            let l_name = lineages_rdr.seq_name(idx as i32)?;
-            let l_len = lineages_rdr.fetch_seq_len(&l_name);
-            let l_seq = lineages_rdr.fetch_seq_string(&l_name, 0, l_len as usize)?;
-
-            //find the number of ambiguous bases in the record
-            let n_ambiguous = l_seq
-                .chars()
-                .filter(|x| !vec!["A", "G", "T", "C"].contains(&x.to_string().as_str()))
-                .count();
-
-            //calculate the ratio of ambiguous bases in the fasta record
-            let ratio_of_ambiguous = n_ambiguous as f32 / l_len as f32;
-
-            //write the record to file if the ratio exceeds the defined threshold
-            let threshold_ambiguous: f32 = 0.05; //todo: must be configured later
-
-            if (ratio_of_ambiguous < threshold_ambiguous) && (l_len > 29000) {
-                //second check is necessary for double checking genome completeness
-                let record = Record::with_attrs(&l_name, Some(""), l_seq.as_bytes());
-                let write_result = writer.write_record(&record);
+                //add edges as variant sets in direction of parent to child
+                let index_parent = clade_hierarchy
+                    .node_indices()
+                    .find(|i| clade_hierarchy[*i] == clade)
+                    .unwrap();
+                let index_child = clade_hierarchy
+                    .node_indices()
+                    .find(|i| clade_hierarchy[*i] == record.site)
+                    .unwrap();
+                // let mut mutation = format!("{}_{}", record.site, alt);
+                clade_hierarchy.add_edge(index_parent, index_child, "".to_string());
             }
         }
-        writer.flush()?;
+        dbg!(&clade_hierarchy);
 
-        //then, here are the dirs for reference genome and all lineages
-        let lineages_path = quality_lineages_path.clone();
-        let reference_genome_path = self
-            .output
-            .as_ref()
-            .unwrap()
-            .join("reference_genome/ncbi_dataset/data/genomic.fna");
+        //update clade mutations with parent mutations
+        let mut clade_mutations_with_parents = clade_mutations.clone();
+        clade_mutations.iter().for_each(|(clade, _mutations)| {
+            if let Some(index) = &clade_hierarchy
+                .node_indices()
+                .find(|i| &clade_hierarchy[*i] == clade)
+            {
+                //iterate over all the nodes that come every entry in clade_mutations
+                let mut dfs = Dfs::new(&clade_hierarchy, *index);
+                let mut mutations_with_parent = clade_mutations[clade].clone();
+                while let Some(visited) = dfs.next(&clade_hierarchy) {
+                    let visited = clade_hierarchy[visited].clone();
+                    dbg!(&visited);
+                    //the first visit is the node itself
+                    //insert mutations coming from the parent nodes
+                    if visited != *clade && visited != "19A" {
+                        //19A is the reference itself - no mutations
+                        mutations_with_parent.extend(clade_mutations[&visited].clone());
+                    }
+                }
+                clade_mutations_with_parents.insert(clade.clone(), mutations_with_parent);
+            }
+        });
+        dbg!(&clade_mutations);
+        dbg!(&clade_mutations_with_parents);
 
-        //index reference genome
-        let faidx = {
-            Command::new("samtools")
-                .arg("faidx")
-                .arg(&reference_genome_path)
-                .status()
-                .expect("failed to unzip ncbi data package for reference genome")
-        };
-        println!(
-            "Samtools faidx for reference genome was exited with: {}",
-            faidx
+        //add 19B manually to the graph for visualization purposes (19B -> 19A info not present in the clades.tsv)
+        let nineteenb_i = clade_hierarchy.add_node("19B".to_string());
+        let nineteena_i = clade_hierarchy
+            .node_indices()
+            .find(|i| &clade_hierarchy[*i] == "19A")
+            .unwrap();
+        clade_hierarchy.add_edge(nineteenb_i, nineteena_i, "".to_string());
+
+        //export graph as output
+        let graph_dir = outdir.join("sarscov2_lineages.dot");
+        let mut f = File::create(graph_dir).unwrap();
+        let output = format!(
+            "{:?}",
+            Dot::with_config(&clade_hierarchy, &[Config::EdgeNoLabel])
         );
+        f.write_all(&output.as_bytes())
+            .expect("could not write file");
 
-        //align and sort
+        //create a map and an array as a template of upcoming vcf data structure
+        let mut candidate_variants: BTreeMap<(String, usize, String, String), Vec<usize>> =
+            BTreeMap::new();
+        let reference_genome = faidx::Reader::from_path(&reference_path).unwrap();
 
-        hla::alignment(
-            &reference_genome_path,
-            &lineages_path,
-            &self.threads,
-            false,
-            self.output.as_ref().unwrap(),
-        )?;
+        //name of the sarscov2 accession to use as chrom
+        let chrom = reference_genome.seq_name(0).unwrap().to_string();
 
-        //find variants
-        let (genotype_df, loci_df) = hla::find_variants_from_cigar(
-            &reference_genome_path,
-            &self.output.as_ref().unwrap().join("alignment_sorted.sam"),
-        )
-        .unwrap();
+        let mut j: usize = 0; //the iterator that stores the index of clade
+                              //some nuc conversions in the clades.tsv has are conversions that support the ref.
+                              //examples include: 1) 19A and the variant,	nuc	8782 C, which supports reference (pos 8782 also has C in that position)
+                              //2) 22F nuc 15461 A. this could be because 22F is a recombinant of two strains and one of them might have the same mutation 15461
 
-        //replace accession ids with the corresponding lineage names
-        let genotype_lineages = accession_to_lineage(&genotype_df, &grouped_df)?;
-        let loci_lineages = accession_to_lineage(&loci_df, &grouped_df)?;
+        //remove 22F for now. TODO: update this the following line according to the answers from the maintainers
+        clade_mutations_with_parents.remove("22F");
 
-        //write to vcf
-        self.write_to_vcf(&genotype_lineages, &loci_lineages)?;
+        //loop over the graph to construct candidate variants map
+        clade_mutations_with_parents
+            .iter()
+            .for_each(|(_clade, mutations)| {
+                //find record components
+                let mut pos: usize = 0;
+                let mut alt_base: String = "".to_string();
+                mutations.iter().for_each(|m| {
+                    dbg!(&m);
+                    let splitted = m.split('_').collect::<Vec<&str>>();
+                    pos = splitted[0].parse::<usize>().unwrap();
+                    alt_base = splitted[1].to_string();
 
+                    let ref_base = reference_genome
+                        .fetch_seq_string(&chrom, pos - 1, pos - 1)
+                        .unwrap();
+                    dbg!(&pos, &ref_base, &alt_base);
+
+                    //update the record in candidate variants if ref base and alt bases are different (update according to the response from Cornelius Roemer)
+                    //19A is still being represented because of the count j+=1 in the end and the array was consisting of zeros for all haplotypes.
+                    if ref_base != alt_base {
+                        candidate_variants
+                            .entry((chrom.clone(), pos, ref_base.clone(), alt_base.clone()))
+                            .or_insert(vec![]);
+                        let mut haplotypes = candidate_variants
+                            .get(&(chrom.clone(), pos, ref_base.clone(), alt_base.clone()))
+                            .unwrap()
+                            .clone();
+                        haplotypes.push(j); //appending j informs the dict about the clade names eventually
+                        candidate_variants
+                            .insert((chrom.clone(), pos, ref_base, alt_base.clone()), haplotypes);
+                    }
+                });
+                j += 1;
+            });
+        dbg!(&candidate_variants);
+
+        //convert candidate variants to array
+        let genotypes_array =
+            hla::convert_candidate_variants_to_array(candidate_variants.clone(), j).unwrap();
+
+        //create loci array (all should be one because we base the sequences on one reference plus nuc conversions)
+        let loci_array = Array2::<i32>::ones((candidate_variants.len(), j));
+
+        //convert gt and lc arrays to df
+        let clade_names: Vec<_> = clade_mutations_with_parents.keys().cloned().collect();
+        let genotype_df =
+            convert_to_dataframe(&candidate_variants, genotypes_array, &clade_names).unwrap();
+        let loci_df = convert_to_dataframe(&candidate_variants, loci_array, &clade_names).unwrap();
+
+        //then write to vcf
+        self.write_to_vcf(genotype_df, loci_df)?;
+
+        //convert mutations to sequences and write sequences for each clade to fasta
+        self.write_sequences_to_fasta(&clade_mutations_with_parents, &reference_path)?;
         Ok(())
     }
+    fn write_sequences_to_fasta(
+        &mut self,
+        clade_mutations: &HashMap<String, Vec<String>>,
+        reference_path: &PathBuf,
+    ) -> Result<()> {
+        //create a subdirectory for writing the sequences
+        let outdir = &mut self.output.clone();
+        outdir.push("sequences");
+        dbg!(&outdir);
+        fs::create_dir_all(&outdir);
 
-    fn write_to_vcf(&self, variant_table: &DataFrame, loci_table: &DataFrame) -> Result<()> {
+        //load genome into memory
+        let reference_genome = fasta::Reader::from_file(reference_path).unwrap();
+
+        //prepare the seq
+        let ref_seq_nth = reference_genome.records().nth(0).unwrap().unwrap();
+        let ref_seq = ref_seq_nth.seq().to_vec();
+
+        //iterate over candidate variants to create fasta for each clade with corresponding mutations
+        // let ref_seq = reference_genome.fetch_seq_string().unwrap();
+        clade_mutations.iter().for_each(|(clade, mutations)| {
+            //create the file and handle
+            let file = fs::File::create(format!("{}.fasta", outdir.join(clade.clone()).display()))
+                .unwrap();
+            let handle = io::BufWriter::new(file);
+            let mut writer = bio::io::fasta::Writer::new(handle);
+
+            //change the corresponding positions in the seq
+            let mut clade_seq = ref_seq.clone();
+            mutations.iter().for_each(|m| {
+                let splitted: Vec<&str> = m.split('_').collect();
+                let pos = splitted[0].parse::<usize>().unwrap();
+                let alt_base = splitted[1].as_bytes();
+                clade_seq[pos - 1] = alt_base[0];
+            });
+
+            //then write the record to file
+            let record = bio::io::fasta::Record::with_attrs(clade, Some(&""), &clade_seq);
+            writer
+                .write_record(&record)
+                .ok()
+                .expect("Error writing record.");
+        });
+        Ok(())
+    }
+    fn write_to_vcf(&self, variant_table: DataFrame, loci_table: DataFrame) -> Result<()> {
         // dbg!(&variant_table);
         //Create VCF header
         let mut header = Header::new();
@@ -363,11 +302,10 @@ impl Caller {
             header.push_sample(sample_name.as_bytes());
         }
         // fs::create_dir_all(self.output.as_ref().unwrap())?;
+        let outdir = &self.output;
+
         let mut vcf = Writer::from_path(
-            format!(
-                "{}.vcf",
-                self.output.as_ref().unwrap().join("candidates").display()
-            ),
+            format!("{}.vcf", outdir.join("candidates").display()),
             &header,
             true,
             Format::Vcf,
@@ -440,53 +378,100 @@ impl Caller {
 }
 
 //accession_to_lineage simply converts accession ids that represent each lineage to lineage names as well as nextstrain clade
-fn accession_to_lineage(df: &DataFrame, accession_to_lineage_df: &DataFrame) -> Result<DataFrame> {
-    dbg!(&df);
-    dbg!(&accession_to_lineage_df);
-
-    //read lineage to clade resource
-    let cargo_dir = env!("CARGO_MANIFEST_DIR");
-    let file_path = format!(
-        "{}/resources/clade_to_lineages/cladeToLineages.tsv",
-        cargo_dir
-    );
-    let lin_to_clade = CsvReader::from_path(&file_path)?
-        .with_delimiter(b'\t')
-        .has_header(true)
-        .finish()?;
-    dbg!(&lin_to_clade);
-
+fn accession_to_lineage(
+    df: &DataFrame,
+    accession_to_clade_map: &HashMap<&str, &str>,
+    output_path_to_mapping: &PathBuf,
+) -> Result<DataFrame> {
     //clone the input df
     let mut renamed_df = df.clone();
 
-    //prepare iterables of columns beforehand
-    let mut iter_pangolin = accession_to_lineage_df["Virus Pangolin Classification"]
-        .utf8()
-        .unwrap()
-        .into_iter();
-    let mut iter_accession = accession_to_lineage_df["Accession_first"]
-        .utf8()
-        .unwrap()
-        .into_iter();
-    let mut lineages_in_resource = lin_to_clade["lineage"].utf8().unwrap();
-    let mut clades_in_resource = lin_to_clade["clade"].utf8().unwrap();
+    //rename accessions to clades and collect clade-accession mapping to a hashmap
+    let mut mapping: HashMap<&str, &str> = HashMap::new();
+    accession_to_clade_map.iter().for_each(|(acc, cld)| {
+        let mut rename_str = format!("no clade");
+        rename_str = format!("{}", cld.clone());
+        renamed_df.rename(acc.clone(), &rename_str);
+        mapping.insert(cld.clone(), acc.clone());
+    });
+    dbg!(&renamed_df.shape());
 
-    //rename accessions to lineages and if present, clades
-    iter_pangolin
-        .into_iter()
-        .zip(iter_accession)
-        .for_each(|(png, acc)| {
-            let mut rename_str = format!("no clade ({})", png.unwrap());
-            lineages_in_resource
-                .into_iter()
-                .zip(clades_in_resource.into_iter())
-                .for_each(|(lng, cld)| {
-                    if png == lng {
-                        rename_str = format!("{} ({})", cld.unwrap(), lng.unwrap());
-                    }
-                });
-            renamed_df.rename(acc.unwrap(), &rename_str);
-        });
-    dbg!(&renamed_df);
+    //write mapping to file
+    let mut wtr = csv::Writer::from_path(output_path_to_mapping)?;
+    wtr.write_record(&vec!["Nexstrain_clade", "Accession"])?;
+    mapping
+        .iter()
+        .for_each(|(cld, acc)| wtr.write_record(&vec![cld, acc]).unwrap());
+
     Ok(renamed_df)
+}
+
+fn download_resources(outdir: &PathBuf) -> Result<(PathBuf, PathBuf)> {
+    let ref_link = &"https://raw.githubusercontent.com/nextstrain/ncov/1f7265a7f4e51147a38f738e3f2bcb77b9d35287/defaults/reference_seq.fasta";
+    let clades_link = &"https://raw.githubusercontent.com/nextstrain/ncov/1f7265a7f4e51147a38f738e3f2bcb77b9d35287/defaults/clades.tsv";
+
+    let ref_path = outdir.join("reference.fasta");
+    let clades_path = outdir.join("clades.tsv");
+
+    let _download_ref = {
+        Command::new("wget")
+            .arg("-c")
+            .arg(&ref_link)
+            .arg("-O")
+            .arg(&ref_path)
+            .status()
+            .expect("failed to execute the download process for reference")
+    };
+
+    let _download_clades = {
+        Command::new("wget")
+            .arg("-c")
+            .arg(&clades_link)
+            .arg("-O")
+            .arg(&clades_path)
+            .status()
+            .expect("failed to execute the download process for clades.tsv")
+    };
+
+    Ok((ref_path, clades_path))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct Record {
+    clade: String,
+    gene: String,
+    site: String,
+    alt: Option<String>,
+}
+
+fn convert_to_dataframe(
+    candidate_variants: &BTreeMap<(String, usize, String, String), Vec<usize>>,
+    array: Array2<i32>,
+    haplotype_names: &Vec<String>,
+) -> Result<DataFrame> {
+    //first initialize the dataframes with index columns that contain variant information.
+    let mut genotype_df: DataFrame = df!("Index" => candidate_variants
+    .iter()
+    .map(|((chrom, pos, ref_base, alt_base), _)| {
+        format!(
+            "{},{},{},{}",
+            chrom, pos, ref_base, alt_base
+        )
+    })
+    .collect::<Series>())?;
+
+    //construct the genotype dataframe
+    for (index, haplotype_name) in haplotype_names.iter().enumerate() {
+        genotype_df.with_column(Series::new(
+            haplotype_name.as_str(),
+            array.column(index).to_vec(),
+        ))?;
+    }
+
+    //insert an ID column as many as the number of rows, right after the Index column
+    genotype_df.insert_at_idx(
+        1,
+        Series::new("ID", Vec::from_iter(0..genotype_df.shape().0 as i64)),
+    )?;
+    Ok(genotype_df)
 }

@@ -6,6 +6,16 @@ Uncerainty aware haplotype quantification using a Bayesian model that is based o
 
 Orthanq is under active development.
 
+## Installation
+
+Orthanq is available as a Bioconda package and can be installed via:
+
+    mamba install orthanq
+
+## Haplotype quantification & HLA typing
+
+Docs: https://orthanq.github.io/docs/index.html
+
 ## Building for development and manual installation
 
 The easiest way to build Orthanq is via Conda/Mamba.
@@ -21,7 +31,13 @@ Third, build Orthanq via
 
     HDF5_DIR=$CONDA_PREFIX RUSTFLAGS='-L $CONDA_PREFIX/include' cargo build
 
-Last, conda lib location is set via
+Fourth, conda lib location is set via
 
     export LD_LIBRARY_PATH=$CONDA_PREFIX/lib
     
+Last, Orthanq can be built with:
+
+    cargo build    
+or
+
+    cargo build --release

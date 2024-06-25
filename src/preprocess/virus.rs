@@ -3,11 +3,10 @@ use derive_builder::Builder;
 
 use std::fs;
 use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
-
-use std::path::Path;
 
 use tempfile::tempdir;
 
@@ -25,6 +24,11 @@ impl Caller {
         //specify out dir
         let outdir = &self.output;
 
+        //create the parent dir
+        let mut parent = outdir.clone();
+        parent.pop();
+        fs::create_dir_all(parent)?;
+
         // Create a directory inside of `std::env::temp_dir()` for temporary files
         let temp_dir = tempdir()?;
 
@@ -33,9 +37,7 @@ impl Caller {
         let scenario = format!("{}/resources/scenarios/scenario.yaml", cargo_dir);
 
         //genome must have been downloaded in the candidate generation step:
-        let ref_genome = self
-            .candidates_folder
-            .join("reference_genome/ncbi_dataset/data/genomic.fna");
+        let ref_genome = self.candidates_folder.join("reference.fasta");
 
         //haplotype variantts must have been downloaded in the candidate generation step:
         let haplotype_variants = self.candidates_folder.join("candidates.vcf");
@@ -219,6 +221,8 @@ impl Caller {
                 .arg(&file_vg_aligned_sorted)
                 .arg("--output")
                 .arg(&varlociraptor_prep_dir)
+                .arg("--max-depth")
+                .arg("3000")
                 .status()
                 .expect("failed to execute the varlociraptor preprocessing")
         };

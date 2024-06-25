@@ -56,6 +56,8 @@ pub enum PreprocessKind {
         genome: PathBuf,
         #[structopt(long = "vg-index", required = true, help = "VG pangenome graph")]
         vg_index: PathBuf,
+        #[structopt(long = "bwa-index", help = "bwa index")]
+        bwa_index: Option<PathBuf>,
         #[structopt(
             long = "reads",
             required = true,
@@ -133,10 +135,6 @@ pub enum CandidatesKind {
             help = "allele frequencies for filterin purposes"
         )]
         allele_freq: PathBuf,
-        #[structopt(long = "wes", help = "Specify the sample type.")]
-        wes: bool,
-        #[structopt(long = "wgs", help = "Specify the sample type (default).")]
-        wgs: bool,
         #[structopt(
             long,
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
@@ -153,7 +151,7 @@ pub enum CandidatesKind {
             long,
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
         )]
-        output: Option<PathBuf>,
+        output: PathBuf,
         #[structopt(
             default_value = "2",
             help = "Threads to use for minimap2 used candidate generation."
@@ -295,8 +293,6 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 genome,
                 xml,
                 allele_freq,
-                wes,
-                wgs,
                 output,
                 threads,
             } => {
@@ -305,8 +301,6 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .genome(genome)
                     .xml(xml)
                     .allele_freq(allele_freq)
-                    .wes(wes)
-                    .wgs(wgs)
                     .output(output)
                     .threads(threads)
                     .build()
@@ -315,7 +309,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 Ok(())
             }
             CandidatesKind::Virus { output, threads } => {
-                let caller = candidates::virus::CallerBuilder::default()
+                let mut caller = candidates::virus::CallerBuilder::default()
                     .output(output)
                     .threads(threads)
                     .build()
@@ -330,12 +324,14 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 reads,
                 haplotype_variants,
                 vg_index,
+                bwa_index,
                 output,
                 threads,
             } => {
                 preprocess::hla::CallerBuilder::default()
                     .genome(genome)
                     .vg_index(vg_index)
+                    .bwa_index(bwa_index)
                     .reads(reads)
                     .haplotype_variants(haplotype_variants)
                     .output(output)

@@ -108,12 +108,12 @@ impl VariantCalls {
             let mut record = record_result?;
             record.unpack();
             let prob_absent = record.info(b"PROB_ABSENT").float().unwrap().unwrap()[0];
-            let prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
+            let _prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
             let read_depths = record.format(b"DP").integer().unwrap();
             if read_depths[0] != &[0]
-                && (&prob_absent_prob <= &Prob(0.05) || &prob_absent_prob >= &Prob(0.95))
+            // && (&prob_absent_prob <= &Prob(0.05) || &prob_absent_prob >= &Prob(0.95))
             {
                 //because some afd strings are just "." and that throws an error while splitting below.
                 let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();

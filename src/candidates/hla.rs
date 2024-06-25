@@ -28,8 +28,6 @@ pub struct Caller {
     genome: PathBuf,
     xml: PathBuf,
     allele_freq: PathBuf,
-    wes: bool,
-    wgs: bool,
     output: Option<PathBuf>,
     threads: String,
 }
@@ -45,7 +43,13 @@ impl Caller {
         // self.write_to_fasta(&confirmed_alleles)?;
 
         //align and sort
-        // alignment(&self.genome, &self.alleles, &self.threads, true, self.output.as_ref().unwrap())?;
+        alignment(
+            &self.genome,
+            &self.alleles,
+            &self.threads,
+            true,
+            self.output.as_ref().unwrap(),
+        )?;
 
         //find variants from cigar
         let (mut genotype_df, mut loci_df) = find_variants_from_cigar(
@@ -53,21 +57,17 @@ impl Caller {
             &self.output.as_ref().unwrap().join("alignment_sorted.sam"),
         )
         .unwrap();
-
         //Unconfirmed alleles are removed from both dataframes
         unconfirmed_alleles.iter().for_each(|unconf_allele| {
             let _ = genotype_df.drop_in_place(unconf_allele);
             let _ = loci_df.drop_in_place(unconf_allele);
         });
 
-        //Split up the variants per locus and depending on --wes samples, restrict the columns to protein level.
-        //TODO: enable writing for wgs samples.
-        if self.wes {
-            let genotype_df = self.split_haplotypes(&mut genotype_df)?;
-            let loci_df = self.split_haplotypes(&mut loci_df)?;
-            //write locus-wise vcf files.
-            self.write_loci_to_vcf(&genotype_df, &loci_df)?;
-        }
+        //write to vcf
+        let genotype_df = self.split_haplotypes(&mut genotype_df)?;
+        let loci_df = self.split_haplotypes(&mut loci_df)?;
+        //write locus-wise vcf files.
+        self.write_loci_to_vcf(&genotype_df, &loci_df)?;
         Ok(())
     }
     fn split_haplotypes(&self, variant_table: &mut DataFrame) -> Result<DataFrame> {
@@ -154,7 +154,6 @@ impl Caller {
                     })
                     .collect::<Series>();
                 intersection.rename(protein_level);
-                dbg!(&intersection);
                 new_df.with_column(intersection)?;
             } else {
                 new_df.replace_or_add(protein_level, variant_table[*column_name].clone())?;
@@ -196,15 +195,15 @@ impl Caller {
 
             //Create VCF header
             let mut header = Header::new();
-            //push contig names to the header.
-            header.push_record(br#"##contig=<ID=1>"#);
-            header.push_record(br#"##contig=<ID=6>"#);
-            header.push_record(br#"##contig=<ID=7>"#);
-            header.push_record(br#"##contig=<ID=8>"#);
-            header.push_record(br#"##contig=<ID=9>"#);
-            header.push_record(br#"##contig=<ID=11>"#);
-            header.push_record(br#"##contig=<ID=16>"#);
-            header.push_record(br#"##contig=<ID=X>"#);
+            //push contig names to the header depending on the reference format
+            variant_table["Index"]
+                .utf8()
+                .unwrap()
+                .into_iter()
+                .for_each(|record| {
+                    let index_splitted = record.unwrap().split(',').collect::<Vec<&str>>();
+                    header.push_record(format!("##contig=<ID={}>", index_splitted[0]).as_bytes());
+                });
 
             //push field names to the header.
             let header_gt_line = r#"##FORMAT=<ID=GT,Number=1,Type=String,Description="Variant is present in the haplotype (1) or not (0).">"#;
@@ -368,16 +367,22 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                             .unwrap()
                             .to_string(),
                     ); //index 0 holds the allele id
-                    allele_names.push(
-                        e.attributes()
-                            .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                            .collect::<Vec<_>>()[1]
-                            .as_ref()
-                            .unwrap()
-                            .split('-') //"HLA-" don't take the HLA prefix
-                            .collect::<Vec<&str>>()[1]
-                            .to_string(),
-                    ); //index 1 holds the allele name
+
+                    //omit HLA- prefix from allele names in case they contain it.
+                    let allele_name = e
+                        .attributes()
+                        .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
+                        .collect::<Vec<_>>()[1]
+                        .as_ref()
+                        .unwrap()
+                        .to_string(); //index 1 holds the allele name
+                    if allele_name.contains('-') {
+                        allele_names
+                            .push(allele_name.split('-').collect::<Vec<&str>>()[1].to_string());
+                    } else {
+                        allele_names.push(allele_name);
+                    }
+
                     alleles_indices.push(counter.clone());
                     counter += 1;
                 }
@@ -464,12 +469,12 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
         .collect::<HashMap<String, String>>();
     //include only alleles that have >0.01 AF in at least one population
     let mut unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
-    dbg!(&unconfirmed_alleles.len());
-    dbg!(&confirmed_alleles.len());
+    // dbg!(&unconfirmed_alleles.len());
+    // dbg!(&confirmed_alleles.len());
     let mut confirmed_alleles_clone = confirmed_alleles.clone();
     let mut allele_freq_rdr = CsvReader::from_path(af_path)?;
     let mut to_be_included = Vec::new();
-    dbg!(confirmed_alleles_clone.len());
+    // dbg!(confirmed_alleles_clone.len());
     confirmed_alleles_clone.retain(|&_, y| {
         y.starts_with('A')
             || y.starts_with('B')
@@ -477,16 +482,20 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
             || y.starts_with("DQA1")
             || y.starts_with("DQB1")
     });
-    dbg!(confirmed_alleles_clone.len());
+    // dbg!(confirmed_alleles_clone.len());
     // dbg!(&confirmed_alleles_clone);
     allele_freq_rdr.deserialize().for_each(|result| {
         let record: Record = result.unwrap();
         confirmed_alleles_clone.iter().for_each(|(id, name)| {
             let mut first_three = String::from("");
+            let mut first_two = String::from("");
             let splitted = name.split(':').collect::<Vec<&str>>(); //DQB1*05:02:01 is alone not an allele name, but DQB1*05:02:01:01, DQB1*05:02:01:02.. are.
-            let first_two = format!("{}:{}", splitted[0], splitted[1]);
+                                                                   //some allele names might be like "HLA-DQA1*05013" which seems like a bug in the naming.
+                                                                   //we need to cover that case here, in the second if arm.
             if splitted.len() > 2 {
                 first_three = format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]);
+            } else if splitted.len() > 1 {
+                first_two = format!("{}:{}", splitted[0], splitted[1]);
             }
             // first a direct match then if it doesn't match, then perform matches against the first three and first two fields of the record in the confirmed alleles.
             if &record.var == name {
@@ -504,18 +513,18 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
         });
     });
     // dbg!(&to_be_included);
-    dbg!(&to_be_included.len());
+    // dbg!(&to_be_included.len());
     let below_criterium: Vec<String> = confirmed_alleles_clone
         .iter()
         .filter(|(id, _)| !to_be_included.contains(id))
         .map(|(id, _)| id.clone())
         .collect();
-    dbg!(&below_criterium.len());
+    // dbg!(&below_criterium.len());
     //todo: confirmed_alleles
     let confirmed_alleles = confirmed_alleles.keys().cloned().collect::<Vec<String>>();
     unconfirmed_alleles.extend(below_criterium);
-    dbg!(&unconfirmed_alleles.len());
-    dbg!(&confirmed_alleles.len());
+    // dbg!(&unconfirmed_alleles.len());
+    // dbg!(&confirmed_alleles.len());
     Ok((confirmed_alleles, unconfirmed_alleles))
 }
 
@@ -527,6 +536,8 @@ pub fn alignment(
     index: bool,
     output: &PathBuf,
 ) -> Result<()> {
+    fs::create_dir_all(output)?;
+
     // Create a directory inside of `std::env::temp_dir()`
     let temp_dir = tempdir()?;
 
@@ -553,7 +564,7 @@ pub fn alignment(
     } else {
         genome_input = genome.clone();
     }
-    dbg!(&genome_input);
+    // dbg!(&genome_input);
 
     //then, align alleles/lineages to genome and write to temp
     let aligned_file = temp_dir.path().join("alignment.sam");
@@ -724,7 +735,7 @@ pub fn find_variants_from_cigar(
             j += 1;
         }
     }
-    dbg!(&candidate_variants.len());
+    // dbg!(&candidate_variants.len());
     // dbg!(&candidate_variants);
     // //add MNV encoding: encode all variants, closer than x bases to each other (x=2,3 etc.)
     // // let candidate_variants_clone = candidate_variants.clone();
@@ -1179,4 +1190,21 @@ pub fn find_variants_from_cigar(
     )?;
 
     Ok((genotype_df, loci_df))
+}
+pub fn convert_candidate_variants_to_array(
+    candidate_variants: BTreeMap<(String, usize, String, String), Vec<usize>>,
+    j: usize,
+) -> Result<Array2<i32>> {
+    //construct the first array having the same number of rows and columns as candidate variants map and locate the genotypes for each haplotype.
+    let mut genotypes_array = Array2::<i32>::zeros((candidate_variants.len(), j));
+    candidate_variants
+        .iter()
+        .enumerate()
+        .for_each(|(i, (_, haplotype_indices))| {
+            haplotype_indices
+                .iter()
+                .for_each(|haplotype| genotypes_array[[i, *haplotype]] = 1)
+        });
+
+    Ok(genotypes_array)
 }
