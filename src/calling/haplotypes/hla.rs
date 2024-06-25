@@ -141,6 +141,7 @@ impl Caller {
                     prior,
                     eq_graph,
                     self.enable_equivalence_class_constraint,
+                    "hla".to_string(),
                 ),
                 &data,
             );

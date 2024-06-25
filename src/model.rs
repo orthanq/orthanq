@@ -24,8 +24,9 @@ pub(crate) struct Marginal {
     haplotypes: Vec<Haplotype>,
     upper_bond: NotNan<f64>,
     prior_info: PriorTypes,
-    haplotype_graph: Graph<(Haplotype, String), i32, Undirected>,
+    haplotype_graph: Graph<(Haplotype, Haplotype), i32, Undirected>,
     enable_equivalence_class_constraint: bool,
+    application: String,
 }
 
 impl Marginal {
@@ -48,13 +49,20 @@ impl Marginal {
                     && fraction > NotNan::new(0.0).unwrap()
                     && fractions.len() > 1
                 {
-                    // only if the fraction for the current has greater than 0.0{
-
+                    // only if the fraction for the current has greater than 0.0
+                    let mut haplotype_group = Haplotype("".to_string());
                     let current_haplotype = &self.haplotypes[haplotype_index];
-                    let splitted = &self.haplotypes[haplotype_index]
-                        .split(':')
-                        .collect::<Vec<&str>>();
-                    let haplotype_group = splitted[0].to_owned() + &":" + splitted[1];
+                    if self.application == "hla".to_string() {
+                        let splitted = &self.haplotypes[haplotype_index]
+                            .split(':')
+                            .collect::<Vec<&str>>();
+                        haplotype_group = Haplotype(splitted[0].to_owned() + &":" + splitted[1]);
+                    } else if self.application == "virus".to_string() {
+                        let splitted = &self.haplotypes[haplotype_index]
+                            .split(':')
+                            .collect::<Vec<&str>>();
+                        haplotype_group = current_haplotype.clone();
+                    }
 
                     //find the index of the (haplotype, haplotype_group) in graph
                     let index = &self
