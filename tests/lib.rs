@@ -11,6 +11,7 @@ fn check_haplotype_fractions_5050() {
         )
         .xml("tests/hla.xml".into())
         .common_variants(false)
+        .enable_equivalence_class_constraint(false)
         .outcsv(output)
         .prior("diploid".to_string())
         .lp_cutoff(0.01)
