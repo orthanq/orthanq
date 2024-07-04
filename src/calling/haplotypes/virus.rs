@@ -72,7 +72,7 @@ impl Caller {
             let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
 
             //currently, ideal variant distance used for extension is 0 for viruses.
-            let num_variant_distance: i64 = 1;
+            let num_variant_distance: i64 = 4;
 
             //employ the lineaar program
             let lp_haplotypes = haplotypes::linear_program(
