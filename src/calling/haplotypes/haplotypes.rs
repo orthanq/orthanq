@@ -153,7 +153,9 @@ impl VariantCalls {
         dbg!(&variants_haplotype_calls);
         dbg!(&variants_haplotype_calls.len());
         let rateof_evaluated_haplotypes: f64 =
-            (variants_haplotype_calls.len() / variants_haplotype_variants.len()) as f64;
+            variants_haplotype_calls.len() as f64 / variants_haplotype_variants.len() as f64;
+        dbg!(&rateof_evaluated_haplotypes);
+        dbg!(&threshold_considered_variants);
         Ok(rateof_evaluated_haplotypes > threshold_considered_variants)
     }
 }
