@@ -173,6 +173,7 @@ impl Caller {
                 )?;
             } else {
                 self.output_empty_files()?;
+                println!("Insufficient observations from data!");
             }
             Ok(())
         }
