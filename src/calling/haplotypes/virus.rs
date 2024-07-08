@@ -184,15 +184,22 @@ impl Caller {
         parent.pop();
         fs::create_dir_all(&parent)?;
 
+        let json: &str = include_str!("../../../templates/prediction.json");
+        let blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
+
         for file_name in vec![
             "lp_solution.json".to_string(),
             "final_solution.json".to_string(),
         ] {
-            let json = include_str!("../../../templates/prediction.json");
             let blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
             let file = fs::File::create(parent.join(file_name)).unwrap();
             serde_json::to_writer(file, &blueprint)?;
         }
+
+        //write empty viral solutions
+        let file = fs::File::create(parent.join("viral_solutions.json".to_string())).unwrap();
+        serde_json::to_writer(file, &blueprint)?;
+
         //write blank tsv
         let mut wtr = csv::Writer::from_path(&self.outcsv)?;
         let headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
