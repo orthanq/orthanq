@@ -70,9 +70,12 @@ impl Caller {
             Ok(())
         } else {
             let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
-            let haplotype_variants =
-                HaplotypeVariants::new(&mut self.haplotype_variants, &variant_ids)?;
-            let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
+            let haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
+            //filter variants
+            let filtered_haplotype_variants =
+                haplotype_variants.filter_for_variants(&variant_ids)?;
+
+            let (_, haplotype_matrix) = filtered_haplotype_variants.iter().next().unwrap();
             let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
             dbg!(&haplotypes);
 
@@ -81,17 +84,17 @@ impl Caller {
                 //include only common variants if common_variants is true
                 //this happens by first finding the common variants and then filtering
                 //haplotype_variants and variant_calls to only contain those variants
-                let common_variants =
-                    haplotype_variants.find_common_variants(&variant_calls, &haplotypes)?;
-                let haplotype_variants =
-                    haplotype_variants.filter_haplotype_variants(&common_variants)?;
+                let common_variants = filtered_haplotype_variants
+                    .find_common_variants(&variant_calls, &haplotypes)?;
+                let filtered_haplotype_variants =
+                    filtered_haplotype_variants.filter_haplotype_variants(&common_variants)?;
                 let variant_calls = variant_calls.filter_variant_calls(&common_variants)?;
                 dbg!(&common_variants);
-                dbg!(&haplotype_variants);
+                dbg!(&filtered_haplotype_variants);
                 dbg!(&variant_calls);
             }
             //find the haplotypes to prioritize
-            let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
+            let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
 
             //currently, ideal variant distance used for extension is 3 for hla typing.
             let num_variant_distance: i64 = 3;
@@ -108,20 +111,22 @@ impl Caller {
             dbg!(&lp_haplotypes);
 
             //take only haplotypes that are found by lp
-            let haplotype_variants =
-                haplotype_variants.find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?; //fix: find_plausible haplotypes should only contain the list of "haplotypes" given as parameter
-            dbg!(&haplotype_variants);
+            let filtered_haplotype_variants = filtered_haplotype_variants
+                .find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?; //fix: find_plausible haplotypes should only contain the list of "haplotypes" given as parameter
+            dbg!(&filtered_haplotype_variants);
 
-            //make sure lp_haplotypes sorted the same as in haplotype_variants
-            let (_, haplotype_matrix) = haplotype_variants.iter().next().unwrap();
+            //make sure lp_haplotypes sorted the same as in filtered_haplotype_variants
+            let (_, haplotype_matrix) = filtered_haplotype_variants.iter().next().unwrap();
             let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
             dbg!(&final_haplotypes);
 
             //construct candidate matrix
-            let candidate_matrix = CandidateMatrix::new(&haplotype_variants).unwrap();
+            let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
 
             //
-            let eq_graph = haplotype_variants.find_equivalence_class("hla").unwrap();
+            let eq_graph = filtered_haplotype_variants
+                .find_equivalence_class("hla")
+                .unwrap();
             dbg!(&eq_graph);
 
             //1-) model computation for chosen prior

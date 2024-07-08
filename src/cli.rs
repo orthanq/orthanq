@@ -231,6 +231,11 @@ pub enum CallKind {
             help = "Enable equivalence based constrain during model exploration."
         )]
         enable_equivalence_class_constraint: bool,
+        #[structopt(
+            default_value = "0.5",
+            help = "Percent threshold for evaluated variants."
+        )]
+        threshold_considered_variants: f64,
     },
 }
 
@@ -273,6 +278,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 prior,
                 lp_cutoff,
                 enable_equivalence_class_constraint,
+                threshold_considered_variants,
             } => {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
                     .candidates_folder(candidates_folder)
@@ -281,6 +287,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .prior(prior)
                     .lp_cutoff(lp_cutoff)
                     .enable_equivalence_class_constraint(enable_equivalence_class_constraint)
+                    .threshold_considered_variants(threshold_considered_variants)
                     .build()
                     .unwrap();
                 caller.call()?;

@@ -141,6 +141,23 @@ impl VariantCalls {
         }
         Ok(variant_calls_filtered)
     }
+    pub fn check_variant_threshold(
+        &self,
+        haplotype_variants: &HaplotypeVariants,
+        threshold_considered_variants: f64,
+    ) -> Result<bool> {
+        let variants_haplotype_variants: Vec<_> = haplotype_variants.keys().cloned().collect();
+        let variants_haplotype_calls: Vec<_> = self.keys().cloned().collect();
+        dbg!(&variants_haplotype_variants);
+        dbg!(&variants_haplotype_variants.len());
+        dbg!(&variants_haplotype_calls);
+        dbg!(&variants_haplotype_calls.len());
+        let rateof_evaluated_haplotypes: f64 =
+            variants_haplotype_calls.len() as f64 / variants_haplotype_variants.len() as f64;
+        dbg!(&rateof_evaluated_haplotypes);
+        dbg!(&threshold_considered_variants);
+        Ok(rateof_evaluated_haplotypes > threshold_considered_variants)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd)]
@@ -152,47 +169,53 @@ pub enum VariantStatus {
 
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, PartialOrd, DerefMut)]
 pub struct HaplotypeVariants(
-    #[deref] BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>,
+    #[deref] pub BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>,
 );
 
 impl HaplotypeVariants {
-    pub fn new(
-        //observations: &mut bcf::Reader,
-        haplotype_variants: &mut bcf::Reader,
-        filtered_ids: &Vec<VariantID>,
-        //max_haplotypes: &usize,
-    ) -> Result<Self> {
+    pub fn new(haplotype_variants: &mut bcf::Reader) -> Result<Self> {
         let mut variant_records = BTreeMap::new();
         for record_result in haplotype_variants.records() {
             let record = record_result?;
             let variant_id: VariantID = VariantID(String::from_utf8(record.id())?.parse().unwrap());
-            if filtered_ids.contains(&variant_id) {
-                let header = record.header();
-                let gts = record.genotypes()?;
-                let loci = record.format(b"C").integer().unwrap();
-                let mut matrices = BTreeMap::new();
-                for (index, haplotype) in header.samples().iter().enumerate() {
-                    let haplotype = Haplotype(str::from_utf8(haplotype).unwrap().to_string());
-                    //generate phased genotypes.
-                    for gta in gts.get(index).iter().skip(1) {
-                        //maternal and paternal gts will be the same in the vcf i.e. 0|0 and 1|1
-                        if *gta == Unphased(1) || *gta == Phased(1) {
-                            matrices.insert(
-                                haplotype.clone(),
-                                (VariantStatus::Present, loci[index] == &[1]),
-                            );
-                        } else {
-                            matrices.insert(
-                                haplotype.clone(),
-                                (VariantStatus::NotPresent, loci[index] == &[1]),
-                            );
-                        }
+            let header = record.header();
+            let gts = record.genotypes()?;
+            let loci = record.format(b"C").integer().unwrap();
+            let mut matrices = BTreeMap::new();
+            for (index, haplotype) in header.samples().iter().enumerate() {
+                let haplotype = Haplotype(str::from_utf8(haplotype).unwrap().to_string());
+                //generate phased genotypes.
+                for gta in gts.get(index).iter().skip(1) {
+                    //maternal and paternal gts will be the same in the vcf i.e. 0|0 and 1|1
+                    if *gta == Unphased(1) || *gta == Phased(1) {
+                        matrices.insert(
+                            haplotype.clone(),
+                            (VariantStatus::Present, loci[index] == &[1]),
+                        );
+                    } else {
+                        matrices.insert(
+                            haplotype.clone(),
+                            (VariantStatus::NotPresent, loci[index] == &[1]),
+                        );
                     }
                 }
-                variant_records.insert(variant_id, matrices);
             }
+            variant_records.insert(variant_id, matrices);
         }
         Ok(HaplotypeVariants(variant_records))
+    }
+
+    pub fn filter_for_variants(&self, variant_ids: &Vec<VariantID>) -> Result<HaplotypeVariants> {
+        let mut filtered_haplotype_variants: BTreeMap<
+            VariantID,
+            BTreeMap<Haplotype, (VariantStatus, bool)>,
+        > = BTreeMap::new();
+        for (variant, haplotype_map) in self.iter() {
+            if variant_ids.contains(&variant) {
+                filtered_haplotype_variants.insert(variant.clone(), haplotype_map.clone());
+            }
+        }
+        Ok(HaplotypeVariants(filtered_haplotype_variants))
     }
 
     pub fn find_plausible_haplotypes(
