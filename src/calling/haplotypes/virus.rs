@@ -7,8 +7,8 @@ use crate::model::{Data, Likelihood, Marginal, Posterior, Prior};
 use anyhow::Result;
 use bio::stats::bayesian::model::Model;
 use bv::BitVec;
-
 use derive_builder::Builder;
+use log::warn;
 
 use ordered_float::NotNan;
 
@@ -173,7 +173,7 @@ impl Caller {
                 )?;
             } else {
                 self.output_empty_files()?;
-                println!("Insufficient observations from data!");
+                warn!("Insufficient observations from data!");
             }
             Ok(())
         }
