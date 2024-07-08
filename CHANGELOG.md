@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://www.github.com/orthanq/orthanq/compare/v1.5.0...v1.6.0) (2024-07-08)
+
+
+### Features
+
+* set a configurable threshold that data has sufficient observation ([#15](https://www.github.com/orthanq/orthanq/issues/15)) ([09bea42](https://www.github.com/orthanq/orthanq/commit/09bea426a813e1231380a030115710b318f7a048))
+
 ## [1.5.0](https://www.github.com/orthanq/orthanq/compare/v1.4.0...v1.5.0) (2024-06-25)
 
 
