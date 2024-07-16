@@ -13,7 +13,8 @@ use tempfile::tempdir;
 #[derive(Builder)]
 #[builder(pattern = "owned")]
 pub struct Caller {
-    candidates_folder: PathBuf,
+    genome: PathBuf,
+    candidates: PathBuf,
     reads: Vec<PathBuf>,
     output: PathBuf,
     threads: String,
@@ -36,11 +37,11 @@ impl Caller {
         let cargo_dir = env!("CARGO_MANIFEST_DIR");
         let scenario = format!("{}/resources/scenarios/scenario.yaml", cargo_dir);
 
-        //genome must have been downloaded in the candidate generation step:
-        let ref_genome = self.candidates_folder.join("reference.fasta");
+        // for sarscov2, genome must have been downloaded in the candidate generation step (see reference.fasta):
+        let ref_genome = &self.genome;
 
         //haplotype variantts must have been downloaded in the candidate generation step:
-        let haplotype_variants = self.candidates_folder.join("candidates.vcf");
+        let haplotype_variants = &self.candidates;
         dbg!(&haplotype_variants);
         //create the output file name in temp directory
 

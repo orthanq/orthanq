@@ -84,11 +84,17 @@ pub enum PreprocessKind {
     },
     Virus {
         #[structopt(
-            long = "candidates-folder",
+            long = "candidates",
             required = true,
             help = "Folder that is used to create candidate variants."
         )]
-        candidates_folder: PathBuf,
+        candidates: PathBuf,
+        #[structopt(
+            long = "genome",
+            required = true,
+            help = "Reference genome that is used during candidate generation. see 'reference.fasta' for SARS-CoV-2."
+        )]
+        genome: PathBuf,
         #[structopt(
             long = "reads",
             required = true,
@@ -457,13 +463,15 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 Ok(())
             }
             PreprocessKind::Virus {
-                candidates_folder,
+                candidates,
+                genome,
                 reads,
                 output,
                 threads,
             } => {
                 preprocess::virus::CallerBuilder::default()
-                    .candidates_folder(candidates_folder)
+                    .candidates(candidates)
+                    .genome(genome)
                     .reads(reads)
                     .output(output)
                     .threads(threads)
