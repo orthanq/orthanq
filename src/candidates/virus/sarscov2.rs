@@ -271,7 +271,6 @@ impl Caller {
         });
         Ok(())
     }
-
 }
 
 //accession_to_lineage simply converts accession ids that represent each lineage to lineage names as well as nextstrain clade
@@ -373,7 +372,11 @@ fn convert_to_dataframe(
     Ok(genotype_df)
 }
 
-pub fn write_to_vcf(outdir: &PathBuf, variant_table: DataFrame, loci_table: DataFrame) -> Result<()> {
+pub fn write_to_vcf(
+    outdir: &PathBuf,
+    variant_table: DataFrame,
+    loci_table: DataFrame,
+) -> Result<()> {
     // dbg!(&variant_table);
     //Create VCF header
     let mut header = Header::new();

@@ -5,9 +5,9 @@ use derive_builder::Builder;
 use polars::frame::DataFrame;
 use polars::prelude::*;
 
-use crate::candidates::hla::{self};
 use crate::candidates::hla::alignment;
 use crate::candidates::hla::find_variants_from_cigar;
+use crate::candidates::hla::{self};
 use crate::candidates::virus::sarscov2::write_to_vcf;
 
 use bio::io::fasta;
@@ -45,7 +45,6 @@ pub struct Caller {
 }
 impl Caller {
     pub fn call(&mut self) -> Result<()> {
-
         //align and sort
         alignment(
             &self.genome,
@@ -56,12 +55,9 @@ impl Caller {
         )?;
 
         //find variants from cigar
-        let (mut genotype_df, mut loci_df) = find_variants_from_cigar(
-            &self.genome,
-            &self.output.join("alignment_sorted.sam"),
-        )
-        .unwrap();
-
+        let (mut genotype_df, mut loci_df) =
+            find_variants_from_cigar(&self.genome, &self.output.join("alignment_sorted.sam"))
+                .unwrap();
 
         //write locus-wise vcf files.
         write_to_vcf(&self.output, genotype_df, loci_df)?;

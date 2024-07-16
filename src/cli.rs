@@ -154,16 +154,13 @@ pub enum CandidatesKind {
 #[derive(Debug, StructOpt, Clone)]
 pub enum CandidatesVirusMode {
     SARSCOV2 {
-        #[structopt(
-            long,
-            help = "Folder to store candidate variants."
-        )]
+        #[structopt(long, help = "Folder to store candidate variants.")]
         output: PathBuf,
         #[structopt(
             default_value = "2",
             help = "Threads to use for minimap2 that is used in candidate generation."
         )]
-        threads: String,  
+        threads: String,
     },
     Generic {
         #[structopt(
@@ -172,22 +169,16 @@ pub enum CandidatesVirusMode {
             help = "Reference genome to align viral sequences using minimap2."
         )]
         genome: PathBuf,
-        #[structopt(
-            long,
-            help = "Input fasta sequences of viral lineages."
-        )]
+        #[structopt(long, help = "Input fasta sequences of viral lineages.")]
         lineages: PathBuf,
-        #[structopt(
-            long,
-            help = "Folder to store candidate variants."
-        )]
+        #[structopt(long, help = "Folder to store candidate variants.")]
         output: PathBuf,
         #[structopt(
             default_value = "2",
             help = "Threads to use for minimap2 that is used in candidate generation."
         )]
         threads: String,
-    }
+    },
 }
 
 #[derive(Debug, StructOpt, Clone)]
@@ -319,10 +310,7 @@ pub enum VirusKind {
             help = "Haplotype calls"
         )]
         variant_calls: PathBuf,
-        #[structopt(
-            long,
-            help = "File path to store TSV table output."
-        )]
+        #[structopt(long, help = "File path to store TSV table output.")]
         output: PathBuf,
         #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
         prior: String,
@@ -422,7 +410,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     genome,
                     lineages,
                     output,
-                    threads
+                    threads,
                 } => {
                     let mut caller = candidates::virus::generic::CallerBuilder::default()
                         .genome(genome)
@@ -433,11 +421,8 @@ pub fn run(opt: Orthanq) -> Result<()> {
                         .unwrap();
                     caller.call()?;
                     Ok(())
-                },
-                CandidatesVirusMode::SARSCOV2 {
-                    output,
-                    threads
-                } => {
+                }
+                CandidatesVirusMode::SARSCOV2 { output, threads } => {
                     let mut caller = candidates::virus::sarscov2::CallerBuilder::default()
                         .output(output)
                         .threads(threads)
@@ -446,7 +431,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     caller.call()?;
                     Ok(())
                 }
-            }
+            },
         },
         Orthanq::Preprocess { kind } => match kind {
             PreprocessKind::Hla {
