@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://www.github.com/orthanq/orthanq/compare/v1.6.0...v1.7.0) (2024-07-17)
+
+
+### Features
+
+* implement generic virus application ([#17](https://www.github.com/orthanq/orthanq/issues/17)) ([05bfe4e](https://www.github.com/orthanq/orthanq/commit/05bfe4e1f1efc90247da2db1d94e9e5b60326925))
+
 ## [1.6.0](https://www.github.com/orthanq/orthanq/compare/v1.5.0...v1.6.0) (2024-07-08)
 
 
