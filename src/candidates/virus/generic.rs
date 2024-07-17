@@ -2,38 +2,14 @@ use anyhow::Result;
 
 use derive_builder::Builder;
 
-
-
-
 use crate::candidates::hla::alignment;
 use crate::candidates::hla::find_variants_from_cigar;
 
 use crate::candidates::virus::sarscov2::write_to_vcf;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 use std::io::Write;
 
 use std::path::PathBuf;
-
-
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]

@@ -7,13 +7,11 @@ use bv::BitVec;
 use derefable::Derefable;
 use derive_new::new;
 use ordered_float::NotNan;
-use petgraph::visit::{Bfs};
+use petgraph::visit::Bfs;
 use petgraph::Graph;
 use petgraph::Undirected;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 pub type AlleleFreq = NotNan<f64>;
-
-
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable)]
 pub struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
