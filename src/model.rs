@@ -7,13 +7,13 @@ use bv::BitVec;
 use derefable::Derefable;
 use derive_new::new;
 use ordered_float::NotNan;
-use petgraph::visit::{Bfs, Dfs};
+use petgraph::visit::{Bfs};
 use petgraph::Graph;
 use petgraph::Undirected;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 pub type AlleleFreq = NotNan<f64>;
 
-use std::collections::BTreeMap;
+
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable)]
 pub struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
@@ -58,7 +58,7 @@ impl Marginal {
                             .collect::<Vec<&str>>();
                         haplotype_group = Haplotype(splitted[0].to_owned() + &":" + splitted[1]);
                     } else if self.application == "virus".to_string() {
-                        let splitted = &self.haplotypes[haplotype_index]
+                        let _splitted = &self.haplotypes[haplotype_index]
                             .split(':')
                             .collect::<Vec<&str>>();
                         haplotype_group = current_haplotype.clone();

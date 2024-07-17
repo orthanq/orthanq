@@ -14,7 +14,7 @@ use ordered_float::NotNan;
 
 use rust_htslib::bcf::{self};
 
-use std::collections::BTreeMap;
+
 use std::fs;
 use std::str::FromStr;
 use std::{path::PathBuf, str};

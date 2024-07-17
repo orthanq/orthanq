@@ -21,7 +21,7 @@ use good_lp::*;
 use good_lp::{variable, Expression};
 
 use petgraph::dot::{Config, Dot};
-use petgraph::graph::{Graph, NodeIndex, UnGraph};
+use petgraph::graph::{Graph, NodeIndex};
 
 use serde::Serialize;
 use serde_json::json;
@@ -298,7 +298,7 @@ impl HaplotypeVariants {
         });
 
         for (variant, haplotype_map) in self.iter() {
-            for (haplotype, (variant_in_gt, variant_in_c)) in haplotype_map.iter() {
+            for (haplotype, (variant_in_gt, _variant_in_c)) in haplotype_map.iter() {
                 match variant_in_gt {
                     VariantStatus::Present => {
                         let mut variants_in_haplotype = equivalence_classes[&haplotype].clone();
@@ -324,7 +324,7 @@ impl HaplotypeVariants {
                 haplotype_group = haplotype.clone();
             }
 
-            let item1 = deps.add_node((haplotype.clone(), haplotype_group.clone()));
+            let _item1 = deps.add_node((haplotype.clone(), haplotype_group.clone()));
             let index = deps
                 .node_indices()
                 .find(|i| deps[*i] == (haplotype.clone(), haplotype_group.clone()))
@@ -357,7 +357,7 @@ impl HaplotypeVariants {
                     && (index != NodeIndex::new(idx))
                 {
                     //the last is to avoid drawing an edge to itself
-                    let edge = deps.add_edge(index, NodeIndex::new(idx), 1);
+                    let _edge = deps.add_edge(index, NodeIndex::new(idx), 1);
                 }
             }
         }
