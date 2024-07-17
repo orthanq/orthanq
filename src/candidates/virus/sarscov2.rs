@@ -407,7 +407,7 @@ pub fn write_to_vcf(
         header.push_sample(sample_name.as_bytes());
     }
     // fs::create_dir_all(self.output.as_ref().unwrap())?;
-    let outdir = outdir;
+    // let outdir: &_ = outdir;
 
     let mut vcf = Writer::from_path(
         format!("{}.vcf", outdir.join("candidates").display()),
