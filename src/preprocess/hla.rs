@@ -22,7 +22,11 @@ pub struct Caller {
 
 impl Caller {
     pub fn call(&self) -> Result<()> {
-        let outdir = &self.output;
+        let outdir = &self.output.clone(); //the bcf
+
+        //find the output folder
+        let mut parent = outdir.clone();
+        parent.pop();
 
         let cargo_dir = env!("CARGO_MANIFEST_DIR");
 
@@ -37,7 +41,7 @@ impl Caller {
         let temp_dir = tempdir()?;
 
         //linear genome index location by default is temporary
-        let mut linear_genome_index = outdir.join("hs_genome");
+        let mut linear_genome_index = parent.join("hs_genome");
 
         // if bwa index is provided, linear genome index has to change
         if let Some(bwa_genome_index) = &self.bwa_index {
@@ -249,7 +253,7 @@ chr6\t31353872\t31367067";
         // let vg_index = "resources/hprc-v1.0-mc-grch38.xg";
 
         //create the output file name in temp directory
-        let file_aligned_pangenome = outdir.join(format!("{}_vg.bam", sample_name));
+        let file_aligned_pangenome = temp_dir.path().join(format!("{}_vg.bam", sample_name));
 
         let align_pangenome = {
             Command::new("vg")
@@ -383,7 +387,7 @@ chr6\t31353872\t31367067";
         println!("The indexing was exited with: {}", samtools_index);
 
         //finally, extract only strandard chromosomes
-        let final_bam = outdir.join(format!("{}_processed.bam", sample_name));
+        let final_bam = parent.join(format!("{}_processed.bam", sample_name));
         println!("{}", final_bam.display());
 
         //construct chromosome names according to the genome reference chr naming style
@@ -426,7 +430,7 @@ chr6\t31353872\t31367067";
 
         //preprocess
         //create the output file name
-        let varlociraptor_prep_dir = outdir.join(format!("{}_obs.bcf", sample_name));
+        let varlociraptor_prep_dir = temp_dir.path().join(format!("{}_obs.bcf", sample_name));
         println!(
             "varlociraptor_prep_dir: {}",
             varlociraptor_prep_dir.display()
@@ -458,7 +462,7 @@ chr6\t31353872\t31367067";
         // "varlociraptor call variants --omit-strand-bias --omit-read-position-bias --omit-read-orientation-bias --omit-softclip-bias --omit-homopolymer-artifact-detection --omit-alt-locus-bias generic --obs sample={input.obs} " ##varlociraptor v5.3.0
         // "--scenario {input.scenario} > {output} 2> {log}"
         //create the output file name
-        let varlociraptor_call_dir = outdir.join(format!("{}.bcf", sample_name));
+        let varlociraptor_call_dir = parent.join(format!("{}.bcf", sample_name));
         println!(
             "varlociraptor_call_dir: {}",
             varlociraptor_call_dir.display()
