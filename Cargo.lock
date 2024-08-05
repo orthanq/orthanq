@@ -1927,7 +1927,7 @@ dependencies = [
 
 [[package]]
 name = "orthanq"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "GSL",
  "anyhow",
