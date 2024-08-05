@@ -22,16 +22,16 @@ pub struct Caller {
 
 impl Caller {
     pub fn call(&self) -> Result<()> {
-        let outdir = &self.output.clone(); //the bcf
+        let outdir = &self.output; //the bcf
 
         //find the output folder
         let mut parent = outdir.clone();
         parent.pop();
-
+        dbg!(&parent);
         let cargo_dir = env!("CARGO_MANIFEST_DIR");
 
         //create the folder first if it doesn't exist
-        fs::create_dir_all(&outdir)?;
+        fs::create_dir_all(&parent)?;
 
         //todo: consider caching for indexing.
 
@@ -174,7 +174,7 @@ impl Caller {
         }
 
         println!("chr_naming format: {}", chr_naming);
-        let path_to_regions = outdir.join("regions.bed");
+        let path_to_regions = parent.join("regions.bed");
         let mut regions_file = std::fs::File::create(&path_to_regions)?;
         if chr_naming == &"ucsc" {
             let regions_ensembl = "\
@@ -462,7 +462,7 @@ chr6\t31353872\t31367067";
         // "varlociraptor call variants --omit-strand-bias --omit-read-position-bias --omit-read-orientation-bias --omit-softclip-bias --omit-homopolymer-artifact-detection --omit-alt-locus-bias generic --obs sample={input.obs} " ##varlociraptor v5.3.0
         // "--scenario {input.scenario} > {output} 2> {log}"
         //create the output file name
-        let varlociraptor_call_dir = parent.join(format!("{}.bcf", sample_name));
+        let varlociraptor_call_dir = outdir;
         println!(
             "varlociraptor_call_dir: {}",
             varlociraptor_call_dir.display()
