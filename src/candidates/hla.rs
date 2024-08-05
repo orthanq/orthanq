@@ -1152,13 +1152,17 @@ pub fn find_variants_from_cigar(
         //of the supplementary alignment records and it needs to be checked to prevent overwriting of the columns.
         //if the haplotype already exists, then the new variants coming from the supplementary alignments
         //are added to the haplotype column to keep all under the same haplotype.
+        //In case where primary and supplementary alignment of the haplotype results in two duplicate variants,
+        //the variants are summed up and results in matrix values being more than 1. To avoid this, all haplotypes are checked, if both
+        //has 1 then the matrix will have 1 as well.
         match query {
-            Ok(answer) => genotype_df.with_column(
-                &Series::new(
-                    haplotype_name.as_str(),
-                    genotypes_array.column(index).to_vec(),
-                ) + answer.get(0).unwrap(),
-            )?,
+            Ok(answer) => {
+                let queried_series = genotypes_array.column(index).to_vec();
+                let existing_series = answer.get(0).unwrap();
+                let new_series =
+                    handle_duplicated_variants(&queried_series, &existing_series).unwrap();
+                genotype_df.with_column(Series::new(haplotype_name.as_str(), new_series))?
+            }
             Err(_) => genotype_df.with_column(Series::new(
                 haplotype_name.as_str(),
                 genotypes_array.column(index).to_vec(),
@@ -1167,10 +1171,13 @@ pub fn find_variants_from_cigar(
         //the above operation has to be done for the loci dataframe as well.
         let query = loci_df.select_series([haplotype_name.as_str()]);
         match query {
-            Ok(answer) => loci_df.with_column(
-                &Series::new(haplotype_name.as_str(), loci_array.column(index).to_vec())
-                    + answer.get(0).unwrap(),
-            )?,
+            Ok(answer) => {
+                let queried_series = loci_array.column(index).to_vec();
+                let existing_series = answer.get(0).unwrap();
+                let new_series =
+                    handle_duplicated_variants(&queried_series, &existing_series).unwrap();
+                loci_df.with_column(Series::new(haplotype_name.as_str(), new_series))?
+            }
             Err(_) => loci_df.with_column(Series::new(
                 haplotype_name.as_str(),
                 loci_array.column(index).to_vec(),
@@ -1207,4 +1214,17 @@ pub fn convert_candidate_variants_to_array(
         });
 
     Ok(genotypes_array)
+}
+fn handle_duplicated_variants(series1: &Vec<i32>, series2: &Series) -> Result<Vec<i32>> {
+    Ok(series1
+        .iter()
+        .zip(series2.i32().unwrap().into_iter())
+        .map(|(num1, num2)| {
+            if *num1 == 1 && num2 == Some(1) {
+                1
+            } else {
+                num1 + num2.unwrap()
+            }
+        })
+        .collect::<Vec<i32>>())
 }

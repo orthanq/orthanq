@@ -84,11 +84,17 @@ pub enum PreprocessKind {
     },
     Virus {
         #[structopt(
-            long = "candidates-folder",
+            long = "candidates",
             required = true,
             help = "Folder that is used to create candidate variants."
         )]
-        candidates_folder: PathBuf,
+        candidates: PathBuf,
+        #[structopt(
+            long = "genome",
+            required = true,
+            help = "Reference genome that is used during candidate generation. see 'reference.fasta' for SARS-CoV-2."
+        )]
+        genome: PathBuf,
         #[structopt(
             long = "reads",
             required = true,
@@ -114,7 +120,7 @@ pub enum CandidatesKind {
         #[structopt(
             long = "genome",
             required = true,
-            help = "Reference genome to be used to align alleles or viral sequences (e.g. all existing HLA alleles) using minimap2."
+            help = "Reference genome to be used to align alleles (i.e. all existing HLA alleles) using minimap2."
         )]
         genome: PathBuf,
         #[structopt(
@@ -147,14 +153,35 @@ pub enum CandidatesKind {
         threads: String,
     },
     Virus {
-        #[structopt(
-            long,
-            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
-        )]
+        #[structopt(subcommand)]
+        kind: CandidatesVirusMode,
+    },
+}
+#[derive(Debug, StructOpt, Clone)]
+pub enum CandidatesVirusMode {
+    SARSCOV2 {
+        #[structopt(long, help = "Folder to store candidate variants.")]
         output: PathBuf,
         #[structopt(
             default_value = "2",
-            help = "Threads to use for minimap2 used candidate generation."
+            help = "Threads to use for minimap2 that is used in candidate generation."
+        )]
+        threads: String,
+    },
+    Generic {
+        #[structopt(
+            long = "genome",
+            required = true,
+            help = "Reference genome to align viral sequences using minimap2."
+        )]
+        genome: PathBuf,
+        #[structopt(long, help = "Input fasta sequences of viral lineages.")]
+        lineages: PathBuf,
+        #[structopt(long, help = "Folder to store candidate variants.")]
+        output: PathBuf,
+        #[structopt(
+            default_value = "2",
+            help = "Threads to use for minimap2 that is used in candidate generation."
         )]
         threads: String,
     },
@@ -221,6 +248,75 @@ pub enum CallKind {
             long,
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
         )]
+        output: PathBuf,
+        #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
+        prior: String,
+        #[structopt(default_value = "0.01", help = "Cutoff for linear program solutions.")]
+        lp_cutoff: f64,
+        #[structopt(
+            long,
+            help = "Enable equivalence based constrain during model exploration."
+        )]
+        enable_equivalence_class_constraint: bool,
+        #[structopt(
+            default_value = "0.5",
+            help = "Percent threshold for evaluated variants."
+        )]
+        threshold_considered_variants: f64,
+    },
+}
+
+#[derive(Debug, StructOpt, Clone)]
+pub enum VirusKind {
+    SARSCOV2 {
+        #[structopt(
+            long = "candidates-folder",
+            required = true,
+            help = "Folder that is used to create candidate variants."
+        )]
+        candidates_folder: PathBuf,
+        #[structopt(
+            parse(from_os_str),
+            long = "haplotype-calls",
+            required = true,
+            help = "Haplotype calls"
+        )]
+        variant_calls: PathBuf,
+        #[structopt(
+            long,
+            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
+        )]
+        output: PathBuf,
+        #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
+        prior: String,
+        #[structopt(default_value = "0.01", help = "Cutoff for linear program solutions.")]
+        lp_cutoff: f64,
+        #[structopt(
+            long,
+            help = "Enable equivalence based constrain during model exploration."
+        )]
+        enable_equivalence_class_constraint: bool,
+        #[structopt(
+            default_value = "0.5",
+            help = "Percent threshold for evaluated variants."
+        )]
+        threshold_considered_variants: f64,
+    },
+    Generic {
+        #[structopt(
+            long = "candidates-folder",
+            required = true,
+            help = "Folder that is used to create candidate variants."
+        )]
+        candidates_folder: PathBuf,
+        #[structopt(
+            parse(from_os_str),
+            long = "haplotype-calls",
+            required = true,
+            help = "Haplotype calls"
+        )]
+        variant_calls: PathBuf,
+        #[structopt(long, help = "File path to store TSV table output.")]
         output: PathBuf,
         #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
         prior: String,
@@ -315,15 +411,33 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 caller.call()?;
                 Ok(())
             }
-            CandidatesKind::Virus { output, threads } => {
-                let mut caller = candidates::virus::CallerBuilder::default()
-                    .output(output)
-                    .threads(threads)
-                    .build()
-                    .unwrap();
-                caller.call()?;
-                Ok(())
-            }
+            CandidatesKind::Virus { kind } => match kind {
+                CandidatesVirusMode::Generic {
+                    genome,
+                    lineages,
+                    output,
+                    threads,
+                } => {
+                    let mut caller = candidates::virus::generic::CallerBuilder::default()
+                        .genome(genome)
+                        .lineages(lineages)
+                        .output(output)
+                        .threads(threads)
+                        .build()
+                        .unwrap();
+                    caller.call()?;
+                    Ok(())
+                }
+                CandidatesVirusMode::SARSCOV2 { output, threads } => {
+                    let mut caller = candidates::virus::sarscov2::CallerBuilder::default()
+                        .output(output)
+                        .threads(threads)
+                        .build()
+                        .unwrap();
+                    caller.call()?;
+                    Ok(())
+                }
+            },
         },
         Orthanq::Preprocess { kind } => match kind {
             PreprocessKind::Hla {
@@ -349,13 +463,15 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 Ok(())
             }
             PreprocessKind::Virus {
-                candidates_folder,
+                candidates,
+                genome,
                 reads,
                 output,
                 threads,
             } => {
                 preprocess::virus::CallerBuilder::default()
-                    .candidates_folder(candidates_folder)
+                    .candidates(candidates)
+                    .genome(genome)
                     .reads(reads)
                     .output(output)
                     .threads(threads)
