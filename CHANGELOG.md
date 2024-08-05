@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.7.1](https://www.github.com/orthanq/orthanq/compare/v1.7.0...v1.7.1) (2024-08-05)
+
+
+### Bug Fixes
+
+* fix preprocess hla outputs ([#19](https://www.github.com/orthanq/orthanq/issues/19)) ([34c78ae](https://www.github.com/orthanq/orthanq/commit/34c78aebfcdd7b77b2eb9d1a051ee45cb51e2dcd))
+
 ## [1.7.0](https://www.github.com/orthanq/orthanq/compare/v1.6.0...v1.7.0) (2024-07-17)
 
 
