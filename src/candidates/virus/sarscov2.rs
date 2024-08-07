@@ -525,15 +525,14 @@ fn collect_nucleotide_conversions() -> Result<()> {
     if let Some(tree) = v.get("tree") {
         // Deserialize the "tree" portion into the `Node` struct
         let tree_nodes: Node = serde_json::from_value(tree.clone())?;
-        // dbg!(&tree_nodes);
+        dbg!(&tree_nodes);
 
         let mut clades_and_mutations: HashMap<String, Vec<String>> = HashMap::new();
         // "19B" : ["A112T", "C3459A"]
         let mut collected_mutations: Vec<String> = Vec::new();
-        let mut queried_clades = vec!["19B".to_string()];
 
-        pre_order_traversal(&tree_nodes, &mut queried_clades, &mut collected_mutations, &mut clades_and_mutations);
-        // dbg!(&clades_and_mutations);
+        pre_order_traversal(&tree_nodes, &mut collected_mutations, &mut clades_and_mutations);
+        dbg!(&clades_and_mutations);
 
     } else {
         eprintln!("The key 'tree' was not found in the JSON data.");
@@ -542,46 +541,30 @@ fn collect_nucleotide_conversions() -> Result<()> {
     Ok(())
 }
 
-fn pre_order_traversal(node: &Node, queried_clades: &mut Vec<String>, collected_mutations: &mut Vec<String>, clades_and_mutations: &mut HashMap<String, Vec<String>>) {
-    dbg!(&clades_and_mutations);
+fn pre_order_traversal(node: &Node, collected_mutations: &mut Vec<String>, clades_and_mutations: &mut HashMap<String, Vec<String>>) {
     let node_name = &node.name;
     let clade_name = &node.node_attrs.clade_display["value"];
     let mutations = &node.branch_attrs.mutations.clone().unwrap().nuc.unwrap_or(vec![]);
-    dbg!(&node_name, &clade_name);
+    // dbg!(&node_name, &clade_name);
 
     //insert mut
     collected_mutations.extend(mutations.clone());
-    dbg!(&collected_mutations);
     dbg!(&format!("inserting {:?} into {:?} at node_name {:?}", mutations, collected_mutations, node_name));
-    //check if the clade is equal to one of the clades and if yes then collect its mutations and end that branch
-    //also check that the clade is not already collected in clades_and_mutations so we make sure we only get the first appearance, for that, remove the corresponding clade from queried_clades
-    if queried_clades.contains(&clade_name){
-        // dbg!(&clade_name, mutations);
-        clades_and_mutations.insert(clade_name.clone(), collected_mutations.clone());
-        queried_clades.retain(|x| *x != *clade_name);
-    }
-    dbg!(&clades_and_mutations);
-    let children_cloned = node.children.clone();
 
-    let mut queried_clades = queried_clades.clone();
+    //collect mutations and clades 
+    clades_and_mutations.insert(clade_name.clone(), collected_mutations.clone());
+    
+    let children_cloned = node.children.clone();
     let mut collected_mutations = collected_mutations.clone();
     let mut clades_and_mutations = clades_and_mutations.clone();
 
     if let Some(children_unpacked) = children_cloned {
-        // dbg!(&children_unpacked.len());
         for (c_index,c_node) in children_unpacked.iter().enumerate() {
-            if c_index == children_unpacked.len() - 1 {//empty mutations if it's the end of vector during the loop
-                dbg!(&c_index);
-                collected_mutations = vec![];
-                let child_clade_name = &c_node.node_attrs.clade_display["value"];
-                if child_clade_name == &"19B" {
-                    dbg!(&c_node);
-                    dbg!(&child_clade_name);
-                    dbg!(&mutations);
-                    dbg!(&children_unpacked);
-                }
-            }
-            pre_order_traversal(&c_node, &mut queried_clades, &mut collected_mutations, &mut clades_and_mutations);
+            pre_order_traversal(&c_node, &mut collected_mutations, &mut clades_and_mutations);
         }
+    } else {
+        dbg!(&"checkpoint1 at {}", node_name);
+        // collected_mutations = vec![];
+        return
     }
 }
