@@ -49,7 +49,7 @@ impl AlleleFreqDist {
         } else {
             let (x_0, mut y_0) = self.range(..vaf).next_back().unwrap();
             let (x_1, mut y_1) = self.range(vaf..).next().unwrap();
-            // TODO check: linear interpolation on what scale? Before it was on the PHRED scale. I think it should be on the normal probability scale instead.
+            // METHOD: we perform linear interpolation on the plain probability scale
             y_0 = y_0.exp();
             y_1 = y_1.exp();
             let density =
