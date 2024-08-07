@@ -525,14 +525,14 @@ fn collect_nucleotide_conversions() -> Result<()> {
     if let Some(tree) = v.get("tree") {
         // Deserialize the "tree" portion into the `Node` struct
         let tree_nodes: Node = serde_json::from_value(tree.clone())?;
-        dbg!(&tree_nodes);
+        // dbg!(&tree_nodes);
 
         let mut clades_and_mutations: HashMap<String, Vec<String>> = HashMap::new();
         // "19B" : ["A112T", "C3459A"]
         let mut collected_mutations: Vec<String> = Vec::new();
 
-        pre_order_traversal(&tree_nodes, &mut collected_mutations, &mut clades_and_mutations);
-        dbg!(&clades_and_mutations);
+        let hm = pre_order_traversal(&tree_nodes);
+        dbg!(&hm);
 
     } else {
         eprintln!("The key 'tree' was not found in the JSON data.");
@@ -541,30 +541,49 @@ fn collect_nucleotide_conversions() -> Result<()> {
     Ok(())
 }
 
-fn pre_order_traversal(node: &Node, collected_mutations: &mut Vec<String>, clades_and_mutations: &mut HashMap<String, Vec<String>>) {
+fn pre_order_traversal(node: &Node) -> HashMap<String, Vec<String>> {
     let node_name = &node.name;
     let clade_name = &node.node_attrs.clade_display["value"];
     let mutations = &node.branch_attrs.mutations.clone().unwrap().nuc.unwrap_or(vec![]);
     // dbg!(&node_name, &clade_name);
 
     //insert mut
-    collected_mutations.extend(mutations.clone());
-    dbg!(&format!("inserting {:?} into {:?} at node_name {:?}", mutations, collected_mutations, node_name));
+    // collected_mutations.extend(mutations.clone());
+    // dbg!(&format!("inserting {:?} into {:?} at node_name {:?}", mutations, collected_mutations, node_name));
 
-    //collect mutations and clades 
-    clades_and_mutations.insert(clade_name.clone(), collected_mutations.clone());
-    
-    let children_cloned = node.children.clone();
-    let mut collected_mutations = collected_mutations.clone();
-    let mut clades_and_mutations = clades_and_mutations.clone();
+    let mut hm = HashMap::new();
 
-    if let Some(children_unpacked) = children_cloned {
-        for (c_index,c_node) in children_unpacked.iter().enumerate() {
-            pre_order_traversal(&c_node, &mut collected_mutations, &mut clades_and_mutations);
+    if let Some(children_unpacked) = &node.children {
+        for c_node in children_unpacked.iter() {
+            let child_map = pre_order_traversal(c_node);
+            for (key, value) in child_map {
+                // hm.entry(key)
+                //     // .and_modify(|e: &mut Vec<String>| e.extend(value.clone()))
+                //     .or_insert(value);
+                hm.insert(key, value);
+            }
         }
     } else {
-        dbg!(&"checkpoint1 at {}", node_name);
-        // collected_mutations = vec![];
-        return
+        hm.insert(clade_name.clone(), mutations.to_vec());
     }
+    hm
+
+    //collect mutations and clades 
+    // clades_and_mutations.insert(clade_name.clone(), collected_mutations.clone());
+    // let some_variable = clades_and_mutations.entry(clade_name.clone()).or_insert_with(||Vec::new());
+    // some_variable.extend(mutations.clone());
+
+    // let children_cloned = node.children.clone();
+    // let mut collected_mutations = collected_mutations.clone();
+    // // let mut clades_and_mutations = clades_and_mutations.clone();
+
+    // if let Some(children_unpacked) = children_cloned {
+    //     for (c_index,c_node) in children_unpacked.iter().enumerate() {
+    //         pre_order_traversal(&c_node, &mut collected_mutations, &mut clades_and_mutations);
+    //     }
+    // } else {
+    //     dbg!(&"checkpoint1 at {}", node_name);
+    //     // collected_mutations = vec![];
+    //     return
+    // }
 }
