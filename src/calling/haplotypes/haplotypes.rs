@@ -40,18 +40,21 @@ pub struct VariantID(#[deref] pub i32);
 pub struct Haplotype(#[deref] pub String);
 
 #[derive(Debug, Clone, Derefable)]
-pub struct AlleleFreqDist(#[deref] BTreeMap<AlleleFreq, f64>);
+pub struct AlleleFreqDist(#[deref] BTreeMap<AlleleFreq, LogProb>);
 
 impl AlleleFreqDist {
     pub fn vaf_query(&self, vaf: &AlleleFreq) -> Option<LogProb> {
         if self.contains_key(&vaf) {
-            Some(LogProb::from(PHREDProb(*self.get(&vaf).unwrap())))
+            Some(*self.get(&vaf).unwrap())
         } else {
-            let (x_0, y_0) = self.range(..vaf).next_back().unwrap();
-            let (x_1, y_1) = self.range(vaf..).next().unwrap();
+            let (x_0, mut y_0) = self.range(..vaf).next_back().unwrap();
+            let (x_1, mut y_1) = self.range(vaf..).next().unwrap();
+            // TODO check: linear interpolation on what scale? Before it was on the PHRED scale. I think it should be on the normal probability scale instead.
+            y_0 = y_0.exp();
+            y_1 = y_1.exp();
             let density =
                 NotNan::new(*y_0).unwrap() + (*vaf - *x_0) * (*y_1 - *y_0) / (*x_1 - *x_0); //calculation of density for given vaf by linear interpolation
-            Some(LogProb::from(PHREDProb(NotNan::into_inner(density))))
+            Some(LogProb::from(Prob(density)))
         }
     }
 }
@@ -124,7 +127,7 @@ impl VariantCalls {
                     if let Some((vaf, density)) = pair.split_once("=") {
                         let (vaf, density): (AlleleFreq, f64) =
                             (vaf.parse().unwrap(), density.parse().unwrap());
-                        vaf_density.insert(vaf, density);
+                        vaf_density.insert(vaf, LogProb::from(PHREDProb(density)));
                     }
                 }
                 calls.insert(VariantID(variant_id), (af, AlleleFreqDist(vaf_density)));
@@ -484,7 +487,7 @@ pub fn plot_prediction(
                                 plot_data_dataset_afd.push(DatasetAfd {
                                     variant: *variant_id,
                                     allele_freq: *allele_freq,
-                                    probability: prob.clone(),
+                                    probability: Prob::from(prob),
                                 })
                             }
                         }
