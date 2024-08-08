@@ -40,18 +40,26 @@ pub struct VariantID(#[deref] pub i32);
 pub struct Haplotype(#[deref] pub String);
 
 #[derive(Debug, Clone, Derefable)]
-pub struct AlleleFreqDist(#[deref] BTreeMap<AlleleFreq, f64>);
+pub struct AlleleFreqDist(#[deref] BTreeMap<AlleleFreq, LogProb>);
 
 impl AlleleFreqDist {
     pub fn vaf_query(&self, vaf: &AlleleFreq) -> Option<LogProb> {
         if self.contains_key(&vaf) {
-            Some(LogProb::from(PHREDProb(*self.get(&vaf).unwrap())))
+            Some(*self.get(&vaf).unwrap())
         } else {
             let (x_0, y_0) = self.range(..vaf).next_back().unwrap();
             let (x_1, y_1) = self.range(vaf..).next().unwrap();
-            let density =
-                NotNan::new(*y_0).unwrap() + (*vaf - *x_0) * (*y_1 - *y_0) / (*x_1 - *x_0); //calculation of density for given vaf by linear interpolation
-            Some(LogProb::from(PHREDProb(NotNan::into_inner(density))))
+            // METHOD: we perform linear interpolation on the plain probability scale
+            let y_0_prob = y_0.exp();
+            let y_1_prob = y_1.exp();
+            let density = NotNan::new(y_0_prob).unwrap()
+                + (*vaf - *x_0) * (y_1_prob - y_0_prob) / (*x_1 - *x_0); //calculation of density for given vaf by linear interpolation
+                                                                         //handle the case where density has 0 probability, which results in panicking with "FloatIsNan" error.
+            if density == NotNan::new(0.0).unwrap() {
+                Some(LogProb::ln_one())
+            } else {
+                Some(LogProb::from(Prob(NotNan::into_inner(density))))
+            }
         }
     }
 }
@@ -124,7 +132,7 @@ impl VariantCalls {
                     if let Some((vaf, density)) = pair.split_once("=") {
                         let (vaf, density): (AlleleFreq, f64) =
                             (vaf.parse().unwrap(), density.parse().unwrap());
-                        vaf_density.insert(vaf, density);
+                        vaf_density.insert(vaf, LogProb::from(PHREDProb(density)));
                     }
                 }
                 calls.insert(VariantID(variant_id), (af, AlleleFreqDist(vaf_density)));
@@ -484,7 +492,7 @@ pub fn plot_prediction(
                                 plot_data_dataset_afd.push(DatasetAfd {
                                     variant: *variant_id,
                                     allele_freq: *allele_freq,
-                                    probability: prob.clone(),
+                                    probability: f64::from(*prob),
                                 })
                             }
                         }
