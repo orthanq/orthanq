@@ -577,7 +577,10 @@ pub fn alignment(
             .output()
             .expect("failed to execute alignment process")
     };
-    println!("alignment process finished with exit status {}!", align.status);
+    println!(
+        "alignment process finished with exit status {}!",
+        align.status
+    );
 
     let stdout = String::from_utf8(align.stdout).unwrap();
     fs::write(&aligned_file, stdout).expect("Unable to write minimap2 alignment to file");
