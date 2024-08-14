@@ -577,7 +577,7 @@ pub fn alignment(
             .output()
             .expect("failed to execute alignment process")
     };
-    println!("alignment process finished!");
+    println!("alignment process finished with exit status {}!", align.status);
 
     let stdout = String::from_utf8(align.stdout).unwrap();
     fs::write(&aligned_file, stdout).expect("Unable to write minimap2 alignment to file");
@@ -592,7 +592,7 @@ pub fn alignment(
             .expect("failed to execute alignment process")
     };
     let stdout = sort.stdout;
-    println!("sorting process finished!");
+    println!("sorting process finished with exit status {}!", sort.status);
     fs::write(aligned_sorted, stdout).expect("Unable to write file");
     Ok(())
 }
