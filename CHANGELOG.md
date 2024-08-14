@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.7.2](https://www.github.com/orthanq/orthanq/compare/v1.7.1...v1.7.2) (2024-08-14)
+
+
+### Bug Fixes
+
+* perform interpolation of allele frequency distribution on the probability scale instead of PHRED scale; further, this changes AF distribution display to a bubble chart ([#21](https://www.github.com/orthanq/orthanq/issues/21)) ([309d33a](https://www.github.com/orthanq/orthanq/commit/309d33a9f2517b9e6362e693b666dedb667e4407))
+
 ### [1.7.1](https://www.github.com/orthanq/orthanq/compare/v1.7.0...v1.7.1) (2024-08-05)
 
 
