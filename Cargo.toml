@@ -1,8 +1,9 @@
 [package]
 name = "orthanq"
-version = "1.7.1"
+version = "1.7.2"
 edition = "2018"
-
+description = "A tool to quantify haplotypes in an uncertainty-aware manner"
+license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
