@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.7.4](https://www.github.com/orthanq/orthanq/compare/v1.7.3...v1.7.4) (2024-08-15)
+
+
+### Bug Fixes
+
+* fixate good_lp version and do not use wildcard constraint in cargo.toml ([68afd30](https://www.github.com/orthanq/orthanq/commit/68afd305236f85893fe68cec135c79d2ef19e983))
+
 ### [1.7.3](https://www.github.com/orthanq/orthanq/compare/v1.7.2...v1.7.3) (2024-08-14)
 
 
