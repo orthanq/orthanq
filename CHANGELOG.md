@@ -1,5 +1,13 @@
 # Changelog
 
+### [1.7.3](https://www.github.com/orthanq/orthanq/compare/v1.7.2...v1.7.3) (2024-08-14)
+
+
+### Bug Fixes
+
+* add description and license info to cargo.toml ([#23](https://www.github.com/orthanq/orthanq/issues/23)) ([a3036e9](https://www.github.com/orthanq/orthanq/commit/a3036e9b265c164fccc3ef1abd672de3feefe2e2))
+* fix no such file or directory error by reading scenario to string and writing it to a temp.
+
 ### [1.7.2](https://www.github.com/orthanq/orthanq/compare/v1.7.1...v1.7.2) (2024-08-14)
 
 

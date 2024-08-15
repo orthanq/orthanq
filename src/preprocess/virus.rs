@@ -2,6 +2,7 @@ use anyhow::Result;
 use derive_builder::Builder;
 
 use std::fs;
+use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -34,8 +35,6 @@ impl Caller {
         let temp_dir = tempdir()?;
 
         //1) bgzip and tabix the candidates vcf then, perform vg autoindex (maybe add this part to the candidates virus subcommand.)
-        let cargo_dir = env!("CARGO_MANIFEST_DIR");
-        let scenario = format!("{}/resources/scenarios/scenario.yaml", cargo_dir);
 
         // for sarscov2, genome must have been downloaded in the candidate generation step (see reference.fasta):
         let ref_genome = &self.genome;
@@ -236,6 +235,16 @@ impl Caller {
         // "varlociraptor call variants --omit-strand-bias --omit-read-position-bias --omit-read-orientation-bias --omit-softclip-bias --omit-homopolymer-artifact-detection --omit-alt-locus-bias generic --obs sample={input.obs} " ##varlociraptor v5.3.0
         // "--scenario {input.scenario} > {output} 2> {log}"
 
+        //read scenario to str and export it back to yaml then use it in scenario
+        //this is required for conda installation
+        let scenario_str = include_str!("../../resources/scenarios/scenario.yaml");
+        let scenario_path = temp_dir.path().join("scenario.yaml");
+        let mut scenario_file = File::create(&scenario_path)?;
+
+        //write the YAML string to the file
+        scenario_file.write_all(scenario_str.as_bytes())?;
+        println!("YAML written to scenario.yaml in temp dir");
+
         //scenario
         let varlociraptor_call = {
             Command::new("varlociraptor")
@@ -253,7 +262,7 @@ impl Caller {
                 .arg("--obs")
                 .arg(format!("sample={}", varlociraptor_prep_dir.display()))
                 .arg("--scenario")
-                .arg(&scenario)
+                .arg(&scenario_path)
                 .status()
                 .expect("failed to execute the varlociraptor calling process")
         };
