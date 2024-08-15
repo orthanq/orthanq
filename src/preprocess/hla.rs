@@ -3,6 +3,7 @@ use derive_builder::Builder;
 
 use csv::ReaderBuilder;
 use std::fs;
+use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -69,8 +70,6 @@ impl Caller {
                 linear_genome_index.display()
             );
         }
-
-        let scenario = format!("{}/resources/scenarios/scenario.yaml", cargo_dir);
 
         //perform the alignment for paired end reads
         let _temp_aligned = NamedTempFile::new()?;
@@ -469,6 +468,16 @@ chr6\t31353872\t31367067";
         );
 
         //scenario
+        //read scenario to str and export it back to yaml then use it in scenario
+        //this is required for conda installation
+        let scenario_str = include_str!("../../resources/scenarios/scenario.yaml");
+        let scenario_path = temp_dir.path().join("scenario.yaml");
+        let mut scenario_file = File::create(&scenario_path)?;
+
+        //write the YAML string to the file
+        scenario_file.write_all(scenario_str.as_bytes())?;
+        println!("YAML written to scenario.yaml in temp dir");
+
         println!(
             "{}",
             format!("sample={}", &varlociraptor_prep_dir.display())
@@ -488,7 +497,7 @@ chr6\t31353872\t31367067";
                 .arg("--obs")
                 .arg(format!("sample={}", varlociraptor_prep_dir.display()))
                 .arg("--scenario")
-                .arg(&scenario)
+                .arg(&scenario_path)
                 .stdout(Stdio::piped())
                 .spawn()
                 .expect("failed to execute the varlociraptor calling process")
