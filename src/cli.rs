@@ -238,7 +238,7 @@ pub enum CallKind {
             default_value = "3",
             help = "Number of variant distances to extend haplotype list coming from the linear program."
         )]
-        num_extend_haplotypes: i64
+        num_extend_haplotypes: i64,
     },
     Virus {
         #[structopt(
@@ -282,7 +282,7 @@ pub enum CallKind {
             default_value = "0",
             help = "Number of variant distances to extend haplotype list coming from the linear program."
         )]
-        num_extend_haplotypes: i64
+        num_extend_haplotypes: i64,
     },
 }
 
@@ -371,7 +371,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 lp_cutoff,
                 enable_equivalence_class_constraint,
                 threshold_equivalence_class,
-                num_extend_haplotypes
+                num_extend_haplotypes,
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
@@ -400,7 +400,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 enable_equivalence_class_constraint,
                 threshold_equivalence_class,
                 threshold_considered_variants,
-                num_extend_haplotypes
+                num_extend_haplotypes,
             } => {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
                     .candidates_folder(candidates_folder)
