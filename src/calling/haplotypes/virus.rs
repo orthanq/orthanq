@@ -29,7 +29,7 @@ pub struct Caller {
     enable_equivalence_class_constraint: bool,
     threshold_considered_variants: f64,
     threshold_equivalence_class: usize,
-    num_extend_haplotypes: i64
+    num_extend_haplotypes: i64,
 }
 
 impl Caller {
@@ -99,7 +99,11 @@ impl Caller {
 
                 //
                 let eq_graph = lp_haplotype_variants
-                    .find_equivalence_class("virus", self.threshold_equivalence_class)
+                    .find_equivalence_class(
+                        "virus",
+                        self.threshold_equivalence_class,
+                        &self.outcsv.clone(),
+                    )
                     .unwrap();
                 dbg!(&eq_graph);
 

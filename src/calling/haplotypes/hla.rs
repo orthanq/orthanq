@@ -38,7 +38,7 @@ pub struct Caller {
     lp_cutoff: f64,
     enable_equivalence_class_constraint: bool,
     threshold_equivalence_class: usize,
-    num_extend_haplotypes: i64
+    num_extend_haplotypes: i64,
 }
 
 impl Caller {
@@ -124,7 +124,11 @@ impl Caller {
 
             //
             let eq_graph = filtered_haplotype_variants
-                .find_equivalence_class("hla", self.threshold_equivalence_class)
+                .find_equivalence_class(
+                    "hla",
+                    self.threshold_equivalence_class,
+                    &self.outcsv.clone(),
+                )
                 .unwrap();
             dbg!(&eq_graph);
 
