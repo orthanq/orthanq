@@ -230,11 +230,13 @@ pub enum CallKind {
         )]
         enable_equivalence_class_constraint: bool,
         #[structopt(
+            long,
             default_value = "1",
             help = "Threshold for assigning equivalence classes."
         )]
         threshold_equivalence_class: usize,
         #[structopt(
+            long,
             default_value = "3",
             help = "Number of variant distances to extend haplotype list coming from the linear program."
         )]
@@ -274,11 +276,13 @@ pub enum CallKind {
         )]
         threshold_considered_variants: f64,
         #[structopt(
+            long,
             default_value = "2",
             help = "Threshold for assigning equivalence classes."
         )]
         threshold_equivalence_class: usize,
         #[structopt(
+            long,
             default_value = "0",
             help = "Number of variant distances to extend haplotype list coming from the linear program."
         )]
