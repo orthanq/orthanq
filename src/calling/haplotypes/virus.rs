@@ -28,6 +28,8 @@ pub struct Caller {
     lp_cutoff: f64,
     enable_equivalence_class_constraint: bool,
     threshold_considered_variants: f64,
+    threshold_equivalence_class: usize,
+    num_extend_haplotypes: i64
 }
 
 impl Caller {
@@ -71,9 +73,6 @@ impl Caller {
                 //find the haplotypes to prioritize
                 let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
 
-                //currently, ideal variant distance used for extension is 0 for viruses.
-                let num_variant_distance: i64 = 1;
-
                 //employ the lineaar program
                 let lp_haplotypes = haplotypes::linear_program(
                     &self.outcsv,
@@ -81,7 +80,7 @@ impl Caller {
                     &haplotypes,
                     &variant_calls,
                     self.lp_cutoff,
-                    num_variant_distance,
+                    self.num_extend_haplotypes,
                 )?;
                 dbg!(&lp_haplotypes);
 
@@ -100,7 +99,7 @@ impl Caller {
 
                 //
                 let eq_graph = lp_haplotype_variants
-                    .find_equivalence_class("virus")
+                    .find_equivalence_class("virus", self.threshold_equivalence_class)
                     .unwrap();
                 dbg!(&eq_graph);
 

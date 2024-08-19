@@ -290,11 +290,8 @@ impl HaplotypeVariants {
     pub fn find_equivalence_class(
         &self,
         application: &str,
+        threshold: usize //an edge in the graph representation for the equivalence classes is drawn if and only if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
     ) -> Result<Graph<(Haplotype, Haplotype), i32, petgraph::Undirected>> {
-        //an edge in the graph representation for the equivalence classes is drawn if and only
-        //if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
-        let threshold = 1; //should be configured.
-
         // BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>
         let mut equivalence_classes: BTreeMap<Haplotype, Vec<VariantID>> = BTreeMap::new();
 

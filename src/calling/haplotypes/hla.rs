@@ -37,6 +37,8 @@ pub struct Caller {
     common_variants: bool,
     lp_cutoff: f64,
     enable_equivalence_class_constraint: bool,
+    threshold_equivalence_class: usize,
+    num_extend_haplotypes: i64
 }
 
 impl Caller {
@@ -96,9 +98,6 @@ impl Caller {
             //find the haplotypes to prioritize
             let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
 
-            //currently, ideal variant distance used for extension is 3 for hla typing.
-            let num_variant_distance: i64 = 3;
-
             //employ the linear program
             let lp_haplotypes = haplotypes::linear_program(
                 &self.outcsv,
@@ -106,7 +105,7 @@ impl Caller {
                 &haplotypes,
                 &variant_calls,
                 self.lp_cutoff,
-                num_variant_distance,
+                self.num_extend_haplotypes,
             )?;
             dbg!(&lp_haplotypes);
 
@@ -125,7 +124,7 @@ impl Caller {
 
             //
             let eq_graph = filtered_haplotype_variants
-                .find_equivalence_class("hla")
+                .find_equivalence_class("hla", self.threshold_equivalence_class)
                 .unwrap();
             dbg!(&eq_graph);
 
