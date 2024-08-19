@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.7.5](https://www.github.com/orthanq/orthanq/compare/v1.7.4...v1.7.5) (2024-08-19)
+
+
+### Bug Fixes
+
+* implement user defined parameters threshold for equivalence classes and extending haplotype list; also properly adjust path of equivalence class graph ([#27](https://www.github.com/orthanq/orthanq/issues/27)) ([b9f8255](https://www.github.com/orthanq/orthanq/commit/b9f8255818360b16c76abaa41bc20e326a01f2c6))
+
 ### [1.7.4](https://www.github.com/orthanq/orthanq/compare/v1.7.3...v1.7.4) (2024-08-15)
 
 
