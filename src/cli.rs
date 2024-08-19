@@ -229,6 +229,18 @@ pub enum CallKind {
             help = "Enable equivalence based constrain during model exploration."
         )]
         enable_equivalence_class_constraint: bool,
+        #[structopt(
+            long,
+            default_value = "1",
+            help = "Threshold for assigning equivalence classes."
+        )]
+        threshold_equivalence_class: usize,
+        #[structopt(
+            long,
+            default_value = "3",
+            help = "Number of variant distances to extend haplotype list coming from the linear program."
+        )]
+        num_extend_haplotypes: i64,
     },
     Virus {
         #[structopt(
@@ -263,6 +275,18 @@ pub enum CallKind {
             help = "Percent threshold for evaluated variants."
         )]
         threshold_considered_variants: f64,
+        #[structopt(
+            long,
+            default_value = "2",
+            help = "Threshold for assigning equivalence classes."
+        )]
+        threshold_equivalence_class: usize,
+        #[structopt(
+            long,
+            default_value = "0",
+            help = "Number of variant distances to extend haplotype list coming from the linear program."
+        )]
+        num_extend_haplotypes: i64,
     },
 }
 
@@ -350,6 +374,8 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 common_variants,
                 lp_cutoff,
                 enable_equivalence_class_constraint,
+                threshold_equivalence_class,
+                num_extend_haplotypes,
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
@@ -362,6 +388,8 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .common_variants(common_variants)
                     .lp_cutoff(lp_cutoff)
                     .enable_equivalence_class_constraint(enable_equivalence_class_constraint)
+                    .threshold_equivalence_class(threshold_equivalence_class)
+                    .num_extend_haplotypes(num_extend_haplotypes)
                     .build()
                     .unwrap();
                 caller.call()?;
@@ -374,7 +402,9 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 prior,
                 lp_cutoff,
                 enable_equivalence_class_constraint,
+                threshold_equivalence_class,
                 threshold_considered_variants,
+                num_extend_haplotypes,
             } => {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
                     .candidates_folder(candidates_folder)
@@ -383,7 +413,9 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .prior(prior)
                     .lp_cutoff(lp_cutoff)
                     .enable_equivalence_class_constraint(enable_equivalence_class_constraint)
+                    .threshold_equivalence_class(threshold_equivalence_class)
                     .threshold_considered_variants(threshold_considered_variants)
+                    .num_extend_haplotypes(num_extend_haplotypes)
                     .build()
                     .unwrap();
                 caller.call()?;

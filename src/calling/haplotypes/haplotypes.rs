@@ -290,11 +290,9 @@ impl HaplotypeVariants {
     pub fn find_equivalence_class(
         &self,
         application: &str,
+        threshold: usize, //an edge in the graph representation for the equivalence classes is drawn if and only if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
+        output_graph: &PathBuf,
     ) -> Result<Graph<(Haplotype, Haplotype), i32, petgraph::Undirected>> {
-        //an edge in the graph representation for the equivalence classes is drawn if and only
-        //if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
-        let threshold = 1; //should be configured.
-
         // BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>
         let mut equivalence_classes: BTreeMap<Haplotype, Vec<VariantID>> = BTreeMap::new();
 
@@ -370,9 +368,15 @@ impl HaplotypeVariants {
             }
         }
         dbg!(&deps);
-        let mut f = File::create("example.dot").unwrap();
+
+        //create file path  for the graph
+        let mut parent = output_graph.clone();
+        parent.pop();
+        let mut file = fs::File::create(parent.join("graph.dot")).unwrap();
+
+        //write graph to path
         let output = format!("{:?}", Dot::with_config(&deps, &[Config::EdgeNoLabel]));
-        f.write_all(&output.as_bytes())
+        file.write_all(&output.as_bytes())
             .expect("could not write file");
 
         //todo: implement virus case.
