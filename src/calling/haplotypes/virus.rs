@@ -68,7 +68,7 @@ impl Caller {
 
                 let (_, haplotype_matrix) = filtered_haplotype_variants.iter().next().unwrap();
                 let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-                dbg!(&haplotypes);
+                // dbg!(&haplotypes);
 
                 //find the haplotypes to prioritize
                 let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
@@ -87,12 +87,12 @@ impl Caller {
                 //take only haplotypes that are found by lp
                 let lp_haplotype_variants = filtered_haplotype_variants
                     .find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?; //fix: find_plausible haplotypes should only contain the list of "haplotypes" given as parameter
-                dbg!(&lp_haplotype_variants);
+                // dbg!(&lp_haplotype_variants);
 
                 //make sure lp_haplotypes sorted the same as in haplotype_variants
                 let (_, haplotype_matrix) = lp_haplotype_variants.iter().next().unwrap();
                 let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-                dbg!(&final_haplotypes);
+                // dbg!(&final_haplotypes);
 
                 //construct candidate matrix
                 let candidate_matrix = CandidateMatrix::new(&lp_haplotype_variants).unwrap();
@@ -105,7 +105,7 @@ impl Caller {
                         &self.outcsv.clone(),
                     )
                     .unwrap();
-                dbg!(&eq_graph);
+                // dbg!(&eq_graph);
 
                 //1-) model computation for chosen prior
                 let prior = PriorTypes::from_str(&self.prior).unwrap();

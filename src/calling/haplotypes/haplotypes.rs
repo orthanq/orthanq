@@ -156,14 +156,14 @@ impl VariantCalls {
     ) -> Result<bool> {
         let variants_haplotype_variants: Vec<_> = haplotype_variants.keys().cloned().collect();
         let variants_haplotype_calls: Vec<_> = self.keys().cloned().collect();
-        dbg!(&variants_haplotype_variants);
-        dbg!(&variants_haplotype_variants.len());
-        dbg!(&variants_haplotype_calls);
-        dbg!(&variants_haplotype_calls.len());
+        // dbg!(&variants_haplotype_variants);
+        // dbg!(&variants_haplotype_variants.len());
+        // dbg!(&variants_haplotype_calls);
+        // dbg!(&variants_haplotype_calls.len());
         let rateof_evaluated_haplotypes: f64 =
             variants_haplotype_calls.len() as f64 / variants_haplotype_variants.len() as f64;
-        dbg!(&rateof_evaluated_haplotypes);
-        dbg!(&threshold_considered_variants);
+        // dbg!(&rateof_evaluated_haplotypes);
+        // dbg!(&threshold_considered_variants);
         Ok(rateof_evaluated_haplotypes > threshold_considered_variants)
     }
 }
@@ -315,7 +315,7 @@ impl HaplotypeVariants {
                 }
             }
         }
-        dbg!(&equivalence_classes);
+        // dbg!(&equivalence_classes);
 
         let mut deps = Graph::new_undirected();
 
@@ -336,7 +336,7 @@ impl HaplotypeVariants {
                 .find(|i| deps[*i] == (haplotype.clone(), haplotype_group.clone()))
                 .unwrap();
             for idx in 0..deps.node_count() {
-                dbg!(&deps[NodeIndex::new(idx)]);
+                // dbg!(&deps[NodeIndex::new(idx)]);
                 let node_at_index = &deps[NodeIndex::new(idx)];
 
                 let mut difference = vec![];
@@ -356,8 +356,8 @@ impl HaplotypeVariants {
                         difference.push(variant);
                     }
                 }
-                dbg!(&haplotype_group);
-                dbg!(&haplotype_group_at_index);
+                // dbg!(&haplotype_group);
+                // dbg!(&haplotype_group_at_index);
                 if (difference.len() < threshold)
                     && (haplotype_group == haplotype_group_at_index)
                     && (index != NodeIndex::new(idx))
@@ -367,7 +367,7 @@ impl HaplotypeVariants {
                 }
             }
         }
-        dbg!(&deps);
+        // dbg!(&deps);
 
         //create file path  for the graph
         let mut parent = output_graph.clone();
@@ -635,7 +635,7 @@ pub fn linear_program(
                 }
             });
     });
-    dbg!(&lp_haplotypes);
+    // dbg!(&lp_haplotypes);
     //diploid-subclonal max N haplotypes
     // let max_haplotypes = 5;
     let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
