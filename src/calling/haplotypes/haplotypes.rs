@@ -126,7 +126,6 @@ impl VariantCalls {
                 //because some afd strings are just "." and that throws an error while splitting below.
                 let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
                 let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
-                //dbg!(&af);
                 let mut vaf_density = BTreeMap::new();
                 for pair in afd.split(',') {
                     if let Some((vaf, density)) = pair.split_once("=") {
@@ -156,14 +155,10 @@ impl VariantCalls {
     ) -> Result<bool> {
         let variants_haplotype_variants: Vec<_> = haplotype_variants.keys().cloned().collect();
         let variants_haplotype_calls: Vec<_> = self.keys().cloned().collect();
-        // dbg!(&variants_haplotype_variants);
-        // dbg!(&variants_haplotype_variants.len());
-        // dbg!(&variants_haplotype_calls);
-        // dbg!(&variants_haplotype_calls.len());
+
         let rateof_evaluated_haplotypes: f64 =
             variants_haplotype_calls.len() as f64 / variants_haplotype_variants.len() as f64;
-        // dbg!(&rateof_evaluated_haplotypes);
-        // dbg!(&threshold_considered_variants);
+
         Ok(rateof_evaluated_haplotypes > threshold_considered_variants)
     }
 }
@@ -583,7 +578,6 @@ pub fn linear_program(
         model = model.with(constraint!(t_var >= c.clone()));
         model = model.with(constraint!(t_var >= -c.clone()));
     }
-    // dbg!(&constraints);
 
     //solve the problem with the default solver, i.e. coin_cbc
     let solution = model.solve().unwrap();
@@ -602,7 +596,6 @@ pub fn linear_program(
     println!("sum = {}", solution.eval(sum_tvars));
 
     //plot the best result
-    // dbg!(&best_variables.len());
     let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
         candidate_matrix.values().cloned().collect();
     plot_prediction(

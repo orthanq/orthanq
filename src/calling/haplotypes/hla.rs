@@ -37,7 +37,7 @@ pub struct Caller {
     common_variants: bool,
     lp_cutoff: f64,
     enable_equivalence_class_constraint: bool,
-    extend_haplotypes:bool,
+    extend_haplotypes: bool,
     threshold_equivalence_class: usize,
     num_extend_haplotypes: i64,
 }
@@ -80,7 +80,6 @@ impl Caller {
 
             let (_, haplotype_matrix) = filtered_haplotype_variants.iter().next().unwrap();
             let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-            dbg!(&haplotypes);
 
             //check if common_variants is true, if yes use only common variants both for lp and model
             if self.common_variants {
@@ -92,9 +91,6 @@ impl Caller {
                 let filtered_haplotype_variants =
                     filtered_haplotype_variants.filter_haplotype_variants(&common_variants)?;
                 let variant_calls = variant_calls.filter_variant_calls(&common_variants)?;
-                dbg!(&common_variants);
-                dbg!(&filtered_haplotype_variants);
-                dbg!(&variant_calls);
             }
             //find the haplotypes to prioritize
             let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
@@ -114,12 +110,10 @@ impl Caller {
             //take only haplotypes that are found by lp
             let filtered_haplotype_variants = filtered_haplotype_variants
                 .find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?; //fix: find_plausible haplotypes should only contain the list of "haplotypes" given as parameter
-            dbg!(&filtered_haplotype_variants);
 
             //make sure lp_haplotypes sorted the same as in filtered_haplotype_variants
             let (_, haplotype_matrix) = filtered_haplotype_variants.iter().next().unwrap();
             let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-            dbg!(&final_haplotypes);
 
             //construct candidate matrix
             let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
@@ -132,7 +126,6 @@ impl Caller {
                     &self.outcsv.clone(),
                 )
                 .unwrap();
-            dbg!(&eq_graph);
 
             //1-) model computation for chosen prior
             let prior = PriorTypes::from_str(&self.prior).unwrap();
@@ -156,13 +149,7 @@ impl Caller {
                 &data,
             );
             let mut event_posteriors = computed_model.event_posteriors();
-            // for (fractions,prob) in event_posteriors {
-            //     let best_fractions = fractions
-            //         .iter()
-            //         .map(|f| NotNan::into_inner(*f))
-            //         .collect::<Vec<f64>>();
-            //     dbg!(&best_fractions);
-            // }
+
             let (best_fractions, _) = event_posteriors.next().unwrap();
 
             //Step 2: plot the final solution
@@ -338,7 +325,6 @@ impl Caller {
             .for_each(|((allele, _c), g_group)| {
                 g_to_alleles.insert(allele.clone(), g_group.to_string());
             });
-        dbg!(&g_to_alleles);
         Ok(g_to_alleles)
     }
 }
@@ -349,7 +335,6 @@ fn convert_to_two_field(
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     haplotypes: &Vec<Haplotype>,
 ) -> Result<(Vec<Haplotype>, Vec<(HaplotypeFractions, LogProb)>)> {
-    // dbg!(&event_posteriors);
     let mut event_posteriors_map: Vec<(BTreeMap<Haplotype, NotNan<f64>>, LogProb)> = Vec::new();
     dbg!(&event_posteriors);
     for (fractions, logprob) in event_posteriors.iter() {
@@ -386,7 +371,6 @@ fn convert_to_two_field(
     //last, create a map for haplotype-fractions to logprob,
     //in order to sum all logprobs belonging to same haplotype-fractions
     let mut hf_to_logprob: BTreeMap<BTreeMap<Haplotype, NotNan<f64>>, LogProb> = BTreeMap::new();
-    // dbg!(&event_posteriors_map);
     for (hf, logprob) in event_posteriors_map.iter() {
         if hf_to_logprob.contains_key(&hf) {
             let new_logprob = LogProb::ln_sum_exp(&vec![hf_to_logprob[&hf].clone(), *logprob]);
@@ -395,7 +379,6 @@ fn convert_to_two_field(
             hf_to_logprob.insert(hf.clone(), logprob.clone());
         }
     }
-    // dbg!(&hf_to_logprob);
     //logprob doesn't implement Ord, so, convert the map to a vector of tuples starting with logprob
     let mut logprob_and_hf = Vec::new();
     for (hf, logprob) in hf_to_logprob.iter() {
