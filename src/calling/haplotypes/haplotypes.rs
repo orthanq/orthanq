@@ -293,7 +293,11 @@ impl HaplotypeVariants {
         threshold: usize, //an edge in the graph representation for the equivalence classes is drawn if and only if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
         output_graph: &PathBuf,
     ) -> Result<Graph<(Haplotype, Haplotype), i32, petgraph::Undirected>> {
-        // BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>
+        //create file path  for the graph
+        let mut parent = output_graph.clone();
+        parent.pop();
+        let mut file = fs::File::create(parent.join("graph.dot")).unwrap();
+
         let mut equivalence_classes: BTreeMap<Haplotype, Vec<VariantID>> = BTreeMap::new();
 
         //initialize equivalence classes with haplotypes (important for haplotypes that have no variant e.g. A*03:01)
@@ -315,7 +319,6 @@ impl HaplotypeVariants {
                 }
             }
         }
-        // dbg!(&equivalence_classes);
 
         let mut deps = Graph::new_undirected();
 
@@ -330,19 +333,24 @@ impl HaplotypeVariants {
                 haplotype_group = haplotype.clone();
             }
 
-            let _item1 = deps.add_node((haplotype.clone(), haplotype_group.clone()));
+            //add new node
+            deps.add_node((haplotype.clone(), haplotype_group.clone()));
+
+            //find index of the main node. this is necessary for the check and drawing an edge later
             let index = deps
                 .node_indices()
                 .find(|i| deps[*i] == (haplotype.clone(), haplotype_group.clone()))
                 .unwrap();
-            for idx in 0..deps.node_count() {
-                // dbg!(&deps[NodeIndex::new(idx)]);
-                let node_at_index = &deps[NodeIndex::new(idx)];
 
-                let mut difference = vec![];
+            //loop over the graph to draw edges if conditions are met
+            for idx in 0..deps.node_count() {
+                // find the node and its variants at index
+                let node_at_index = &deps[NodeIndex::new(idx)];
+                let variants_of_node_at_index: &Vec<VariantID> =
+                    &equivalence_classes[&node_at_index.0];
+
                 let mut splitted_2 = vec![];
                 let mut haplotype_group_at_index = Haplotype(String::from(""));
-                let variants_of_node_at_index = &equivalence_classes[&node_at_index.0];
                 if &application == &"hla" {
                     splitted_2 = node_at_index.0.split(':').collect::<Vec<&str>>();
                     haplotype_group_at_index =
@@ -351,35 +359,36 @@ impl HaplotypeVariants {
                     haplotype_group_at_index = node_at_index.0.clone();
                 }
 
+                //find the differences between the main node and the neighbor node
+                let mut difference: Vec<&VariantID> = vec![];
                 for variant in variants_of_node_at_index.iter() {
                     if !variants.contains(&variant) {
                         difference.push(variant);
                     }
                 }
-                // dbg!(&haplotype_group);
-                // dbg!(&haplotype_group_at_index);
-                if (difference.len() < threshold)
+                //for hla: draw an edge only if the difference is less than the threshold, haplotype group is the same
+                // and it's not the same node
+                //for virus: draw an edge only if the difference is less than the threshold and it's not the same node
+
+                if &application == &"hla"
+                    && (difference.len() < threshold)
                     && (haplotype_group == haplotype_group_at_index)
                     && (index != NodeIndex::new(idx))
                 {
-                    //the last is to avoid drawing an edge to itself
-                    let _edge = deps.add_edge(index, NodeIndex::new(idx), 1);
+                    deps.add_edge(index, NodeIndex::new(idx), 1);
+                } else if &application == &"virus"
+                    && (difference.len() < threshold)
+                    && (index != NodeIndex::new(idx))
+                {
+                    deps.add_edge(index, NodeIndex::new(idx), 1);
                 }
             }
         }
-        // dbg!(&deps);
 
-        //create file path  for the graph
-        let mut parent = output_graph.clone();
-        parent.pop();
-        let mut file = fs::File::create(parent.join("graph.dot")).unwrap();
-
-        //write graph to path
+        //write graph to dot file path
         let output = format!("{:?}", Dot::with_config(&deps, &[Config::EdgeNoLabel]));
         file.write_all(&output.as_bytes())
             .expect("could not write file");
-
-        //todo: implement virus case.
 
         Ok(deps)
     }
