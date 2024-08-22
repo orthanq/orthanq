@@ -126,7 +126,6 @@ impl VariantCalls {
                 //because some afd strings are just "." and that throws an error while splitting below.
                 let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
                 let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
-                //dbg!(&af);
                 let mut vaf_density = BTreeMap::new();
                 for pair in afd.split(',') {
                     if let Some((vaf, density)) = pair.split_once("=") {
@@ -156,14 +155,10 @@ impl VariantCalls {
     ) -> Result<bool> {
         let variants_haplotype_variants: Vec<_> = haplotype_variants.keys().cloned().collect();
         let variants_haplotype_calls: Vec<_> = self.keys().cloned().collect();
-        // dbg!(&variants_haplotype_variants);
-        // dbg!(&variants_haplotype_variants.len());
-        // dbg!(&variants_haplotype_calls);
-        // dbg!(&variants_haplotype_calls.len());
+
         let rateof_evaluated_haplotypes: f64 =
             variants_haplotype_calls.len() as f64 / variants_haplotype_variants.len() as f64;
-        // dbg!(&rateof_evaluated_haplotypes);
-        // dbg!(&threshold_considered_variants);
+
         Ok(rateof_evaluated_haplotypes > threshold_considered_variants)
     }
 }
@@ -293,7 +288,11 @@ impl HaplotypeVariants {
         threshold: usize, //an edge in the graph representation for the equivalence classes is drawn if and only if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
         output_graph: &PathBuf,
     ) -> Result<Graph<(Haplotype, Haplotype), i32, petgraph::Undirected>> {
-        // BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>
+        //create file path  for the graph
+        let mut parent = output_graph.clone();
+        parent.pop();
+        let mut file = fs::File::create(parent.join("graph.dot")).unwrap();
+
         let mut equivalence_classes: BTreeMap<Haplotype, Vec<VariantID>> = BTreeMap::new();
 
         //initialize equivalence classes with haplotypes (important for haplotypes that have no variant e.g. A*03:01)
@@ -315,7 +314,6 @@ impl HaplotypeVariants {
                 }
             }
         }
-        // dbg!(&equivalence_classes);
 
         let mut deps = Graph::new_undirected();
 
@@ -330,19 +328,24 @@ impl HaplotypeVariants {
                 haplotype_group = haplotype.clone();
             }
 
-            let _item1 = deps.add_node((haplotype.clone(), haplotype_group.clone()));
+            //add new node
+            deps.add_node((haplotype.clone(), haplotype_group.clone()));
+
+            //find index of the main node. this is necessary for the check and drawing an edge later
             let index = deps
                 .node_indices()
                 .find(|i| deps[*i] == (haplotype.clone(), haplotype_group.clone()))
                 .unwrap();
-            for idx in 0..deps.node_count() {
-                // dbg!(&deps[NodeIndex::new(idx)]);
-                let node_at_index = &deps[NodeIndex::new(idx)];
 
-                let mut difference = vec![];
+            //loop over the graph to draw edges if conditions are met
+            for idx in 0..deps.node_count() {
+                // find the node and its variants at index
+                let node_at_index = &deps[NodeIndex::new(idx)];
+                let variants_of_node_at_index: &Vec<VariantID> =
+                    &equivalence_classes[&node_at_index.0];
+
                 let mut splitted_2 = vec![];
                 let mut haplotype_group_at_index = Haplotype(String::from(""));
-                let variants_of_node_at_index = &equivalence_classes[&node_at_index.0];
                 if &application == &"hla" {
                     splitted_2 = node_at_index.0.split(':').collect::<Vec<&str>>();
                     haplotype_group_at_index =
@@ -351,35 +354,36 @@ impl HaplotypeVariants {
                     haplotype_group_at_index = node_at_index.0.clone();
                 }
 
+                //find the differences between the main node and the neighbor node
+                let mut difference: Vec<&VariantID> = vec![];
                 for variant in variants_of_node_at_index.iter() {
                     if !variants.contains(&variant) {
                         difference.push(variant);
                     }
                 }
-                // dbg!(&haplotype_group);
-                // dbg!(&haplotype_group_at_index);
-                if (difference.len() < threshold)
+                //for hla: draw an edge only if the difference is less than the threshold, haplotype group is the same
+                // and it's not the same node
+                //for virus: draw an edge only if the difference is less than the threshold and it's not the same node
+
+                if &application == &"hla"
+                    && (difference.len() < threshold)
                     && (haplotype_group == haplotype_group_at_index)
                     && (index != NodeIndex::new(idx))
                 {
-                    //the last is to avoid drawing an edge to itself
-                    let _edge = deps.add_edge(index, NodeIndex::new(idx), 1);
+                    deps.add_edge(index, NodeIndex::new(idx), 1);
+                } else if &application == &"virus"
+                    && (difference.len() < threshold)
+                    && (index != NodeIndex::new(idx))
+                {
+                    deps.add_edge(index, NodeIndex::new(idx), 1);
                 }
             }
         }
-        // dbg!(&deps);
 
-        //create file path  for the graph
-        let mut parent = output_graph.clone();
-        parent.pop();
-        let mut file = fs::File::create(parent.join("graph.dot")).unwrap();
-
-        //write graph to path
+        //write graph to dot file path
         let output = format!("{:?}", Dot::with_config(&deps, &[Config::EdgeNoLabel]));
         file.write_all(&output.as_bytes())
             .expect("could not write file");
-
-        //todo: implement virus case.
 
         Ok(deps)
     }
@@ -530,6 +534,7 @@ pub fn linear_program(
     haplotypes: &Vec<Haplotype>,
     variant_calls: &VariantCalls,
     lp_cutoff: f64,
+    extend_haplotypes: bool,
     num_variant_distance: i64,
 ) -> Result<Vec<Haplotype>> {
     //first init the problem
@@ -573,7 +578,6 @@ pub fn linear_program(
         model = model.with(constraint!(t_var >= c.clone()));
         model = model.with(constraint!(t_var >= -c.clone()));
     }
-    // dbg!(&constraints);
 
     //solve the problem with the default solver, i.e. coin_cbc
     let solution = model.solve().unwrap();
@@ -592,7 +596,6 @@ pub fn linear_program(
     println!("sum = {}", solution.eval(sum_tvars));
 
     //plot the best result
-    // dbg!(&best_variables.len());
     let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
         candidate_matrix.values().cloned().collect();
     plot_prediction(
@@ -607,56 +610,41 @@ pub fn linear_program(
     //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list.
     //then sort by hamming distance, take the closest x additional alleles according to 'num_variant_distance'.
     //this is done by storing only the variants that have GT:1 and C:1 for all haplotypes in haplotype_dict and remaining variants are not included.
-
-    let mut extended_haplotypes = Vec::new();
-    lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
-        let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
-        haplotype_dict
-            .iter()
-            .for_each(|(haplotype, haplotype_variants)| {
-                if &variants == haplotype_variants && !extended_haplotypes.contains(haplotype) {
-                    //fix: the last operand '&&' is required to avoid duplicate additions
-                    extended_haplotypes.push(haplotype.clone());
-                } else {
-                    let mut difference = vec![];
-                    for i in haplotype_variants.iter() {
-                        if !variants.contains(&i) {
-                            difference.push(i);
+    if extend_haplotypes {
+        let mut extended_haplotypes = Vec::new();
+        lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
+            let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
+            haplotype_dict
+                .iter()
+                .for_each(|(haplotype, haplotype_variants)| {
+                    if &variants == haplotype_variants && !extended_haplotypes.contains(haplotype) {
+                        //fix: the last operand '&&' is required to avoid duplicate additions
+                        extended_haplotypes.push(haplotype.clone());
+                    } else {
+                        let mut difference = vec![];
+                        for i in haplotype_variants.iter() {
+                            if !variants.contains(&i) {
+                                difference.push(i);
+                            }
+                        }
+                        if (difference.len() as i64 <= num_variant_distance)
+                            && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
+                                <= num_variant_distance)
+                            && !extended_haplotypes.contains(&haplotype)
+                        //fix: the last operand '&&' is required to avoid duplicate additions
+                        {
+                            extended_haplotypes.push(haplotype.clone());
                         }
                     }
-                    if (difference.len() as i64 <= num_variant_distance)
-                        && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
-                            <= num_variant_distance)
-                        && !extended_haplotypes.contains(&haplotype)
-                    //fix: the last operand '&&' is required to avoid duplicate additions
-                    {
-                        extended_haplotypes.push(haplotype.clone());
-                    }
-                }
-            });
-    });
-    // dbg!(&lp_haplotypes);
-    //diploid-subclonal max N haplotypes
-    // let max_haplotypes = 5;
-    let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
-    let lp_values_original: Vec<_> = lp_haplotypes.values().cloned().collect();
-    let mut lp_values: Vec<_> = lp_haplotypes.values().cloned().collect();
-    lp_values.sort_by(|a, b| OrderedFloat(*b).cmp(&OrderedFloat(*a)));
-    let mut selected_haplotypes = Vec::new();
-    for x in lp_values.iter() {
-        for (i, y) in lp_values_original.iter().enumerate() {
-            if x == y {
-                selected_haplotypes.push(lp_keys[i].clone());
-            }
-        }
+                });
+        });
+        dbg!(&extended_haplotypes);
+        Ok(extended_haplotypes)
+    } else {
+        let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
+        dbg!(&lp_keys);
+        Ok(lp_keys)
     }
-    // if max_haplotypes < selected_haplotypes.len() {
-    //     selected_haplotypes = selected_haplotypes[0..max_haplotypes].to_vec();
-    // }
-    // dbg!(&selected_haplotypes);
-
-    dbg!(&extended_haplotypes);
-    Ok(extended_haplotypes)
 }
 
 pub fn write_results(

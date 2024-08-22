@@ -16,6 +16,7 @@ fn check_haplotype_fractions_5050() {
         .prior("diploid".to_string())
         .lp_cutoff(0.01)
         .threshold_equivalence_class(1)
+        .extend_haplotypes(true)
         .num_extend_haplotypes(3)
         .build()
         .unwrap()

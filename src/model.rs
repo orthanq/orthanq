@@ -56,9 +56,6 @@ impl Marginal {
                             .collect::<Vec<&str>>();
                         haplotype_group = Haplotype(splitted[0].to_owned() + &":" + splitted[1]);
                     } else if self.application == "virus".to_string() {
-                        let _splitted = &self.haplotypes[haplotype_index]
-                            .split(':')
-                            .collect::<Vec<&str>>();
                         haplotype_group = current_haplotype.clone();
                     }
 
