@@ -37,6 +37,7 @@ pub struct Caller {
     common_variants: bool,
     lp_cutoff: f64,
     enable_equivalence_class_constraint: bool,
+    extend_haplotypes:bool,
     threshold_equivalence_class: usize,
     num_extend_haplotypes: i64,
 }
@@ -105,6 +106,7 @@ impl Caller {
                 &haplotypes,
                 &variant_calls,
                 self.lp_cutoff,
+                self.extend_haplotypes,
                 self.num_extend_haplotypes,
             )?;
             dbg!(&lp_haplotypes);
