@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.7.6](https://www.github.com/orthanq/orthanq/compare/v1.7.5...v1.7.6) (2024-08-22)
+
+
+### Bug Fixes
+
+* fix equivalence class generation for hla and virus case separately; further, implement a flag for extension of haplotype list after linear program computation ([#29](https://www.github.com/orthanq/orthanq/issues/29)) ([cc7a92d](https://www.github.com/orthanq/orthanq/commit/cc7a92df98e6f04cb63d5bf6ac68914644792772))
+
 ### [1.7.5](https://www.github.com/orthanq/orthanq/compare/v1.7.4...v1.7.5) (2024-08-19)
 
 
