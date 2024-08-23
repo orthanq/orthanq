@@ -282,7 +282,7 @@ pub enum CallKind {
         extend_haplotypes: bool,
         #[structopt(
             long,
-            default_value = "0.05",
+            default_value = "0.35",
             help = "Percent threshold for evaluated variants."
         )]
         threshold_considered_variants: f64,
