@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.7.7](https://www.github.com/orthanq/orthanq/compare/v1.7.6...v1.7.7) (2024-08-23)
+
+
+### Bug Fixes
+
+* fix threshold for considered variants to long argument and lower threshold ([#31](https://www.github.com/orthanq/orthanq/issues/31)) ([6062f8a](https://www.github.com/orthanq/orthanq/commit/6062f8a58b7e9ccaab1e1c9ff76c9a36147e6eed))
+
 ### [1.7.6](https://www.github.com/orthanq/orthanq/compare/v1.7.5...v1.7.6) (2024-08-22)
 
 
