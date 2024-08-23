@@ -158,7 +158,6 @@ impl VariantCalls {
 
         let rateof_evaluated_haplotypes: f64 =
             variants_haplotype_calls.len() as f64 / variants_haplotype_variants.len() as f64;
-
         Ok(rateof_evaluated_haplotypes > threshold_considered_variants)
     }
 }
