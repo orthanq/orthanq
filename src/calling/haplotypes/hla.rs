@@ -262,16 +262,21 @@ impl Caller {
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(e)) => match e.name().as_ref() {
                     b"allele" => {
-                        alleles.push(
-                            e.attributes()
-                                .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                                .collect::<Vec<_>>()[1]
-                                .as_ref()
-                                .unwrap()
-                                .split("-") //"HLA-" don't take the HLA prefix
-                                .collect::<Vec<&str>>()[1]
-                                .to_string(),
-                        ); //allele_name is held in index 1, note: don't use expanded_name.
+                        let allele_name = e
+                            .attributes()
+                            .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
+                            .collect::<Vec<_>>()[1]
+                            .clone()
+                            .unwrap();
+                        let mut allele_name_push = "".to_string();
+                        //allele names starting with HLA contain '-' however, some aleles e.g. MICA do not contain it.
+                        if allele_name.contains(&"-") {
+                            allele_name_push =
+                                allele_name.split("-").collect::<Vec<&str>>()[1].to_string()
+                        } else {
+                            allele_name_push = allele_name.clone()
+                        }
+                        alleles.push(allele_name_push); //allele_name is held in index 1, note: don't use expanded_name.
                         names_indices.push(counter.clone());
                         counter += 1;
                     }
