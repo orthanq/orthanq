@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.7.8](https://www.github.com/orthanq/orthanq/compare/v1.7.7...v1.7.8) (2024-08-24)
+
+
+### Bug Fixes
+
+* handle allele name parsing from xml with and without HLA prefix ([#33](https://www.github.com/orthanq/orthanq/issues/33)) ([9bcf1f9](https://www.github.com/orthanq/orthanq/commit/9bcf1f9d271ff6cbc151b51163081d30b31b434a))
+
 ### [1.7.7](https://www.github.com/orthanq/orthanq/compare/v1.7.6...v1.7.7) (2024-08-23)
 
 
