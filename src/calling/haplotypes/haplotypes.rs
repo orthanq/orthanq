@@ -55,8 +55,8 @@ impl AlleleFreqDist {
             let density = NotNan::new(y_0_prob).unwrap()
                 + (*vaf - *x_0) * (y_1_prob - y_0_prob) / (*x_1 - *x_0); //calculation of density for given vaf by linear interpolation
                                                                          //handle the case where density has 0 probability, which results in panicking with "FloatIsNan" error.
-            //to avoid another floatisnan error, we have to be sure to return only probs that are certainly greater than 0.0 (0.000...)
-            //otherwise it should return zero probability, but in log space. (not 1 with ln_one() because density=0.0 means the probability is impossible.)
+                                                                         //to avoid another floatisnan error, we have to be sure to return only probs that are certainly greater than 0.0 (0.000...)
+                                                                         //otherwise it should return zero probability, but in log space. (not 1 with ln_one() because density=0.0 means the probability is impossible.)
             if density > NotNan::new(0.0).unwrap() {
                 Some(LogProb::from(Prob(NotNan::into_inner(density))))
             } else {
