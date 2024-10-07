@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.7.9](https://www.github.com/orthanq/orthanq/compare/v1.7.8...v1.7.9) (2024-10-07)
+
+
+### Bug Fixes
+
+* remove if-else block from the linear interpolation func ([#35](https://www.github.com/orthanq/orthanq/issues/35)) ([d0b4562](https://www.github.com/orthanq/orthanq/commit/d0b4562049ecc1458b0e75f5914d239572610a70))
+
 ### [1.7.8](https://www.github.com/orthanq/orthanq/compare/v1.7.7...v1.7.8) (2024-08-24)
 
 
