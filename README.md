@@ -2,7 +2,7 @@
 
 <img src="orthanq-black.svg" alt="Orthanq" width="400"/>
 
-Uncerainty aware haplotype quantification using a Bayesian model that is based on collecting evidences from Varlociraptor.
+Uncertainty aware haplotype quantification using a Bayesian model that is based on collecting evidences from Varlociraptor.
 
 Orthanq is under active development.
 
