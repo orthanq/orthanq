@@ -120,7 +120,7 @@ impl Caller {
 
             //
             let eq_graph = filtered_haplotype_variants
-                .find_equivalence_class(
+                .find_equivalence_class_with_graph(
                     "hla",
                     self.threshold_equivalence_class,
                     &self.outcsv.clone(),
@@ -142,7 +142,8 @@ impl Caller {
                     final_haplotypes.clone(),
                     upper_bond,
                     prior,
-                    eq_graph,
+                    Some(eq_graph),
+                    None,
                     self.enable_equivalence_class_constraint,
                     "hla".to_string(),
                 ),

@@ -276,7 +276,7 @@ impl HaplotypeVariants {
         Ok(haplotype_variants_filtered)
     }
 
-    pub fn find_equivalence_class(
+    pub fn find_equivalence_class_with_graph(
         &self,
         application: &str,
         threshold: usize, //an edge in the graph representation for the equivalence classes is drawn if and only if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
@@ -380,6 +380,39 @@ impl HaplotypeVariants {
             .expect("could not write file");
 
         Ok(deps)
+    }
+    pub fn find_equivalence_class_with_distance_matrix(
+        &self,
+        application: &str,
+        threshold: usize, //an edge in the graph representation for the equivalence classes is drawn if and only if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
+        output_graph: &PathBuf,
+    ) -> Result<BTreeMap<(Haplotype,Haplotype), usize>> {
+        //initialize distances as a HashMap
+        let mut distances: BTreeMap<(Haplotype, Haplotype), usize> = BTreeMap::new();
+        //calculate and store distances between each pair of haplotypes
+        let haplotype_keys: Vec<Haplotype> = self.values().cloned().collect::<Vec<BTreeMap<Haplotype,(VariantStatus,bool)>>>()[0].keys().cloned().collect();
+        dbg!(&haplotype_keys);
+        for i in 0..haplotype_keys.len() {
+            for j in i + 1..haplotype_keys.len() {
+                let mut distance = 0;
+                let hap1 = &haplotype_keys[i];
+                let hap2 = &haplotype_keys[j];
+                for (variant, haplotype_map) in self.iter() {
+                    let gt1 = &haplotype_map[&hap1].0;
+                    let gt2 = &haplotype_map[&hap2].0;
+                    if *gt1 != *gt2 {
+                        distance += 1;
+                    } 
+                }
+                //insert the distance into the distances HashMap
+                distances.insert((hap1.clone(), hap2.clone()), distance);
+            }
+        }
+        //print the distances
+        for ((hap1, hap2), distance) in &distances {
+            println!("Distance between {:?} and {:?}: {}", hap1, hap2, distance);
+        }
+        Ok(distances)
     }
 }
 
@@ -633,6 +666,8 @@ pub fn linear_program(
                 });
         });
         dbg!(&extended_haplotypes);
+        let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
+        dbg!(&lp_keys);
         Ok(extended_haplotypes)
     } else {
         let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
