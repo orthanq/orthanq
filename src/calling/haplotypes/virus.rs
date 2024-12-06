@@ -164,6 +164,7 @@ impl Caller {
                 let (best_fractions, _) = new_event_posteriors.iter().next().unwrap();
                 let candidate_matrix_all = 
                     CandidateMatrix::new(&lp_haplotype_variants.filter_for_haplotypes(&all_haplotypes).unwrap()).unwrap().values().cloned().collect();
+                // dbg!(&candidate_matrix_all);
                 let best_fractions = best_fractions
                     .iter()
                     .map(|f| NotNan::into_inner(*f))
@@ -173,7 +174,7 @@ impl Caller {
                     &self.outcsv,
                     &"final",
                     &candidate_matrix_all,
-                    &final_haplotypes,
+                    &all_haplotypes,
                     &data.variant_calls,
                     &best_fractions,
                 )?;
