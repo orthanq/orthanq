@@ -273,7 +273,7 @@ fn extend_resulting_table(representatives: &Vec<Haplotype>, event_posteriors: &V
     let mut new_event_posteriors = Vec::new();
 
     // collect all lp haplotypes (with all distances)
-    let mut all_haplotypes: HashSet<Haplotype> = representatives.iter().cloned().collect();
+    let mut all_haplotypes: BTreeSet<Haplotype> = representatives.iter().cloned().collect();
     for ((hap1, hap2), dist) in distance_matrix {
         all_haplotypes.insert(hap1.clone());
         all_haplotypes.insert(hap2.clone());
