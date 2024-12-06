@@ -215,10 +215,7 @@ impl HaplotypeVariants {
         Ok(HaplotypeVariants(filtered_haplotype_variants))
     }
 
-    pub fn filter_for_haplotypes(
-        &self,
-        haplotypes: &Vec<Haplotype>,
-    ) -> Result<Self> {
+    pub fn filter_for_haplotypes(&self, haplotypes: &Vec<Haplotype>) -> Result<Self> {
         let mut new_haplotype_variants: BTreeMap<
             VariantID,
             BTreeMap<Haplotype, (VariantStatus, bool)>,
@@ -383,13 +380,18 @@ impl HaplotypeVariants {
     pub fn find_equivalence_classes_hamming_distance(
         &self,
         application: &str,
-    ) -> Result<BTreeMap<(Haplotype,Haplotype), usize>> {
-
+    ) -> Result<BTreeMap<(Haplotype, Haplotype), usize>> {
         //initialize distances as a HashMap
         let mut distances: BTreeMap<(Haplotype, Haplotype), usize> = BTreeMap::new();
 
         //compute hamming distances between each pair of haplotypes
-        let haplotype_keys: Vec<Haplotype> = self.values().cloned().collect::<Vec<BTreeMap<Haplotype,(VariantStatus,bool)>>>()[0].keys().cloned().collect();
+        let haplotype_keys: Vec<Haplotype> = self
+            .values()
+            .cloned()
+            .collect::<Vec<BTreeMap<Haplotype, (VariantStatus, bool)>>>()[0]
+            .keys()
+            .cloned()
+            .collect();
         for i in 0..haplotype_keys.len() {
             for j in i + 1..haplotype_keys.len() {
                 let mut distance = 0;
@@ -400,7 +402,7 @@ impl HaplotypeVariants {
                     let gt2 = &haplotype_map[&hap2].0;
                     if *gt1 != *gt2 {
                         distance += 1;
-                    } 
+                    }
                 }
                 //insert the distance into the distances HashMap
                 distances.insert((hap1.clone(), hap2.clone()), distance);

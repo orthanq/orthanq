@@ -10,7 +10,7 @@ use ordered_float::NotNan;
 use petgraph::visit::Bfs;
 use petgraph::Graph;
 use petgraph::Undirected;
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 pub type AlleleFreq = NotNan<f64>;
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable, PartialOrd)]
@@ -23,7 +23,7 @@ pub(crate) struct Marginal {
     upper_bond: NotNan<f64>,
     prior_info: PriorTypes,
     haplotype_graph: Option<Graph<(Haplotype, Haplotype), i32, Undirected>>,
-    distance_matrix: Option<BTreeMap<(Haplotype,Haplotype), usize>>,
+    distance_matrix: Option<BTreeMap<(Haplotype, Haplotype), usize>>,
     enable_equivalence_class_constraint: bool,
     application: String,
 }
@@ -54,7 +54,8 @@ impl Marginal {
                         let splitted = &self.haplotypes[haplotype_index]
                             .split(':')
                             .collect::<Vec<&str>>();
-                        let mut haplotype_group  = Haplotype(splitted[0].to_owned() + &":" + splitted[1]);
+                        let mut haplotype_group =
+                            Haplotype(splitted[0].to_owned() + &":" + splitted[1]);
 
                         //find the index of the (haplotype, haplotype_group) in graph
                         if let Some(haplotype_graph) = &self.haplotype_graph {
@@ -100,11 +101,16 @@ impl Marginal {
                         let current_haplotype = &self.haplotypes[haplotype_index];
                         dbg!(&current_haplotype);
 
-                        //loop over haplotypes in the distance matrix and find haplotypes that are at distance x to the current haplotype (similar_L(h)) 
-                        if let Some(distance_matrix) = &self.distance_matrix  {
+                        //loop over haplotypes in the distance matrix and find haplotypes that are at distance x to the current haplotype (similar_L(h))
+                        if let Some(distance_matrix) = &self.distance_matrix {
                             dbg!(&distance_matrix);
-                            let similar_l = distance_matrix.iter().filter(|((h1,h2), distance)|{
-                                (current_haplotype == h1 || current_haplotype == h2) && (**distance < x)}).count(); 
+                            let similar_l = distance_matrix
+                                .iter()
+                                .filter(|((h1, h2), distance)| {
+                                    (current_haplotype == h1 || current_haplotype == h2)
+                                        && (**distance < x)
+                                })
+                                .count();
                             dbg!(&similar_l);
                             //loop over haplotypes in collected fractions and find haplotypes that are at distance x to the current haplotype (similar_R)
                             let mut similar_r = 0;
@@ -113,21 +119,26 @@ impl Marginal {
                                 .iter()
                                 .zip(fractions[0..haplotype_index].to_vec().iter())
                             {
-                                dbg!(&h,&f);
-                                for ((h1,h2), distance) in distance_matrix.iter() {
-                                    if ((h1 == h && h2 == current_haplotype) || (h2 == h && h1 == current_haplotype)) && (*distance < x) {
+                                dbg!(&h, &f);
+                                for ((h1, h2), distance) in distance_matrix.iter() {
+                                    if ((h1 == h && h2 == current_haplotype)
+                                        || (h2 == h && h1 == current_haplotype))
+                                        && (*distance < x)
+                                    {
                                         dbg!(&h, &f, &h1, &h2);
-                                        if (h1 == current_haplotype || h2 == current_haplotype) && f > &NotNan::new(0.0).unwrap() {
+                                        if (h1 == current_haplotype || h2 == current_haplotype)
+                                            && f > &NotNan::new(0.0).unwrap()
+                                        {
                                             similar_r += 1;
                                         }
                                     }
-                                } 
+                                }
                             }
                             dbg!(&similar_r);
                             if similar_l < similar_r {
-                                return LogProb::ln_zero()
+                                return LogProb::ln_zero();
                             }
-                        }                    
+                        }
                     }
                 }
                 dbg!(&fractions);

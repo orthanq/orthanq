@@ -108,8 +108,8 @@ impl Caller {
             dbg!(&lp_haplotypes);
 
             //take only haplotypes that are found by lp
-            let filtered_haplotype_variants = filtered_haplotype_variants.
-                filter_for_haplotypes(&lp_haplotypes)?;
+            let filtered_haplotype_variants =
+                filtered_haplotype_variants.filter_for_haplotypes(&lp_haplotypes)?;
 
             //make sure lp_haplotypes sorted the same as in filtered_haplotype_variants
             let (_, haplotype_matrix) = filtered_haplotype_variants.iter().next().unwrap();
