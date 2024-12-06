@@ -564,7 +564,7 @@ pub fn linear_program(
     lp_cutoff: f64,
     extend_haplotypes: bool,
     num_variant_distance: i64,
-) -> Result<Vec<Haplotype>> {
+) -> Result<(Vec<Haplotype>, Vec<Haplotype>)> {
     //first init the problem
     let mut problem = ProblemVariables::new();
     //introduce variables
@@ -638,8 +638,8 @@ pub fn linear_program(
     //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list.
     //then sort by hamming distance, take the closest x additional alleles according to 'num_variant_distance'.
     //this is done by storing only the variants that have GT:1 and C:1 for all haplotypes in haplotype_dict and remaining variants are not included.
+    let mut extended_haplotypes = Vec::new();
     if extend_haplotypes {
-        let mut extended_haplotypes = Vec::new();
         lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
             let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
             haplotype_dict
@@ -666,14 +666,14 @@ pub fn linear_program(
                     }
                 });
         });
-        dbg!(&extended_haplotypes);
         let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
-        dbg!(&lp_keys);
-        Ok(extended_haplotypes)
+        dbg!(&lp_keys, &extended_haplotypes);
+        Ok((extended_haplotypes, lp_keys))
     } else {
         let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
-        dbg!(&lp_keys);
-        Ok(lp_keys)
+        let mut extended_haplotypes = lp_keys.clone();
+        dbg!(&lp_keys, &extended_haplotypes);
+        Ok((extended_haplotypes, lp_keys))
     }
 }
 

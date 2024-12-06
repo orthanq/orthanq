@@ -71,7 +71,7 @@ impl Caller {
                 let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
 
                 // employ the linear program and find the resulting haplotypes that are found and *extended* depending on --extend-haplotypes and --num-extend-haplotypes (0 default)
-                let lp_haplotypes = haplotypes::linear_program(
+                let (lp_haplotypes, lp_haplotypes_no_extension) = haplotypes::linear_program(
                     &self.outcsv,
                     &candidate_matrix,
                     &haplotypes,
@@ -134,6 +134,7 @@ impl Caller {
                         prior,
                         None,
                         Some(distance_matrix_nonzero),
+                        Some(lp_haplotypes_no_extension),
                         self.enable_equivalence_class_constraint,
                         "virus".to_string(),
                     ),

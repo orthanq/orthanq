@@ -24,6 +24,7 @@ pub(crate) struct Marginal {
     prior_info: PriorTypes,
     haplotype_graph: Option<Graph<(Haplotype, Haplotype), i32, Undirected>>,
     distance_matrix: Option<BTreeMap<(Haplotype, Haplotype), usize>>,
+    lp_haplotypes: Option<Vec<Haplotype>>,
     enable_equivalence_class_constraint: bool,
     application: String,
 }
@@ -104,15 +105,30 @@ impl Marginal {
                         //loop over haplotypes in the distance matrix and find haplotypes that are at distance x to the current haplotype (similar_L(h))
                         if let Some(distance_matrix) = &self.distance_matrix {
                             dbg!(&distance_matrix);
-                            let similar_l = distance_matrix
-                                .iter()
-                                .filter(|((h1, h2), distance)| {
-                                    (current_haplotype == h1 || current_haplotype == h2)
-                                        && (**distance < x)
-                                })
-                                .count();
+                            dbg!(&self.lp_haplotypes);
+
+                            let mut lp_haplotype_list = self.lp_haplotypes.clone().unwrap();
+                            
+                            //retain all elements in lp haplotypes except the current haplotype 
+                            lp_haplotype_list.retain(|x| x != current_haplotype);
+
+                            //compute similar_L(current_haplotype)
+                            let mut similar_l = 0;
+
+                            for h in lp_haplotype_list.iter() {
+                                for ((h1, h2), distance) in distance_matrix.iter() {
+                                    if ((h1 == h && h2 == current_haplotype)
+                                        || (h2 == h && h1 == current_haplotype))
+                                        && (*distance < x)
+                                    {
+                                        similar_l += 1;
+                                    }
+                                }
+                            }
                             dbg!(&similar_l);
-                            //loop over haplotypes in collected fractions and find haplotypes that are at distance x to the current haplotype (similar_R)
+                            dbg!(&fractions);
+
+                            //loop over haplotypes in collected fractions and find haplotypes that are at distance x to the current haplotype (similar_R(current_haplotype))
                             let mut similar_r = 0;
                             for (h, f) in self.haplotypes[0..haplotype_index]
                                 .to_vec()

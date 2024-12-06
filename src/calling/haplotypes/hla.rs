@@ -96,7 +96,7 @@ impl Caller {
             let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
 
             //employ the linear program
-            let lp_haplotypes = haplotypes::linear_program(
+            let (lp_haplotypes, _) = haplotypes::linear_program(
                 &self.outcsv,
                 &candidate_matrix,
                 &haplotypes,
@@ -143,6 +143,7 @@ impl Caller {
                     upper_bond,
                     prior,
                     Some(eq_graph),
+                    None,
                     None,
                     self.enable_equivalence_class_constraint,
                     "hla".to_string(),
