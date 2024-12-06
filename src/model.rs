@@ -97,7 +97,7 @@ impl Marginal {
                         //define x
                         let x: usize = 2;
 
-                        //define the current haplotype
+                        //find the current haplotype
                         let current_haplotype = &self.haplotypes[haplotype_index];
                         dbg!(&current_haplotype);
 
@@ -119,23 +119,23 @@ impl Marginal {
                                 .iter()
                                 .zip(fractions[0..haplotype_index].to_vec().iter())
                             {
-                                dbg!(&h, &f);
+                                //for each collected fraction, loop over distance matrix and check if there is a haplotype with fraction > 0.0
                                 for ((h1, h2), distance) in distance_matrix.iter() {
                                     if ((h1 == h && h2 == current_haplotype)
                                         || (h2 == h && h1 == current_haplotype))
                                         && (*distance < x)
+                                        && (f > &NotNan::new(0.0).unwrap())
                                     {
                                         dbg!(&h, &f, &h1, &h2);
-                                        if (h1 == current_haplotype || h2 == current_haplotype)
-                                            && f > &NotNan::new(0.0).unwrap()
-                                        {
-                                            similar_r += 1;
-                                        }
+                                        similar_r += 1;
                                     }
                                 }
                             }
                             dbg!(&similar_r);
+                            //block the path in case similar_l is similar_R.
+                            //This way the recursion will continue only if similar_l >= similar_r.
                             if similar_l < similar_r {
+                                dbg!(&"path is blocked");
                                 return LogProb::ln_zero();
                             }
                         }
