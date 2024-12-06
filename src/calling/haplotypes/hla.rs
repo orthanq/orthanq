@@ -108,8 +108,8 @@ impl Caller {
             dbg!(&lp_haplotypes);
 
             //take only haplotypes that are found by lp
-            let filtered_haplotype_variants = filtered_haplotype_variants
-                .find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?; //fix: find_plausible haplotypes should only contain the list of "haplotypes" given as parameter
+            let filtered_haplotype_variants = filtered_haplotype_variants.
+                filter_for_haplotypes(&lp_haplotypes)?;
 
             //make sure lp_haplotypes sorted the same as in filtered_haplotype_variants
             let (_, haplotype_matrix) = filtered_haplotype_variants.iter().next().unwrap();
@@ -120,7 +120,7 @@ impl Caller {
 
             //
             let eq_graph = filtered_haplotype_variants
-                .find_equivalence_class_with_graph(
+                .find_equivalence_classes_with_graph(
                     "hla",
                     self.threshold_equivalence_class,
                     &self.outcsv.clone(),

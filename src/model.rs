@@ -98,14 +98,14 @@ impl Marginal {
 
                         //define the current haplotype
                         let current_haplotype = &self.haplotypes[haplotype_index];
-                        // dbg!(&current_haplotype);
+                        dbg!(&current_haplotype);
 
                         //loop over haplotypes in the distance matrix and find haplotypes that are at distance x to the current haplotype (similar_L(h)) 
                         if let Some(distance_matrix) = &self.distance_matrix  {
-                            // dbg!(&distance_matrix);
+                            dbg!(&distance_matrix);
                             let similar_l = distance_matrix.iter().filter(|((h1,h2), distance)|{
                                 (current_haplotype == h1 || current_haplotype == h2) && (**distance < x)}).count(); 
-                            // dbg!(&similar_l);
+                            dbg!(&similar_l);
                             //loop over haplotypes in collected fractions and find haplotypes that are at distance x to the current haplotype (similar_R)
                             let mut similar_r = 0;
                             for (h, f) in self.haplotypes[0..haplotype_index]
@@ -113,24 +113,24 @@ impl Marginal {
                                 .iter()
                                 .zip(fractions[0..haplotype_index].to_vec().iter())
                             {
-                                // dbg!(&h,&f);
+                                dbg!(&h,&f);
                                 for ((h1,h2), distance) in distance_matrix.iter() {
                                     if ((h1 == h && h2 == current_haplotype) || (h2 == h && h1 == current_haplotype)) && (*distance < x) {
-                                        // dbg!(&h, &f, &h1,&h2);
+                                        dbg!(&h, &f, &h1, &h2);
                                         if (h1 == current_haplotype || h2 == current_haplotype) && f > &NotNan::new(0.0).unwrap() {
                                             similar_r += 1;
                                         }
                                     }
                                 } 
                             }
-                            // dbg!(&similar_r);
+                            dbg!(&similar_r);
                             if similar_l < similar_r {
                                 return LogProb::ln_zero()
-    
                             }
                         }                    
                     }
                 }
+                dbg!(&fractions);
                 let mut fractions = fractions.to_vec();
                 fractions.push(fraction);
                 self.calc_marginal(data, haplotype_index + 1, &mut fractions, joint_prob)

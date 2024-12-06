@@ -151,9 +151,9 @@ impl VariantCalls {
         let variants_haplotype_variants: Vec<_> = haplotype_variants.keys().cloned().collect();
         let variants_haplotype_calls: Vec<_> = self.keys().cloned().collect();
 
-        let rateof_evaluated_haplotypes: f64 =
+        let rateof_evaluated_variants: f64 =
             variants_haplotype_calls.len() as f64 / variants_haplotype_variants.len() as f64;
-        Ok(rateof_evaluated_haplotypes > threshold_considered_variants)
+        Ok(rateof_evaluated_variants > threshold_considered_variants)
     }
 }
 
@@ -215,9 +215,8 @@ impl HaplotypeVariants {
         Ok(HaplotypeVariants(filtered_haplotype_variants))
     }
 
-    pub fn find_plausible_haplotypes(
+    pub fn filter_for_haplotypes(
         &self,
-        _variant_calls: &VariantCalls,
         haplotypes: &Vec<Haplotype>,
     ) -> Result<Self> {
         let mut new_haplotype_variants: BTreeMap<
@@ -228,7 +227,6 @@ impl HaplotypeVariants {
             let mut new_matrix_map = BTreeMap::new();
             for (haplotype_m, (variant_status, coverage_status)) in matrix_map {
                 if haplotypes.contains(&haplotype_m) {
-                    //fix: filter for haplotypes in the haplotypes list
                     new_matrix_map.insert(
                         haplotype_m.clone(),
                         (variant_status.clone(), coverage_status.clone()),
@@ -276,7 +274,7 @@ impl HaplotypeVariants {
         Ok(haplotype_variants_filtered)
     }
 
-    pub fn find_equivalence_class_with_graph(
+    pub fn find_equivalence_classes_with_graph(
         &self,
         application: &str,
         threshold: usize, //an edge in the graph representation for the equivalence classes is drawn if and only if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
@@ -381,17 +379,17 @@ impl HaplotypeVariants {
 
         Ok(deps)
     }
-    pub fn find_equivalence_class_with_distance_matrix(
+    //todo: rename function?
+    pub fn find_equivalence_classes_hamming_distance(
         &self,
         application: &str,
-        threshold: usize, //an edge in the graph representation for the equivalence classes is drawn if and only if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
-        output_graph: &PathBuf,
     ) -> Result<BTreeMap<(Haplotype,Haplotype), usize>> {
+
         //initialize distances as a HashMap
         let mut distances: BTreeMap<(Haplotype, Haplotype), usize> = BTreeMap::new();
-        //calculate and store distances between each pair of haplotypes
+
+        //compute hamming distances between each pair of haplotypes
         let haplotype_keys: Vec<Haplotype> = self.values().cloned().collect::<Vec<BTreeMap<Haplotype,(VariantStatus,bool)>>>()[0].keys().cloned().collect();
-        dbg!(&haplotype_keys);
         for i in 0..haplotype_keys.len() {
             for j in i + 1..haplotype_keys.len() {
                 let mut distance = 0;
@@ -408,10 +406,11 @@ impl HaplotypeVariants {
                 distances.insert((hap1.clone(), hap2.clone()), distance);
             }
         }
-        //print the distances
-        for ((hap1, hap2), distance) in &distances {
-            println!("Distance between {:?} and {:?}: {}", hap1, hap2, distance);
-        }
+        // //print the distances
+        // for ((hap1, hap2), distance) in &distances {
+        //     println!("Distance between {:?} and {:?}: {}", hap1, hap2, distance);
+        // }
+        dbg!(&distances);
         Ok(distances)
     }
 }
@@ -613,15 +612,15 @@ pub fn linear_program(
     //finally, print the variables and the sum
     let mut lp_haplotypes = BTreeMap::new();
     for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
-        println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
+        // println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
         best_variables.push(solution.value(var.clone()).clone());
         if solution.value(*var) >= lp_cutoff {
             //the speed of fraction exploration is managable in case of diploid priors
             lp_haplotypes.insert(haplotype.clone(), solution.value(*var).clone());
         }
     }
-    println!("sum = {}", solution.eval(sum_tvars));
-
+    // println!("sum = {}", solution.eval(sum_tvars));
+    dbg!(&lp_haplotypes);
     //plot the best result
     let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
         candidate_matrix.values().cloned().collect();

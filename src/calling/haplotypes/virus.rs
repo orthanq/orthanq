@@ -48,6 +48,7 @@ impl Caller {
 
         //write blank plots and tsv table if no variants are available.
         if variant_calls.len() == 0 {
+
             //write blank plots, required for the workflow!
             self.output_empty_files()?;
             Ok(())
@@ -55,28 +56,21 @@ impl Caller {
             let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
             let haplotype_variants = HaplotypeVariants::new(&mut haplotype_variants_rdr)?;
 
+            // check if there is enough observations in the data, and do that by checking rate of evaluated variants
+            // if this does not pass, print insufficient data 
             if variant_calls
                 .check_variant_threshold(&haplotype_variants, self.threshold_considered_variants)?
             {
-                //filter variants for variants from variant calls
-                // let filtered_haplotype_variants:  BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>> = BTreeMap::new();
-                // for (variant,haplotype_map) in haplotype_variants.iter() {
-                //     if variant_ids.contains(&variant) {
-                //         filtered_haplotype_variants.insert(variant.clone(), haplotype_map.clone());
-                //     }
-                // }
-                // let filtered_haplotype_variants = HaplotypeVariants(filtered_haplotype_variants);
-
+                // filter haplotype variants to contain only the evaluated variants in the model.
                 let filtered_haplotype_variants =
                     haplotype_variants.filter_for_variants(&variant_ids)?;
-
+                
+                // output haplotype list and candidate matrix to be used in lp
                 let (_, haplotype_matrix) = filtered_haplotype_variants.iter().next().unwrap();
                 let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-
-                //find the haplotypes to prioritize
                 let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
 
-                //employ the lineaar program
+                // employ the linear program and find the resulting haplotypes that are found and *extended* depending on --extend-haplotypes and --num-extend-haplotypes (0 default)
                 let lp_haplotypes = haplotypes::linear_program(
                     &self.outcsv,
                     &candidate_matrix,
@@ -88,40 +82,28 @@ impl Caller {
                 )?;
 
                 //take only haplotypes that are found by lp
-                //todo: double check starting from this point
                 let lp_haplotype_variants = filtered_haplotype_variants
-                    .find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?;
+                    .filter_for_haplotypes(&lp_haplotypes)?;
 
-                //compute distance matrix
+                //compute distance matrix (hamming distance) with lp haplotypes (extended or not)
                 let distance_matrix = lp_haplotype_variants
-                    .find_equivalence_class_with_distance_matrix(
+                    .find_equivalence_classes_hamming_distance(
                         "virus",
-                        self.threshold_equivalence_class,
-                        &self.outcsv.clone(),
                     )
                     .unwrap();
 
-                let eq_graph = lp_haplotype_variants
-                    .find_equivalence_class_with_graph(
-                        "virus",
-                        self.threshold_equivalence_class,
-                        &self.outcsv.clone(),
-                    )
-                    .unwrap();
-
-                //create new haplotype list by getting rid of duplicate zero distance haplotypes and create a new candidate matrix
-                //filter representatives
-                let representatives = filter_representatives(lp_haplotypes.clone(), distance_matrix.clone());
+                //create a representative haplotype list; haplotypes that come from lp (extended or not) contain haplotypes that are identical by variant set (zero distance - due to insufficient observation in data)
+                let representatives = filter_representatives(lp_haplotypes, distance_matrix.clone());
                 dbg!(&representatives);
+
+                //then create haplotype variants with only the representative haplotypes
                 let final_haplotype_variants = lp_haplotype_variants
-                    .find_plausible_haplotypes(&variant_calls, &representatives)?; 
-                //make sure lp_haplotypes sorted the same as in haplotype_variants
-                let (_, haplotype_matrix) = final_haplotype_variants.iter().next().unwrap();
-                let final_haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
+                    .filter_for_haplotypes(&representatives)?; 
+
                 //construct candidate matrix
                 let candidate_matrix = CandidateMatrix::new(&final_haplotype_variants).unwrap();
 
-                //1-) model computation for chosen prior
+                //model computation with representative haplotypes
                 let prior = PriorTypes::from_str(&self.prior).unwrap();
                 let upper_bond = NotNan::new(1.0).unwrap();
                 let model = Model::new(
@@ -131,12 +113,16 @@ impl Caller {
                 );
                 let data = Data::new(candidate_matrix.clone(), variant_calls.clone());
 
-                // remove 0 distances and do this by creating a new map because we will need the original one after getting the results
+                //create a new distance matrix with no entries of 0 distances and use it in marginal computation
                 let distance_matrix_nonzero: BTreeMap<(Haplotype, Haplotype), usize> = distance_matrix
-                .iter()
-                .filter(|&(_, &v)| v != 0) // Filter out entries with value 0
-                .map(|(k, &v)| (k.clone(), v)) // Clone keys and values to construct the new map
-                .collect();
+                    .iter()
+                    .filter(|&(_, &v)| v != 0)
+                    .map(|(k, &v)| (k.clone(), v)) 
+                    .collect();
+
+                //determine final haplotypes to be used in the model
+                let final_haplotypes = representatives.clone();
+                dbg!(&final_haplotypes);
 
                 let computed_model = model.compute_from_marginal(
                     &Marginal::new(
@@ -171,7 +157,7 @@ impl Caller {
                     &best_fractions,
                 )?;
 
-                //write to tsv for nonzero densities
+                //remove zero densities from the table
                 let mut event_posteriors = Vec::new();
                 computed_model
                     .event_posteriors()
