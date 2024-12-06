@@ -108,8 +108,8 @@ impl Marginal {
                             dbg!(&self.lp_haplotypes);
 
                             let mut lp_haplotype_list = self.lp_haplotypes.clone().unwrap();
-                            
-                            //retain all elements in lp haplotypes except the current haplotype 
+
+                            //retain all elements in lp haplotypes except the current haplotype
                             lp_haplotype_list.retain(|x| x != current_haplotype);
 
                             //compute similar_L(current_haplotype)
