@@ -328,7 +328,7 @@ fn extend_resulting_table(
             let fraction = expanded_fractions[*idx];
             // dbg!(&fraction);
             for ((hap1, hap2), &dist) in distance_matrix {
-                if dist == 0 && fraction > NotNan::new(0.0).unwrap() {
+                if dist == 0 && *fraction > 0.0 {
                     // the second condition avoids having duplicate rows
                     if hap1 == haplotype {
                         if let (Some(idx1), Some(idx2)) =
