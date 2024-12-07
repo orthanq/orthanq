@@ -169,6 +169,19 @@ pub struct HaplotypeVariants(
     #[deref] pub BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>,
 );
 
+#[derive(Derefable, Debug, Clone)]
+pub struct HaplotypeGraph {
+    #[deref]
+    graph: Graph<(Haplotype, Haplotype), i32, petgraph::Undirected>,
+    node_indices: HashMap<(Haplotype, Haplotype), NodeIndex>,
+}
+
+impl HaplotypeGraph {
+    pub fn get_node_index(&self, query: &(Haplotype, Haplotype)) -> Option<NodeIndex> {
+        self.node_indices.get(query).cloned()
+    }
+}
+
 impl HaplotypeVariants {
     pub fn new(haplotype_variants: &mut bcf::Reader) -> Result<Self> {
         let mut variant_records = BTreeMap::new();
@@ -276,7 +289,7 @@ impl HaplotypeVariants {
         application: &str,
         threshold: usize, //an edge in the graph representation for the equivalence classes is drawn if and only if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
         output_graph: &PathBuf,
-    ) -> Result<Graph<(Haplotype, Haplotype), i32, petgraph::Undirected>> {
+    ) -> Result<HaplotypeGraph> {
         //create file path  for the graph
         let mut parent = output_graph.clone();
         parent.pop();
@@ -369,12 +382,23 @@ impl HaplotypeVariants {
             }
         }
 
+        //find node indices
+        let mut node_indices = HashMap::new();
+
+        //populate node_indices by iterating through all nodes
+        for node_index in deps.node_indices() {
+            let data = deps[node_index].clone(); // Get the data of the node
+            node_indices.insert(data, node_index);
+        }
+
         //write graph to dot file path
         let output = format!("{:?}", Dot::with_config(&deps, &[Config::EdgeNoLabel]));
         file.write_all(&output.as_bytes())
             .expect("could not write file");
-
-        Ok(deps)
+        Ok(HaplotypeGraph {
+            graph: deps,
+            node_indices: node_indices,
+        })
     }
     //todo: rename function?
     pub fn find_equivalence_classes_hamming_distance(

@@ -1,5 +1,6 @@
 use crate::calling::haplotypes::haplotypes::{
-    AlleleFreqDist, CandidateMatrix, Haplotype, PriorTypes, VariantCalls, VariantStatus,
+    AlleleFreqDist, CandidateMatrix, Haplotype, HaplotypeGraph, PriorTypes, VariantCalls,
+    VariantStatus,
 };
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb, Prob};
@@ -22,7 +23,7 @@ pub(crate) struct Marginal {
     haplotypes: Vec<Haplotype>,
     upper_bond: NotNan<f64>,
     prior_info: PriorTypes,
-    haplotype_graph: Option<Graph<(Haplotype, Haplotype), i32, Undirected>>,
+    haplotype_graph: Option<HaplotypeGraph>,
     distance_matrix: Option<BTreeMap<(Haplotype, Haplotype), usize>>,
     lp_haplotypes: Option<Vec<Haplotype>>,
     enable_equivalence_class_constraint: bool,
@@ -60,18 +61,14 @@ impl Marginal {
 
                         //find the index of the (haplotype, haplotype_group) in graph
                         if let Some(haplotype_graph) = &self.haplotype_graph {
+                            // query node index
                             let index = haplotype_graph
-                                .node_indices()
-                                .find(|i| {
-                                    &haplotype_graph[*i]
-                                        == &(current_haplotype.clone(), haplotype_group.clone())
-                                })
+                                .get_node_index(&(current_haplotype.clone(), haplotype_group))
                                 .unwrap();
-
                             // step through the graph and sum incoming edges into the node weight
-                            let mut bfs = Bfs::new(haplotype_graph, index);
+                            let mut bfs = Bfs::new(&**haplotype_graph, index);
 
-                            while let Some(nx) = bfs.next(haplotype_graph) {
+                            while let Some(nx) = bfs.next(&**haplotype_graph) {
                                 // we can access `graph` mutably here still
                                 let haplotype_query = &haplotype_graph[nx].0;
                                 for (h, f) in self.haplotypes[0..haplotype_index]
