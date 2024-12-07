@@ -39,6 +39,36 @@ pub struct VariantID(#[deref] pub i32);
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub struct Haplotype(#[deref] pub String);
 
+#[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+pub struct SimilarL(#[deref] pub BTreeMap<Haplotype, usize>);
+
+pub fn find_similar_lp_haplotypes(
+    lp_haplotypes: &Vec<Haplotype>,
+    distance_matrix: &BTreeMap<(Haplotype, Haplotype), usize>,
+    distance_threshold: usize,
+) -> SimilarL {
+    let mut similarl_map = BTreeMap::new();
+    for haplotype in lp_haplotypes.iter() {
+        let mut lp_haplotypes_cloned = lp_haplotypes.clone();
+        //compute similar_L(current_haplotype)
+        let mut num_similar_l = 0;
+        // retain all elements in lp haplotypes except the current haplotype
+        lp_haplotypes_cloned.retain(|x| x != haplotype);
+        //loop over lp haplotypes
+        for h in lp_haplotypes_cloned.iter() {
+            for ((h1, h2), distance) in distance_matrix.iter() {
+                if ((h1 == h && h2 == haplotype) || (h2 == h && h1 == haplotype))
+                    && (*distance < distance_threshold)
+                {
+                    num_similar_l += 1;
+                }
+            }
+        }
+        similarl_map.insert(haplotype.clone(), num_similar_l);
+    }
+    SimilarL(similarl_map)
+}
+
 #[derive(Debug, Clone, Derefable)]
 pub struct AlleleFreqDist(#[deref] BTreeMap<AlleleFreq, LogProb>);
 

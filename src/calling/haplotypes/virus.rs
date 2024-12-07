@@ -1,4 +1,6 @@
 use crate::calling::haplotypes::haplotypes;
+use crate::calling::haplotypes::haplotypes::find_similar_lp_haplotypes;
+use crate::calling::haplotypes::haplotypes::SimilarL;
 use crate::calling::haplotypes::haplotypes::{
     CandidateMatrix, Haplotype, HaplotypeVariants, PriorTypes, VariantCalls, VariantID,
     VariantStatus,
@@ -125,7 +127,16 @@ impl Caller {
                 let final_haplotypes = representatives.clone();
                 dbg!(&final_haplotypes);
 
-                //todo: optimizasyonun model icinde nasil calistigina bak, yanlisliklar var
+                //marginal computation
+                //find similar lp haplotypes to use in marginal computation
+                //define distance_threshold (can be changed later)
+                let distance_threshold: usize = 2;
+                let similarl_map = find_similar_lp_haplotypes(
+                    &lp_haplotypes_no_extension,
+                    &distance_matrix_nonzero,
+                    distance_threshold,
+                );
+
                 let computed_model = model.compute_from_marginal(
                     &Marginal::new(
                         final_haplotypes.len(),
@@ -134,7 +145,8 @@ impl Caller {
                         prior,
                         None,
                         Some(distance_matrix_nonzero),
-                        Some(lp_haplotypes_no_extension),
+                        Some(similarl_map),
+                        Some(distance_threshold),
                         self.enable_equivalence_class_constraint,
                         "virus".to_string(),
                     ),

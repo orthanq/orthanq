@@ -1,7 +1,9 @@
+use crate::calling::haplotypes::haplotypes::SimilarL;
 use crate::calling::haplotypes::haplotypes::{
     AlleleFreqDist, CandidateMatrix, Haplotype, HaplotypeGraph, PriorTypes, VariantCalls,
     VariantStatus,
 };
+
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb, Prob};
 use bv::BitVec;
@@ -25,7 +27,8 @@ pub(crate) struct Marginal {
     prior_info: PriorTypes,
     haplotype_graph: Option<HaplotypeGraph>,
     distance_matrix: Option<BTreeMap<(Haplotype, Haplotype), usize>>,
-    lp_haplotypes: Option<Vec<Haplotype>>,
+    similarl_map: Option<SimilarL>,
+    distance_threshold: Option<usize>,
     enable_equivalence_class_constraint: bool,
     application: String,
 }
@@ -92,39 +95,22 @@ impl Marginal {
 
                         //achtung: the distance matrix should be gotten rid of the distance 0 entries, otherwise this will not work.
                         //todo: double check that this works as expected.
-                        //define x
-                        let x: usize = 2;
 
                         //find the current haplotype
                         let current_haplotype = &self.haplotypes[haplotype_index];
-                        dbg!(&current_haplotype);
+                        // dbg!(&current_haplotype);
 
                         //loop over haplotypes in the distance matrix and find haplotypes that are at distance x to the current haplotype (similar_L(h))
                         if let Some(distance_matrix) = &self.distance_matrix {
-                            dbg!(&distance_matrix);
-                            dbg!(&self.lp_haplotypes);
-
-                            let mut lp_haplotype_list = self.lp_haplotypes.clone().unwrap();
-
-                            //retain all elements in lp haplotypes except the current haplotype
-                            lp_haplotype_list.retain(|x| x != current_haplotype);
-
-                            //compute similar_L(current_haplotype)
-                            let mut similar_l = 0;
-
-                            for h in lp_haplotype_list.iter() {
-                                for ((h1, h2), distance) in distance_matrix.iter() {
-                                    if ((h1 == h && h2 == current_haplotype)
-                                        || (h2 == h && h1 == current_haplotype))
-                                        && (*distance < x)
-                                    {
-                                        similar_l += 1;
-                                    }
-                                }
-                            }
-                            dbg!(&similar_l);
-                            dbg!(&fractions);
-
+                            // dbg!(&distance_matrix);
+                            let similar_l = self
+                                .similarl_map
+                                .as_ref()
+                                .unwrap()
+                                .get(&current_haplotype)
+                                .unwrap();
+                            // dbg!(&similar_l);
+                            // dbg!(&fractions);
                             //loop over haplotypes in collected fractions and find haplotypes that are at distance x to the current haplotype (similar_R(current_haplotype))
                             let mut similar_r = 0;
                             for (h, f) in self.haplotypes[0..haplotype_index]
@@ -136,25 +122,25 @@ impl Marginal {
                                 for ((h1, h2), distance) in distance_matrix.iter() {
                                     if ((h1 == h && h2 == current_haplotype)
                                         || (h2 == h && h1 == current_haplotype))
-                                        && (*distance < x)
+                                        && (*distance < self.distance_threshold.unwrap())
                                         && (f > &NotNan::new(0.0).unwrap())
                                     {
-                                        dbg!(&h, &f, &h1, &h2);
+                                        // dbg!(&h, &f, &h1, &h2);
                                         similar_r += 1;
                                     }
                                 }
                             }
-                            dbg!(&similar_r);
+                            // dbg!(&similar_r);
                             //block the path in case similar_l is similar_R.
                             //This way the recursion will continue only if similar_l >= similar_r.
-                            if similar_l < similar_r {
+                            if *similar_l < similar_r {
                                 dbg!(&"path is blocked");
                                 return LogProb::ln_zero();
                             }
                         }
                     }
                 }
-                dbg!(&fractions);
+                // dbg!(&fractions);
                 let mut fractions = fractions.to_vec();
                 fractions.push(fraction);
                 self.calc_marginal(data, haplotype_index + 1, &mut fractions, joint_prob)

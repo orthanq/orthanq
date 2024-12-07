@@ -145,6 +145,7 @@ impl Caller {
                     Some(eq_graph),
                     None,
                     None,
+                    None,
                     self.enable_equivalence_class_constraint,
                     "hla".to_string(),
                 ),
