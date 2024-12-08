@@ -466,7 +466,7 @@ impl HaplotypeVariants {
         // for ((hap1, hap2), distance) in &distances {
         //     println!("Distance between {:?} and {:?}: {}", hap1, hap2, distance);
         // }
-        dbg!(&distances);
+        // dbg!(&distances);
         Ok(distances)
     }
 }
@@ -676,7 +676,7 @@ pub fn linear_program(
         }
     }
     // println!("sum = {}", solution.eval(sum_tvars));
-    dbg!(&lp_haplotypes);
+    // dbg!(&lp_haplotypes);
     //plot the best result
     let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
         candidate_matrix.values().cloned().collect();
@@ -721,12 +721,12 @@ pub fn linear_program(
                 });
         });
         let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
-        dbg!(&lp_keys, &extended_haplotypes);
+        // dbg!(&lp_keys, &extended_haplotypes);
         Ok((extended_haplotypes, lp_keys))
     } else {
         let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
         let mut extended_haplotypes = lp_keys.clone();
-        dbg!(&lp_keys, &extended_haplotypes);
+        // dbg!(&lp_keys, &extended_haplotypes);
         Ok((extended_haplotypes, lp_keys))
     }
 }
@@ -855,7 +855,7 @@ pub fn write_results(
     wtr.write_record(records)?;
 
     //write the rest of the records
-    dbg!(&event_posteriors);
+    // dbg!(&event_posteriors);
 
     if variant_info {
         event_posteriors
