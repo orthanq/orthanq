@@ -8,7 +8,6 @@ use derefable::Derefable;
 use derive_deref::DerefMut;
 
 use ordered_float::NotNan;
-use ordered_float::OrderedFloat;
 
 use rust_htslib::bcf::{
     self,
@@ -27,9 +26,7 @@ use serde::Serialize;
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap};
 
-use std::collections::{BTreeSet, HashSet};
 use std::fs;
-use std::fs::File;
 use std::io::Write;
 use std::str::FromStr;
 use std::{path::PathBuf, str};
@@ -699,7 +696,7 @@ pub fn linear_program(
         Ok((extended_haplotypes, lp_keys))
     } else {
         let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
-        let mut extended_haplotypes = lp_keys.clone();
+        let extended_haplotypes = lp_keys.clone();
         dbg!(&lp_keys, &extended_haplotypes);
         Ok((extended_haplotypes, lp_keys))
     }

@@ -13,7 +13,6 @@ use polars::frame::DataFrame;
 use polars::prelude::*;
 
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
-use rust_htslib::faidx;
 
 #[allow(dead_code)]
 #[derive(Builder, Clone)]

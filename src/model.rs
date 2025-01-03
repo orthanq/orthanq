@@ -10,9 +10,7 @@ use derefable::Derefable;
 use derive_new::new;
 use ordered_float::NotNan;
 use petgraph::visit::Bfs;
-use petgraph::Graph;
-use petgraph::Undirected;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::HashMap;
 pub type AlleleFreq = NotNan<f64>;
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable, PartialOrd)]
@@ -55,7 +53,7 @@ impl Marginal {
                         let splitted = &self.haplotypes[haplotype_index]
                             .split(':')
                             .collect::<Vec<&str>>();
-                        let mut haplotype_group =
+                        let haplotype_group =
                             Haplotype(splitted[0].to_owned() + &":" + splitted[1]);
 
                         //find the index of the (haplotype, haplotype_group) in graph
@@ -83,7 +81,7 @@ impl Marginal {
                         }
                     }
                     // else if self.application == "virus".to_string() {
-                        //TODO: explore other methods.
+                    //TODO: explore other methods.
                     // }
                 }
                 // dbg!(&fractions);
@@ -96,7 +94,6 @@ impl Marginal {
                 density(fraction_upper_bound)
             } else {
                 if fraction_upper_bound == NotNan::new(0.0).unwrap() {
-
                     density(NotNan::new(0.0).unwrap())
                 } else {
                     //check prior info
@@ -196,8 +193,7 @@ impl Likelihood {
                         vaf_sum += *fraction;
                     } else if genotypes[i] == VariantStatus::Unknown || covered[i as u64] {
                         ()
-                    }
-                    else if genotypes[i] == VariantStatus::NotPresent && !covered[i as u64] {
+                    } else if genotypes[i] == VariantStatus::NotPresent && !covered[i as u64] {
                         denom -= *fraction;
                     }
                 });
@@ -236,8 +232,7 @@ impl model::Prior for Prior {
                     || *fraction == NotNan::new(1.0).unwrap()
                 {
                     prior_prob += LogProb::from(Prob(1.0 / 3.0))
-                }
-                else {
+                } else {
                     prior_prob += LogProb::ln_zero()
                 }
             });

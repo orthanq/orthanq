@@ -4,14 +4,12 @@ use crate::calling::haplotypes::haplotypes;
 // use crate::calling::haplotypes::haplotypes::SimilarL;
 use crate::calling::haplotypes::haplotypes::{
     CandidateMatrix, Haplotype, HaplotypeVariants, PriorTypes, VariantCalls, VariantID,
-    VariantStatus,
 };
 
 use crate::model::{AlleleFreq, Data, HaplotypeFractions, Likelihood, Marginal, Posterior, Prior};
 
 use anyhow::Result;
 use bio::stats::bayesian::model::Model;
-use bv::BitVec;
 use derive_builder::Builder;
 use log::warn;
 
@@ -20,8 +18,8 @@ use ordered_float::NotNan;
 use rust_htslib::bcf::{self};
 
 use bio::stats::LogProb;
-use std::collections::{BTreeMap, HashMap};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fs;
 use std::str::FromStr;
 use std::{path::PathBuf, str};
@@ -121,7 +119,7 @@ impl Caller {
                 );
 
                 //find event posteriors
-                let mut event_posteriors = computed_model.event_posteriors();
+                let event_posteriors = computed_model.event_posteriors();
 
                 //remove zero densities from the table
                 let mut event_posteriors = Vec::new();
@@ -140,13 +138,10 @@ impl Caller {
                 let distance_matrix = extended_lp_haplotype_variants
                     .find_equivalence_classes_hamming_distance("virus")
                     .unwrap();
-                
-                let (new_event_posteriors, all_haplotypes) = extend_resulting_table(
-                    &lp_haplotypes,
-                    &event_posteriors,
-                    &distance_matrix,
-                )
-                .unwrap();
+
+                let (new_event_posteriors, all_haplotypes) =
+                    extend_resulting_table(&lp_haplotypes, &event_posteriors, &distance_matrix)
+                        .unwrap();
 
                 //plot the best solution as final solution plot
                 let (best_fractions, _) = new_event_posteriors.iter().next().unwrap();
