@@ -32,6 +32,7 @@ use std::fs::File;
 use std::io::Write;
 use std::str::FromStr;
 use std::{path::PathBuf, str};
+use std::collections::{BTreeSet, HashSet};
 
 #[derive(Derefable, Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize)]
 pub struct VariantID(#[deref] pub i32);
@@ -42,32 +43,68 @@ pub struct Haplotype(#[deref] pub String);
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub struct SimilarL(#[deref] pub BTreeMap<Haplotype, usize>);
 
-pub fn find_similar_lp_haplotypes(
-    lp_haplotypes: &Vec<Haplotype>,
-    distance_matrix: &BTreeMap<(Haplotype, Haplotype), usize>,
-    distance_threshold: usize,
-) -> SimilarL {
-    let mut similarl_map = BTreeMap::new();
-    for haplotype in lp_haplotypes.iter() {
-        let mut lp_haplotypes_cloned = lp_haplotypes.clone();
-        //compute similar_L(current_haplotype)
-        let mut num_similar_l = 0;
-        // retain all elements in lp haplotypes except the current haplotype
-        lp_haplotypes_cloned.retain(|x| x != haplotype);
-        //loop over lp haplotypes
-        for h in lp_haplotypes_cloned.iter() {
-            for ((h1, h2), distance) in distance_matrix.iter() {
-                if ((h1 == h && h2 == haplotype) || (h2 == h && h1 == haplotype))
-                    && (*distance < distance_threshold)
-                {
-                    num_similar_l += 1;
-                }
-            }
-        }
-        similarl_map.insert(haplotype.clone(), num_similar_l);
-    }
-    SimilarL(similarl_map)
-}
+// pub fn find_similar_lp_haplotypes(
+//     representatives: &Vec<Haplotype>,
+//     lp_haplotypes: &Vec<Haplotype>,
+//     distance_matrix: &Graph<Haplotype, i32, petgraph::Undirected>,
+//     distance_threshold: usize,
+// ) -> SimilarL {
+//     let mut similarl_map = BTreeMap::new();
+//     let mut visited = HashSet::new();
+
+//     for r_haplotype in representatives.iter() {
+//         let mut num_similar_l = 0;
+//         let mut visited_neighbors = HashSet::new();
+
+//         // Find all 0-distance counterparts for r_haplotype
+//         let equivalence_group: HashSet<Haplotype> = distance_matrix
+//             .iter()
+//             .filter_map(|((h1, h2), &distance)| {
+//                 if distance == 0 && (h1 == r_haplotype || h2 == r_haplotype) {
+//                     Some(if h1 == r_haplotype { h2.clone() } else { h1.clone() })
+//                 } else {
+//                     None
+//                 }
+//             })
+//             .chain(std::iter::once(r_haplotype.clone()))
+//             .collect();
+
+//         // Skip processing if the equivalence group has been visited
+//         if equivalence_group.iter().any(|h| visited.contains(h)) {
+//             similarl_map.insert(r_haplotype.clone(), num_similar_l);
+//             continue;
+//         }
+
+//         // Mark all members of the equivalence group as visited
+//         visited.extend(equivalence_group.iter().cloned());
+
+//         // Check if any member of the equivalence group is in lp_haplotypes
+//         if lp_haplotypes.iter().any(|lp_hap| equivalence_group.contains(lp_hap)) {
+//             for ((h1, h2), &distance) in distance_matrix.iter() {
+//                 if distance > 0 && distance < distance_threshold {
+//                     let neighbor = if equivalence_group.contains(h1) {
+//                         h2
+//                     } else if equivalence_group.contains(h2) {
+//                         h1
+//                     } else {
+//                         continue;
+//                     };
+
+//                     // Only count the neighbor if not already visited
+//                     if !equivalence_group.contains(neighbor) && !visited_neighbors.contains(neighbor)
+//                     {
+//                         num_similar_l += 1;
+//                         visited_neighbors.insert(neighbor.clone());
+//                     }
+//                 }
+//             }
+//         }
+
+//         similarl_map.insert(r_haplotype.clone(), num_similar_l);
+//     }
+
+//     SimilarL(similarl_map)
+// }
 
 #[derive(Debug, Clone, Derefable)]
 pub struct AlleleFreqDist(#[deref] BTreeMap<AlleleFreq, LogProb>);
@@ -211,6 +248,161 @@ impl HaplotypeGraph {
         self.node_indices.get(query).cloned()
     }
 }
+
+#[derive(Derefable, Debug, Clone)]
+pub struct HaplotypeGraphVirus(#[deref] pub Graph<Haplotype, i32, petgraph::Undirected>);
+
+#[derive(Derefable, Debug, Clone)]
+pub struct DistanceMatrix(#[deref] pub BTreeMap<(Haplotype, Haplotype), usize>);
+
+impl HaplotypeGraphVirus {
+    pub fn from_distance_matrix(
+        distance_matrix: &DistanceMatrix,
+        threshold: usize,
+        outdir: &PathBuf,
+    ) -> Self {
+        let mut parent = outdir.clone();
+        parent.pop();
+        let mut file = fs::File::create(parent.join("graph.dot")).unwrap();
+
+        let mut graph = Graph::<Haplotype, i32, petgraph::Undirected>::new_undirected();
+
+        // Map to store node indices
+        let mut node_map = BTreeMap::new();
+
+        // Process all entries in the distance matrix to add nodes
+        for ((hap1, hap2), _) in &**distance_matrix {
+            node_map.entry(hap1.clone()).or_insert_with(|| graph.add_node(hap1.clone()));
+            node_map.entry(hap2.clone()).or_insert_with(|| graph.add_node(hap2.clone()));
+        }
+
+        // Process all entries in the distance matrix to add edges
+        for ((hap1, hap2), distance) in &**distance_matrix {
+            //important: only add an edge if the distance is below the threshold and not 0 (avoid representing identical haplotypes)
+            if *distance < threshold && *distance != 0 {
+                // Convert usize distance to i32 (ensure it fits within i32 bounds)
+                let weight = *distance as i32;
+
+                let node1 = node_map[&hap1];
+                let node2 = node_map[&hap2];
+
+                // Add the edge between the nodes with the weight
+                graph.add_edge(node1, node2, weight);
+            }
+        }
+        //write graph to dot file path
+        let output = format!("{:?}", Dot::with_config(&graph, &[Config::EdgeNoLabel]));
+        file.write_all(&output.as_bytes())
+            .expect("could not write file");
+
+        HaplotypeGraphVirus(graph)
+    }
+    pub fn neighbors_map(&self) -> BTreeMap<Haplotype, BTreeSet<Haplotype>> {
+        let mut neighbors = BTreeMap::new();
+
+        // Iterate over all nodes in the graph
+        for node_idx in self.0.node_indices() {
+            let haplotype = self.0[node_idx].clone();
+
+            // Collect neighbors of the current node
+            let node_neighbors = self
+                .0
+                .neighbors(node_idx)
+                .map(|neighbor_idx| self.0[neighbor_idx].clone())
+                .collect::<BTreeSet<Haplotype>>();
+
+            neighbors.insert(haplotype, node_neighbors);
+        }
+
+        neighbors
+    }
+}
+// pub fn new(&distance_matrix: BTreeMap<(Haplotype, Haplotype), usize>) -> Self {
+
+// let mut deps = Graph::new_undirected();
+
+// for (haplotype, variants) in equivalence_classes.iter() {
+//     //initialize variables
+//     let mut splitted_1 = vec![];
+//     let mut haplotype_group = Haplotype(String::from(""));
+//     if &application == &"hla" {
+//         splitted_1 = haplotype.split(':').collect::<Vec<&str>>();
+//         haplotype_group = Haplotype(splitted_1[0].to_owned() + &":" + splitted_1[1]);
+//     } else if &application == &"virus" {
+//         haplotype_group = haplotype.clone();
+//     }
+
+//     //add new node
+//     deps.add_node((haplotype.clone(), haplotype_group.clone()));
+
+//     //find index of the main node. this is necessary for the check and drawing an edge later
+//     let index = deps
+//         .node_indices()
+//         .find(|i| deps[*i] == (haplotype.clone(), haplotype_group.clone()))
+//         .unwrap();
+
+//     //loop over the graph to draw edges if conditions are met
+//     for idx in 0..deps.node_count() {
+//         // find the node and its variants at index
+//         let node_at_index = &deps[NodeIndex::new(idx)];
+//         let variants_of_node_at_index: &Vec<VariantID> =
+//             &equivalence_classes[&node_at_index.0];
+
+//         let mut splitted_2 = vec![];
+//         let mut haplotype_group_at_index = Haplotype(String::from(""));
+//         if &application == &"hla" {
+//             splitted_2 = node_at_index.0.split(':').collect::<Vec<&str>>();
+//             haplotype_group_at_index =
+//                 Haplotype(splitted_2[0].to_owned() + &":" + splitted_2[1]);
+//         } else if &application == &"virus" {
+//             haplotype_group_at_index = node_at_index.0.clone();
+//         }
+
+//         //find the differences between the main node and the neighbor node
+//         let mut difference: Vec<&VariantID> = vec![];
+//         for variant in variants_of_node_at_index.iter() {
+//             if !variants.contains(&variant) {
+//                 difference.push(variant);
+//             }
+//         }
+//         //for hla: draw an edge only if the difference is less than the threshold, haplotype group is the same
+//         // and it's not the same node
+//         //for virus: draw an edge only if the difference is less than the threshold and it's not the same node
+
+//         if &application == &"hla"
+//             && (difference.len() < threshold)
+//             && (haplotype_group == haplotype_group_at_index)
+//             && (index != NodeIndex::new(idx))
+//         {
+//             deps.add_edge(index, NodeIndex::new(idx), 1);
+//         } else if &application == &"virus"
+//             && (difference.len() < threshold)
+//             && (index != NodeIndex::new(idx))
+//         {
+//             deps.add_edge(index, NodeIndex::new(idx), 1);
+//         }
+//     }
+// }
+
+// //find node indices
+// let mut node_indices = HashMap::new();
+
+// //populate node_indices by iterating through all nodes
+// for node_index in deps.node_indices() {
+//     let data = deps[node_index].clone(); // Get the data of the node
+//     node_indices.insert(data, node_index);
+// }
+
+// //write graph to dot file path
+// let output = format!("{:?}", Dot::with_config(&deps, &[Config::EdgeNoLabel]));
+// file.write_all(&output.as_bytes())
+//     .expect("could not write file");
+// Ok(HaplotypeGraph {
+//     graph: deps,
+//     node_indices: node_indices,
+// })
+// }
+// }
 
 impl HaplotypeVariants {
     pub fn new(haplotype_variants: &mut bcf::Reader) -> Result<Self> {
@@ -434,7 +626,7 @@ impl HaplotypeVariants {
     pub fn find_equivalence_classes_hamming_distance(
         &self,
         application: &str,
-    ) -> Result<BTreeMap<(Haplotype, Haplotype), usize>> {
+    ) -> Result<DistanceMatrix> {
         //initialize distances as a HashMap
         let mut distances: BTreeMap<(Haplotype, Haplotype), usize> = BTreeMap::new();
 
@@ -462,12 +654,12 @@ impl HaplotypeVariants {
                 distances.insert((hap1.clone(), hap2.clone()), distance);
             }
         }
-        // //print the distances
-        // for ((hap1, hap2), distance) in &distances {
-        //     println!("Distance between {:?} and {:?}: {}", hap1, hap2, distance);
-        // }
-        // dbg!(&distances);
-        Ok(distances)
+        //print the distances
+        for ((hap1, hap2), distance) in &distances {
+            println!("Distance between {:?} and {:?}: {}", hap1, hap2, distance);
+        }
+        dbg!(&distances);
+        Ok(DistanceMatrix(distances))
     }
 }
 
@@ -721,12 +913,12 @@ pub fn linear_program(
                 });
         });
         let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
-        // dbg!(&lp_keys, &extended_haplotypes);
+        dbg!(&lp_keys, &extended_haplotypes);
         Ok((extended_haplotypes, lp_keys))
     } else {
         let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
         let mut extended_haplotypes = lp_keys.clone();
-        // dbg!(&lp_keys, &extended_haplotypes);
+        dbg!(&lp_keys, &extended_haplotypes);
         Ok((extended_haplotypes, lp_keys))
     }
 }
