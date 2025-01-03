@@ -1,6 +1,8 @@
 use crate::calling::haplotypes::haplotypes::{
-    AlleleFreqDist, CandidateMatrix, Haplotype, PriorTypes, VariantCalls, VariantStatus,
+    AlleleFreqDist, CandidateMatrix, Haplotype, HaplotypeGraph, PriorTypes, VariantCalls,
+    VariantStatus,
 };
+
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb, Prob};
 use bv::BitVec;
@@ -8,12 +10,10 @@ use derefable::Derefable;
 use derive_new::new;
 use ordered_float::NotNan;
 use petgraph::visit::Bfs;
-use petgraph::Graph;
-use petgraph::Undirected;
 use std::collections::HashMap;
 pub type AlleleFreq = NotNan<f64>;
 
-#[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable)]
+#[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable, PartialOrd)]
 pub struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
 
 #[derive(Debug, new)]
@@ -22,7 +22,7 @@ pub(crate) struct Marginal {
     haplotypes: Vec<Haplotype>,
     upper_bond: NotNan<f64>,
     prior_info: PriorTypes,
-    haplotype_graph: Graph<(Haplotype, Haplotype), i32, Undirected>,
+    haplotype_graph: Option<HaplotypeGraph>,
     enable_equivalence_class_constraint: bool,
     application: String,
 }
@@ -47,58 +47,53 @@ impl Marginal {
                     && fraction > NotNan::new(0.0).unwrap()
                     && fractions.len() > 1
                 {
-                    // only if the fraction for the current has greater than 0.0
-                    let mut haplotype_group = Haplotype("".to_string());
-                    let current_haplotype = &self.haplotypes[haplotype_index];
                     if self.application == "hla".to_string() {
+                        // only if the fraction for the current has greater than 0.0
+                        let current_haplotype = &self.haplotypes[haplotype_index];
                         let splitted = &self.haplotypes[haplotype_index]
                             .split(':')
                             .collect::<Vec<&str>>();
-                        haplotype_group = Haplotype(splitted[0].to_owned() + &":" + splitted[1]);
-                    } else if self.application == "virus".to_string() {
-                        haplotype_group = current_haplotype.clone();
-                    }
+                        let haplotype_group =
+                            Haplotype(splitted[0].to_owned() + &":" + splitted[1]);
 
-                    //find the index of the (haplotype, haplotype_group) in graph
-                    let index = &self
-                        .haplotype_graph
-                        .node_indices()
-                        .find(|i| {
-                            &self.haplotype_graph[*i]
-                                == &(current_haplotype.clone(), haplotype_group.clone())
-                        })
-                        .unwrap();
+                        //find the index of the (haplotype, haplotype_group) in graph
+                        if let Some(haplotype_graph) = &self.haplotype_graph {
+                            // query node index
+                            let index = haplotype_graph
+                                .get_node_index(&(current_haplotype.clone(), haplotype_group))
+                                .unwrap();
+                            // step through the graph and sum incoming edges into the node weight
+                            let mut bfs = Bfs::new(&**haplotype_graph, index);
 
-                    // step through the graph and sum incoming edges into the node weight
-                    let mut bfs = Bfs::new(&self.haplotype_graph, *index);
-
-                    while let Some(nx) = bfs.next(&self.haplotype_graph) {
-                        // we can access `graph` mutably here still
-                        let haplotype_query = &self.haplotype_graph[nx].0;
-                        for (h, f) in self.haplotypes[0..haplotype_index]
-                            .to_vec()
-                            .iter()
-                            .zip(fractions[0..haplotype_index].to_vec().iter())
-                        {
-                            if (h == haplotype_query) && (f > &NotNan::new(0.0).unwrap()) {
-                                return LogProb::ln_zero();
+                            while let Some(nx) = bfs.next(&**haplotype_graph) {
+                                // we can access `graph` mutably here still
+                                let haplotype_query = &haplotype_graph[nx].0;
+                                for (h, f) in self.haplotypes[0..haplotype_index]
+                                    .to_vec()
+                                    .iter()
+                                    .zip(fractions[0..haplotype_index].to_vec().iter())
+                                {
+                                    if (h == haplotype_query) && (f > &NotNan::new(0.0).unwrap()) {
+                                        return LogProb::ln_zero();
+                                    }
+                                }
                             }
                         }
                     }
+                    // else if self.application == "virus".to_string() {
+                    //TODO: explore other methods.
+                    // }
                 }
+                // dbg!(&fractions);
                 let mut fractions = fractions.to_vec();
                 fractions.push(fraction);
                 self.calc_marginal(data, haplotype_index + 1, &mut fractions, joint_prob)
             };
 
             if haplotype_index == self.n_haplotypes - 1 {
-                // let second_if = density(fraction_upper_bound);
-                // second_if //clippy gives a warning
                 density(fraction_upper_bound)
             } else {
                 if fraction_upper_bound == NotNan::new(0.0).unwrap() {
-                    // let last_if = density(NotNan::new(0.0).unwrap());
-                    // last_if
                     density(NotNan::new(0.0).unwrap())
                 } else {
                     //check prior info
@@ -157,7 +152,6 @@ impl model::Marginal for Marginal {
 pub struct Data {
     pub candidate_matrix: CandidateMatrix,
     pub variant_calls: VariantCalls,
-    // pub kallisto_estimates: Vec<KallistoEstimate>
 }
 
 #[derive(Debug, new)]
@@ -199,11 +193,7 @@ impl Likelihood {
                         vaf_sum += *fraction;
                     } else if genotypes[i] == VariantStatus::Unknown || covered[i as u64] {
                         ()
-                    }
-                    // else if covered[i as u64] {
-                    //     ()
-                    // }
-                    else if genotypes[i] == VariantStatus::NotPresent && !covered[i as u64] {
+                    } else if genotypes[i] == VariantStatus::NotPresent && !covered[i as u64] {
                         denom -= *fraction;
                     }
                 });
@@ -242,13 +232,7 @@ impl model::Prior for Prior {
                     || *fraction == NotNan::new(1.0).unwrap()
                 {
                     prior_prob += LogProb::from(Prob(1.0 / 3.0))
-                }
-                // else if *fraction == NotNan::new(0.5).unwrap() {
-                //     prior_prob += LogProb::from(Prob(1.0 / 3.0))
-                // } else if *fraction == NotNan::new(1.0).unwrap() {
-                //     prior_prob += LogProb::from(Prob(1.0 / 3.0))
-                // }
-                else {
+                } else {
                     prior_prob += LogProb::ln_zero()
                 }
             });
@@ -294,38 +278,3 @@ impl model::Posterior for Posterior {
 
 #[derive(Debug, Derefable, Default)]
 pub(crate) struct Cache(#[deref] HashMap<usize, HashMap<AlleleFreq, LogProb>>);
-
-// fn recursive_vaf_query(
-//     haplotype_index: usize,
-//     fractions: &Vec<AlleleFreq>,
-//     upper_bond: &NotNan<f64>,
-//     afd: &AlleleFreqDist,
-// ) -> LogProb {
-//     let n_haplotypes = 1;
-//     let mut vaf_sum = NotNan::new(0.0).unwrap();
-//     if haplotype_index == n_haplotypes {
-//         vaf_sum += *fractions[0];
-//         if !afd.is_empty() {
-//             afd.vaf_query(&vaf_sum).unwrap()
-//         } else {
-//             LogProb::ln_one()
-//         }
-//     } else {
-//         let fraction_upper_bound = *upper_bond - fractions.iter().sum::<NotNan<f64>>();
-//         let mut density = |fraction| {
-//             let mut fractions = fractions.clone();
-//             fractions.push(fraction);
-//             recursive_vaf_query(haplotype_index + 1, &mut fractions, upper_bond, afd)
-//         };
-//         if fraction_upper_bound == NotNan::new(0.0).unwrap() {
-//             density(NotNan::new(0.0).unwrap())
-//         } else {
-//             adaptive_integration::ln_integrate_exp(
-//                 density,
-//                 NotNan::new(0.0).unwrap(),
-//                 fraction_upper_bound,
-//                 NotNan::new(0.1).unwrap(),
-//             )
-//         }
-//     }
-// }
