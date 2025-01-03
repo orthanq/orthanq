@@ -1,3 +1,8 @@
+name: orthanq
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
 dependencies:
   - coincbc
   - hdf5 =1.10.5
