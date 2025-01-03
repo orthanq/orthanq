@@ -1,4 +1,3 @@
-use crate::calling::haplotypes::haplotypes::SimilarL;
 use crate::calling::haplotypes::haplotypes::{
     AlleleFreqDist, CandidateMatrix, Haplotype, HaplotypeGraph, PriorTypes, VariantCalls,
     VariantStatus,
@@ -26,9 +25,6 @@ pub(crate) struct Marginal {
     upper_bond: NotNan<f64>,
     prior_info: PriorTypes,
     haplotype_graph: Option<HaplotypeGraph>,
-    // similar_haplotypes: Option<BTreeMap<Haplotype, BTreeSet<Haplotype>>>,
-    // similarl_map: Option<SimilarL>,
-    distance_threshold: Option<usize>,
     enable_equivalence_class_constraint: bool,
     application: String,
 }
@@ -85,67 +81,9 @@ impl Marginal {
                                 }
                             }
                         }
-                    } 
+                    }
                     // else if self.application == "virus".to_string() {
-                        
-                        // updated approach: 
-                        // // new approach:Let L be the set of haplotypes predicted by the LP.
-                        // // Let R be the set of haplotypes with fraction > 0.0 in the recursion so far.
-                        // // For haplotype h, let similar_L(h) provide the set of haplotypes h' in L with dist(h,h') < x.
-                        // // For haplotype h, let similar_R(h) provide the set of haplotypes h' in R with dist(h,h') < x.
-                        // // A haplotype h may be explored with fraction > 0.0 if |similar_L(h)| >= |similar_R(h)|.
-                        // // However, similar_*(h) should never return h itself.
-
-                        // //achtung: the distance matrix should be gotten rid of the distance 0 entries, otherwise this will not work.
-                        // //todo: double check that this works as expected.
-
-                        // //find the current haplotype
-                        // let current_haplotype = &self.haplotypes[haplotype_index];
-                        // dbg!(&current_haplotype);
-
-                        // //loop over haplotypes in the distance matrix and find haplotypes that are at distance x to the current haplotype (similar_L(h))
-                        // // if let Some(distance_matrix) = &self.distance_matrix {
-                        // // dbg!(&distance_matrix);
-                        // let similar_l = self
-                        //     .similarl_map
-                        //     .as_ref()
-                        //     .unwrap()
-                        //     .get(&current_haplotype)
-                        //     .unwrap();
-                        // dbg!(&similar_l);
-                        // dbg!(&fractions);
-                        // //loop over haplotypes in collected fractions and find haplotypes that are at distance x to the current haplotype (similar_R(current_haplotype))
-                        // let mut similar_r = 0;
-                        // let similar_haplotypes_set = self.similar_haplotypes.as_ref().unwrap().get(&current_haplotype).unwrap();
-                        // dbg!(&similar_haplotypes_set);
-                        // for (h, f) in self.haplotypes[0..haplotype_index]
-                        //     .to_vec()
-                        //     .iter()
-                        //     .zip(fractions[0..haplotype_index].to_vec().iter())
-                        // {
-                        //     if similar_haplotypes_set.contains(&h) && f > &NotNan::new(0.0).unwrap() {
-                        //         similar_r += 1;
-                        //     }
-                        //     //for each collected fraction, loop over distance matrix and check if there is a haplotype with fraction > 0.0
-                        //     // for ((h1, h2), distance) in distance_matrix.iter() {
-                        //     //     if ((h1 == h && h2 == current_haplotype)
-                        //     //         || (h2 == h && h1 == current_haplotype))
-                        //     //         && (*distance < self.distance_threshold.unwrap())
-                        //     //         && (f > &NotNan::new(0.0).unwrap())
-                        //     //     {
-                        //     //         // dbg!(&h, &f, &h1, &h2);
-                        //     //         similar_r += 1;
-                        //     //     }
-                        //     // }
-                        // }
-                        // dbg!(&similar_r);
-                        // //block the path in case similar_l is similar_R.
-                        // //This way the recursion will continue only if similar_l >= similar_r.
-                        // if *similar_l < similar_r {
-                        //     dbg!(&"path is blocked");
-                        //     return LogProb::ln_zero();
-                        // }
-                        // // }
+                        //TODO: explore other methods.
                     // }
                 }
                 // dbg!(&fractions);
@@ -155,13 +93,10 @@ impl Marginal {
             };
 
             if haplotype_index == self.n_haplotypes - 1 {
-                // let second_if = density(fraction_upper_bound);
-                // second_if //clippy gives a warning
                 density(fraction_upper_bound)
             } else {
                 if fraction_upper_bound == NotNan::new(0.0).unwrap() {
-                    // let last_if = density(NotNan::new(0.0).unwrap());
-                    // last_if
+
                     density(NotNan::new(0.0).unwrap())
                 } else {
                     //check prior info
@@ -220,7 +155,6 @@ impl model::Marginal for Marginal {
 pub struct Data {
     pub candidate_matrix: CandidateMatrix,
     pub variant_calls: VariantCalls,
-    // pub kallisto_estimates: Vec<KallistoEstimate>
 }
 
 #[derive(Debug, new)]
@@ -263,9 +197,6 @@ impl Likelihood {
                     } else if genotypes[i] == VariantStatus::Unknown || covered[i as u64] {
                         ()
                     }
-                    // else if covered[i as u64] {
-                    //     ()
-                    // }
                     else if genotypes[i] == VariantStatus::NotPresent && !covered[i as u64] {
                         denom -= *fraction;
                     }
@@ -306,11 +237,6 @@ impl model::Prior for Prior {
                 {
                     prior_prob += LogProb::from(Prob(1.0 / 3.0))
                 }
-                // else if *fraction == NotNan::new(0.5).unwrap() {
-                //     prior_prob += LogProb::from(Prob(1.0 / 3.0))
-                // } else if *fraction == NotNan::new(1.0).unwrap() {
-                //     prior_prob += LogProb::from(Prob(1.0 / 3.0))
-                // }
                 else {
                     prior_prob += LogProb::ln_zero()
                 }
@@ -357,38 +283,3 @@ impl model::Posterior for Posterior {
 
 #[derive(Debug, Derefable, Default)]
 pub(crate) struct Cache(#[deref] HashMap<usize, HashMap<AlleleFreq, LogProb>>);
-
-// fn recursive_vaf_query(
-//     haplotype_index: usize,
-//     fractions: &Vec<AlleleFreq>,
-//     upper_bond: &NotNan<f64>,
-//     afd: &AlleleFreqDist,
-// ) -> LogProb {
-//     let n_haplotypes = 1;
-//     let mut vaf_sum = NotNan::new(0.0).unwrap();
-//     if haplotype_index == n_haplotypes {
-//         vaf_sum += *fractions[0];
-//         if !afd.is_empty() {
-//             afd.vaf_query(&vaf_sum).unwrap()
-//         } else {
-//             LogProb::ln_one()
-//         }
-//     } else {
-//         let fraction_upper_bound = *upper_bond - fractions.iter().sum::<NotNan<f64>>();
-//         let mut density = |fraction| {
-//             let mut fractions = fractions.clone();
-//             fractions.push(fraction);
-//             recursive_vaf_query(haplotype_index + 1, &mut fractions, upper_bond, afd)
-//         };
-//         if fraction_upper_bound == NotNan::new(0.0).unwrap() {
-//             density(NotNan::new(0.0).unwrap())
-//         } else {
-//             adaptive_integration::ln_integrate_exp(
-//                 density,
-//                 NotNan::new(0.0).unwrap(),
-//                 fraction_upper_bound,
-//                 NotNan::new(0.1).unwrap(),
-//             )
-//         }
-//     }
-// }
