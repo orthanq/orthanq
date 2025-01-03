@@ -1,6 +1,9 @@
+use crate::calling::haplotypes::haplotypes::SimilarL;
 use crate::calling::haplotypes::haplotypes::{
-    AlleleFreqDist, CandidateMatrix, Haplotype, PriorTypes, VariantCalls, VariantStatus,
+    AlleleFreqDist, CandidateMatrix, Haplotype, HaplotypeGraph, PriorTypes, VariantCalls,
+    VariantStatus,
 };
+
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb, Prob};
 use bv::BitVec;
@@ -10,10 +13,10 @@ use ordered_float::NotNan;
 use petgraph::visit::Bfs;
 use petgraph::Graph;
 use petgraph::Undirected;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 pub type AlleleFreq = NotNan<f64>;
 
-#[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable)]
+#[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable, PartialOrd)]
 pub struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
 
 #[derive(Debug, new)]
@@ -22,7 +25,10 @@ pub(crate) struct Marginal {
     haplotypes: Vec<Haplotype>,
     upper_bond: NotNan<f64>,
     prior_info: PriorTypes,
-    haplotype_graph: Graph<(Haplotype, Haplotype), i32, Undirected>,
+    haplotype_graph: Option<HaplotypeGraph>,
+    // similar_haplotypes: Option<BTreeMap<Haplotype, BTreeSet<Haplotype>>>,
+    // similarl_map: Option<SimilarL>,
+    distance_threshold: Option<usize>,
     enable_equivalence_class_constraint: bool,
     application: String,
 }
@@ -47,45 +53,102 @@ impl Marginal {
                     && fraction > NotNan::new(0.0).unwrap()
                     && fractions.len() > 1
                 {
-                    // only if the fraction for the current has greater than 0.0
-                    let mut haplotype_group = Haplotype("".to_string());
-                    let current_haplotype = &self.haplotypes[haplotype_index];
                     if self.application == "hla".to_string() {
+                        // only if the fraction for the current has greater than 0.0
+                        let current_haplotype = &self.haplotypes[haplotype_index];
                         let splitted = &self.haplotypes[haplotype_index]
                             .split(':')
                             .collect::<Vec<&str>>();
-                        haplotype_group = Haplotype(splitted[0].to_owned() + &":" + splitted[1]);
-                    } else if self.application == "virus".to_string() {
-                        haplotype_group = current_haplotype.clone();
-                    }
+                        let mut haplotype_group =
+                            Haplotype(splitted[0].to_owned() + &":" + splitted[1]);
 
-                    //find the index of the (haplotype, haplotype_group) in graph
-                    let index = &self
-                        .haplotype_graph
-                        .node_indices()
-                        .find(|i| {
-                            &self.haplotype_graph[*i]
-                                == &(current_haplotype.clone(), haplotype_group.clone())
-                        })
-                        .unwrap();
+                        //find the index of the (haplotype, haplotype_group) in graph
+                        if let Some(haplotype_graph) = &self.haplotype_graph {
+                            // query node index
+                            let index = haplotype_graph
+                                .get_node_index(&(current_haplotype.clone(), haplotype_group))
+                                .unwrap();
+                            // step through the graph and sum incoming edges into the node weight
+                            let mut bfs = Bfs::new(&**haplotype_graph, index);
 
-                    // step through the graph and sum incoming edges into the node weight
-                    let mut bfs = Bfs::new(&self.haplotype_graph, *index);
-
-                    while let Some(nx) = bfs.next(&self.haplotype_graph) {
-                        // we can access `graph` mutably here still
-                        let haplotype_query = &self.haplotype_graph[nx].0;
-                        for (h, f) in self.haplotypes[0..haplotype_index]
-                            .to_vec()
-                            .iter()
-                            .zip(fractions[0..haplotype_index].to_vec().iter())
-                        {
-                            if (h == haplotype_query) && (f > &NotNan::new(0.0).unwrap()) {
-                                return LogProb::ln_zero();
+                            while let Some(nx) = bfs.next(&**haplotype_graph) {
+                                // we can access `graph` mutably here still
+                                let haplotype_query = &haplotype_graph[nx].0;
+                                for (h, f) in self.haplotypes[0..haplotype_index]
+                                    .to_vec()
+                                    .iter()
+                                    .zip(fractions[0..haplotype_index].to_vec().iter())
+                                {
+                                    if (h == haplotype_query) && (f > &NotNan::new(0.0).unwrap()) {
+                                        return LogProb::ln_zero();
+                                    }
+                                }
                             }
                         }
-                    }
+                    } 
+                    // else if self.application == "virus".to_string() {
+                        
+                        // updated approach: 
+                        // // new approach:Let L be the set of haplotypes predicted by the LP.
+                        // // Let R be the set of haplotypes with fraction > 0.0 in the recursion so far.
+                        // // For haplotype h, let similar_L(h) provide the set of haplotypes h' in L with dist(h,h') < x.
+                        // // For haplotype h, let similar_R(h) provide the set of haplotypes h' in R with dist(h,h') < x.
+                        // // A haplotype h may be explored with fraction > 0.0 if |similar_L(h)| >= |similar_R(h)|.
+                        // // However, similar_*(h) should never return h itself.
+
+                        // //achtung: the distance matrix should be gotten rid of the distance 0 entries, otherwise this will not work.
+                        // //todo: double check that this works as expected.
+
+                        // //find the current haplotype
+                        // let current_haplotype = &self.haplotypes[haplotype_index];
+                        // dbg!(&current_haplotype);
+
+                        // //loop over haplotypes in the distance matrix and find haplotypes that are at distance x to the current haplotype (similar_L(h))
+                        // // if let Some(distance_matrix) = &self.distance_matrix {
+                        // // dbg!(&distance_matrix);
+                        // let similar_l = self
+                        //     .similarl_map
+                        //     .as_ref()
+                        //     .unwrap()
+                        //     .get(&current_haplotype)
+                        //     .unwrap();
+                        // dbg!(&similar_l);
+                        // dbg!(&fractions);
+                        // //loop over haplotypes in collected fractions and find haplotypes that are at distance x to the current haplotype (similar_R(current_haplotype))
+                        // let mut similar_r = 0;
+                        // let similar_haplotypes_set = self.similar_haplotypes.as_ref().unwrap().get(&current_haplotype).unwrap();
+                        // dbg!(&similar_haplotypes_set);
+                        // for (h, f) in self.haplotypes[0..haplotype_index]
+                        //     .to_vec()
+                        //     .iter()
+                        //     .zip(fractions[0..haplotype_index].to_vec().iter())
+                        // {
+                        //     if similar_haplotypes_set.contains(&h) && f > &NotNan::new(0.0).unwrap() {
+                        //         similar_r += 1;
+                        //     }
+                        //     //for each collected fraction, loop over distance matrix and check if there is a haplotype with fraction > 0.0
+                        //     // for ((h1, h2), distance) in distance_matrix.iter() {
+                        //     //     if ((h1 == h && h2 == current_haplotype)
+                        //     //         || (h2 == h && h1 == current_haplotype))
+                        //     //         && (*distance < self.distance_threshold.unwrap())
+                        //     //         && (f > &NotNan::new(0.0).unwrap())
+                        //     //     {
+                        //     //         // dbg!(&h, &f, &h1, &h2);
+                        //     //         similar_r += 1;
+                        //     //     }
+                        //     // }
+                        // }
+                        // dbg!(&similar_r);
+                        // //block the path in case similar_l is similar_R.
+                        // //This way the recursion will continue only if similar_l >= similar_r.
+                        // if *similar_l < similar_r {
+                        //     dbg!(&"path is blocked");
+                        //     return LogProb::ln_zero();
+                        // }
+                        // // }
+                    // }
                 }
+                // dbg!(&fractions);
                 let mut fractions = fractions.to_vec();
                 fractions.push(fraction);
                 self.calc_marginal(data, haplotype_index + 1, &mut fractions, joint_prob)

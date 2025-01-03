@@ -32,12 +32,79 @@ use std::fs::File;
 use std::io::Write;
 use std::str::FromStr;
 use std::{path::PathBuf, str};
+use std::collections::{BTreeSet, HashSet};
 
 #[derive(Derefable, Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize)]
 pub struct VariantID(#[deref] pub i32);
 
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub struct Haplotype(#[deref] pub String);
+
+#[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+pub struct SimilarL(#[deref] pub BTreeMap<Haplotype, usize>);
+
+// pub fn find_similar_lp_haplotypes(
+//     representatives: &Vec<Haplotype>,
+//     lp_haplotypes: &Vec<Haplotype>,
+//     distance_matrix: &Graph<Haplotype, i32, petgraph::Undirected>,
+//     distance_threshold: usize,
+// ) -> SimilarL {
+//     let mut similarl_map = BTreeMap::new();
+//     let mut visited = HashSet::new();
+
+//     for r_haplotype in representatives.iter() {
+//         let mut num_similar_l = 0;
+//         let mut visited_neighbors = HashSet::new();
+
+//         // Find all 0-distance counterparts for r_haplotype
+//         let equivalence_group: HashSet<Haplotype> = distance_matrix
+//             .iter()
+//             .filter_map(|((h1, h2), &distance)| {
+//                 if distance == 0 && (h1 == r_haplotype || h2 == r_haplotype) {
+//                     Some(if h1 == r_haplotype { h2.clone() } else { h1.clone() })
+//                 } else {
+//                     None
+//                 }
+//             })
+//             .chain(std::iter::once(r_haplotype.clone()))
+//             .collect();
+
+//         // Skip processing if the equivalence group has been visited
+//         if equivalence_group.iter().any(|h| visited.contains(h)) {
+//             similarl_map.insert(r_haplotype.clone(), num_similar_l);
+//             continue;
+//         }
+
+//         // Mark all members of the equivalence group as visited
+//         visited.extend(equivalence_group.iter().cloned());
+
+//         // Check if any member of the equivalence group is in lp_haplotypes
+//         if lp_haplotypes.iter().any(|lp_hap| equivalence_group.contains(lp_hap)) {
+//             for ((h1, h2), &distance) in distance_matrix.iter() {
+//                 if distance > 0 && distance < distance_threshold {
+//                     let neighbor = if equivalence_group.contains(h1) {
+//                         h2
+//                     } else if equivalence_group.contains(h2) {
+//                         h1
+//                     } else {
+//                         continue;
+//                     };
+
+//                     // Only count the neighbor if not already visited
+//                     if !equivalence_group.contains(neighbor) && !visited_neighbors.contains(neighbor)
+//                     {
+//                         num_similar_l += 1;
+//                         visited_neighbors.insert(neighbor.clone());
+//                     }
+//                 }
+//             }
+//         }
+
+//         similarl_map.insert(r_haplotype.clone(), num_similar_l);
+//     }
+
+//     SimilarL(similarl_map)
+// }
 
 #[derive(Debug, Clone, Derefable)]
 pub struct AlleleFreqDist(#[deref] BTreeMap<AlleleFreq, LogProb>);
@@ -151,9 +218,9 @@ impl VariantCalls {
         let variants_haplotype_variants: Vec<_> = haplotype_variants.keys().cloned().collect();
         let variants_haplotype_calls: Vec<_> = self.keys().cloned().collect();
 
-        let rateof_evaluated_haplotypes: f64 =
+        let rateof_evaluated_variants: f64 =
             variants_haplotype_calls.len() as f64 / variants_haplotype_variants.len() as f64;
-        Ok(rateof_evaluated_haplotypes > threshold_considered_variants)
+        Ok(rateof_evaluated_variants > threshold_considered_variants)
     }
 }
 
@@ -168,6 +235,174 @@ pub enum VariantStatus {
 pub struct HaplotypeVariants(
     #[deref] pub BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>,
 );
+
+#[derive(Derefable, Debug, Clone)]
+pub struct HaplotypeGraph {
+    #[deref]
+    graph: Graph<(Haplotype, Haplotype), i32, petgraph::Undirected>,
+    node_indices: HashMap<(Haplotype, Haplotype), NodeIndex>,
+}
+
+impl HaplotypeGraph {
+    pub fn get_node_index(&self, query: &(Haplotype, Haplotype)) -> Option<NodeIndex> {
+        self.node_indices.get(query).cloned()
+    }
+}
+
+#[derive(Derefable, Debug, Clone)]
+pub struct HaplotypeGraphVirus(#[deref] pub Graph<Haplotype, i32, petgraph::Undirected>);
+
+#[derive(Derefable, Debug, Clone)]
+pub struct DistanceMatrix(#[deref] pub BTreeMap<(Haplotype, Haplotype), usize>);
+
+impl HaplotypeGraphVirus {
+    pub fn from_distance_matrix(
+        distance_matrix: &DistanceMatrix,
+        threshold: usize,
+        outdir: &PathBuf,
+    ) -> Self {
+        let mut parent = outdir.clone();
+        parent.pop();
+        let mut file = fs::File::create(parent.join("graph.dot")).unwrap();
+
+        let mut graph = Graph::<Haplotype, i32, petgraph::Undirected>::new_undirected();
+
+        // Map to store node indices
+        let mut node_map = BTreeMap::new();
+
+        // Process all entries in the distance matrix to add nodes
+        for ((hap1, hap2), _) in &**distance_matrix {
+            node_map.entry(hap1.clone()).or_insert_with(|| graph.add_node(hap1.clone()));
+            node_map.entry(hap2.clone()).or_insert_with(|| graph.add_node(hap2.clone()));
+        }
+
+        // Process all entries in the distance matrix to add edges
+        for ((hap1, hap2), distance) in &**distance_matrix {
+            //important: only add an edge if the distance is below the threshold and not 0 (avoid representing identical haplotypes)
+            if *distance < threshold && *distance != 0 {
+                // Convert usize distance to i32 (ensure it fits within i32 bounds)
+                let weight = *distance as i32;
+
+                let node1 = node_map[&hap1];
+                let node2 = node_map[&hap2];
+
+                // Add the edge between the nodes with the weight
+                graph.add_edge(node1, node2, weight);
+            }
+        }
+        //write graph to dot file path
+        let output = format!("{:?}", Dot::with_config(&graph, &[Config::EdgeNoLabel]));
+        file.write_all(&output.as_bytes())
+            .expect("could not write file");
+
+        HaplotypeGraphVirus(graph)
+    }
+    pub fn neighbors_map(&self) -> BTreeMap<Haplotype, BTreeSet<Haplotype>> {
+        let mut neighbors = BTreeMap::new();
+
+        // Iterate over all nodes in the graph
+        for node_idx in self.0.node_indices() {
+            let haplotype = self.0[node_idx].clone();
+
+            // Collect neighbors of the current node
+            let node_neighbors = self
+                .0
+                .neighbors(node_idx)
+                .map(|neighbor_idx| self.0[neighbor_idx].clone())
+                .collect::<BTreeSet<Haplotype>>();
+
+            neighbors.insert(haplotype, node_neighbors);
+        }
+
+        neighbors
+    }
+}
+// pub fn new(&distance_matrix: BTreeMap<(Haplotype, Haplotype), usize>) -> Self {
+
+// let mut deps = Graph::new_undirected();
+
+// for (haplotype, variants) in equivalence_classes.iter() {
+//     //initialize variables
+//     let mut splitted_1 = vec![];
+//     let mut haplotype_group = Haplotype(String::from(""));
+//     if &application == &"hla" {
+//         splitted_1 = haplotype.split(':').collect::<Vec<&str>>();
+//         haplotype_group = Haplotype(splitted_1[0].to_owned() + &":" + splitted_1[1]);
+//     } else if &application == &"virus" {
+//         haplotype_group = haplotype.clone();
+//     }
+
+//     //add new node
+//     deps.add_node((haplotype.clone(), haplotype_group.clone()));
+
+//     //find index of the main node. this is necessary for the check and drawing an edge later
+//     let index = deps
+//         .node_indices()
+//         .find(|i| deps[*i] == (haplotype.clone(), haplotype_group.clone()))
+//         .unwrap();
+
+//     //loop over the graph to draw edges if conditions are met
+//     for idx in 0..deps.node_count() {
+//         // find the node and its variants at index
+//         let node_at_index = &deps[NodeIndex::new(idx)];
+//         let variants_of_node_at_index: &Vec<VariantID> =
+//             &equivalence_classes[&node_at_index.0];
+
+//         let mut splitted_2 = vec![];
+//         let mut haplotype_group_at_index = Haplotype(String::from(""));
+//         if &application == &"hla" {
+//             splitted_2 = node_at_index.0.split(':').collect::<Vec<&str>>();
+//             haplotype_group_at_index =
+//                 Haplotype(splitted_2[0].to_owned() + &":" + splitted_2[1]);
+//         } else if &application == &"virus" {
+//             haplotype_group_at_index = node_at_index.0.clone();
+//         }
+
+//         //find the differences between the main node and the neighbor node
+//         let mut difference: Vec<&VariantID> = vec![];
+//         for variant in variants_of_node_at_index.iter() {
+//             if !variants.contains(&variant) {
+//                 difference.push(variant);
+//             }
+//         }
+//         //for hla: draw an edge only if the difference is less than the threshold, haplotype group is the same
+//         // and it's not the same node
+//         //for virus: draw an edge only if the difference is less than the threshold and it's not the same node
+
+//         if &application == &"hla"
+//             && (difference.len() < threshold)
+//             && (haplotype_group == haplotype_group_at_index)
+//             && (index != NodeIndex::new(idx))
+//         {
+//             deps.add_edge(index, NodeIndex::new(idx), 1);
+//         } else if &application == &"virus"
+//             && (difference.len() < threshold)
+//             && (index != NodeIndex::new(idx))
+//         {
+//             deps.add_edge(index, NodeIndex::new(idx), 1);
+//         }
+//     }
+// }
+
+// //find node indices
+// let mut node_indices = HashMap::new();
+
+// //populate node_indices by iterating through all nodes
+// for node_index in deps.node_indices() {
+//     let data = deps[node_index].clone(); // Get the data of the node
+//     node_indices.insert(data, node_index);
+// }
+
+// //write graph to dot file path
+// let output = format!("{:?}", Dot::with_config(&deps, &[Config::EdgeNoLabel]));
+// file.write_all(&output.as_bytes())
+//     .expect("could not write file");
+// Ok(HaplotypeGraph {
+//     graph: deps,
+//     node_indices: node_indices,
+// })
+// }
+// }
 
 impl HaplotypeVariants {
     pub fn new(haplotype_variants: &mut bcf::Reader) -> Result<Self> {
@@ -215,11 +450,7 @@ impl HaplotypeVariants {
         Ok(HaplotypeVariants(filtered_haplotype_variants))
     }
 
-    pub fn find_plausible_haplotypes(
-        &self,
-        _variant_calls: &VariantCalls,
-        haplotypes: &Vec<Haplotype>,
-    ) -> Result<Self> {
+    pub fn filter_for_haplotypes(&self, haplotypes: &Vec<Haplotype>) -> Result<Self> {
         let mut new_haplotype_variants: BTreeMap<
             VariantID,
             BTreeMap<Haplotype, (VariantStatus, bool)>,
@@ -228,7 +459,6 @@ impl HaplotypeVariants {
             let mut new_matrix_map = BTreeMap::new();
             for (haplotype_m, (variant_status, coverage_status)) in matrix_map {
                 if haplotypes.contains(&haplotype_m) {
-                    //fix: filter for haplotypes in the haplotypes list
                     new_matrix_map.insert(
                         haplotype_m.clone(),
                         (variant_status.clone(), coverage_status.clone()),
@@ -276,12 +506,12 @@ impl HaplotypeVariants {
         Ok(haplotype_variants_filtered)
     }
 
-    pub fn find_equivalence_class(
+    pub fn find_equivalence_classes_with_graph(
         &self,
         application: &str,
         threshold: usize, //an edge in the graph representation for the equivalence classes is drawn if and only if the distance in terms of variants is smaller than a given threshold and the two nodes belong to the same group
         output_graph: &PathBuf,
-    ) -> Result<Graph<(Haplotype, Haplotype), i32, petgraph::Undirected>> {
+    ) -> Result<HaplotypeGraph> {
         //create file path  for the graph
         let mut parent = output_graph.clone();
         parent.pop();
@@ -374,12 +604,62 @@ impl HaplotypeVariants {
             }
         }
 
+        //find node indices
+        let mut node_indices = HashMap::new();
+
+        //populate node_indices by iterating through all nodes
+        for node_index in deps.node_indices() {
+            let data = deps[node_index].clone(); // Get the data of the node
+            node_indices.insert(data, node_index);
+        }
+
         //write graph to dot file path
         let output = format!("{:?}", Dot::with_config(&deps, &[Config::EdgeNoLabel]));
         file.write_all(&output.as_bytes())
             .expect("could not write file");
+        Ok(HaplotypeGraph {
+            graph: deps,
+            node_indices: node_indices,
+        })
+    }
+    //todo: rename function?
+    pub fn find_equivalence_classes_hamming_distance(
+        &self,
+        application: &str,
+    ) -> Result<DistanceMatrix> {
+        //initialize distances as a HashMap
+        let mut distances: BTreeMap<(Haplotype, Haplotype), usize> = BTreeMap::new();
 
-        Ok(deps)
+        //compute hamming distances between each pair of haplotypes
+        let haplotype_keys: Vec<Haplotype> = self
+            .values()
+            .cloned()
+            .collect::<Vec<BTreeMap<Haplotype, (VariantStatus, bool)>>>()[0]
+            .keys()
+            .cloned()
+            .collect();
+        for i in 0..haplotype_keys.len() {
+            for j in i + 1..haplotype_keys.len() {
+                let mut distance = 0;
+                let hap1 = &haplotype_keys[i];
+                let hap2 = &haplotype_keys[j];
+                for (variant, haplotype_map) in self.iter() {
+                    let gt1 = &haplotype_map[&hap1].0;
+                    let gt2 = &haplotype_map[&hap2].0;
+                    if *gt1 != *gt2 {
+                        distance += 1;
+                    }
+                }
+                //insert the distance into the distances HashMap
+                distances.insert((hap1.clone(), hap2.clone()), distance);
+            }
+        }
+        //print the distances
+        for ((hap1, hap2), distance) in &distances {
+            println!("Distance between {:?} and {:?}: {}", hap1, hap2, distance);
+        }
+        dbg!(&distances);
+        Ok(DistanceMatrix(distances))
     }
 }
 
@@ -530,7 +810,7 @@ pub fn linear_program(
     lp_cutoff: f64,
     extend_haplotypes: bool,
     num_variant_distance: i64,
-) -> Result<Vec<Haplotype>> {
+) -> Result<(Vec<Haplotype>, Vec<Haplotype>)> {
     //first init the problem
     let mut problem = ProblemVariables::new();
     //introduce variables
@@ -580,15 +860,15 @@ pub fn linear_program(
     //finally, print the variables and the sum
     let mut lp_haplotypes = BTreeMap::new();
     for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
-        println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
+        // println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
         best_variables.push(solution.value(var.clone()).clone());
         if solution.value(*var) >= lp_cutoff {
             //the speed of fraction exploration is managable in case of diploid priors
             lp_haplotypes.insert(haplotype.clone(), solution.value(*var).clone());
         }
     }
-    println!("sum = {}", solution.eval(sum_tvars));
-
+    // println!("sum = {}", solution.eval(sum_tvars));
+    // dbg!(&lp_haplotypes);
     //plot the best result
     let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
         candidate_matrix.values().cloned().collect();
@@ -604,8 +884,8 @@ pub fn linear_program(
     //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list.
     //then sort by hamming distance, take the closest x additional alleles according to 'num_variant_distance'.
     //this is done by storing only the variants that have GT:1 and C:1 for all haplotypes in haplotype_dict and remaining variants are not included.
+    let mut extended_haplotypes = Vec::new();
     if extend_haplotypes {
-        let mut extended_haplotypes = Vec::new();
         lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
             let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
             haplotype_dict
@@ -632,12 +912,14 @@ pub fn linear_program(
                     }
                 });
         });
-        dbg!(&extended_haplotypes);
-        Ok(extended_haplotypes)
+        let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
+        dbg!(&lp_keys, &extended_haplotypes);
+        Ok((extended_haplotypes, lp_keys))
     } else {
         let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
-        dbg!(&lp_keys);
-        Ok(lp_keys)
+        let mut extended_haplotypes = lp_keys.clone();
+        dbg!(&lp_keys, &extended_haplotypes);
+        Ok((extended_haplotypes, lp_keys))
     }
 }
 
@@ -765,7 +1047,7 @@ pub fn write_results(
     wtr.write_record(records)?;
 
     //write the rest of the records
-    dbg!(&event_posteriors);
+    // dbg!(&event_posteriors);
 
     if variant_info {
         event_posteriors

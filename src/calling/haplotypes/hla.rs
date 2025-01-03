@@ -96,7 +96,7 @@ impl Caller {
             let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
 
             //employ the linear program
-            let lp_haplotypes = haplotypes::linear_program(
+            let (lp_haplotypes, _) = haplotypes::linear_program(
                 &self.outcsv,
                 &candidate_matrix,
                 &haplotypes,
@@ -108,8 +108,8 @@ impl Caller {
             dbg!(&lp_haplotypes);
 
             //take only haplotypes that are found by lp
-            let filtered_haplotype_variants = filtered_haplotype_variants
-                .find_plausible_haplotypes(&variant_calls, &lp_haplotypes)?; //fix: find_plausible haplotypes should only contain the list of "haplotypes" given as parameter
+            let filtered_haplotype_variants =
+                filtered_haplotype_variants.filter_for_haplotypes(&lp_haplotypes)?;
 
             //make sure lp_haplotypes sorted the same as in filtered_haplotype_variants
             let (_, haplotype_matrix) = filtered_haplotype_variants.iter().next().unwrap();
@@ -120,7 +120,7 @@ impl Caller {
 
             //
             let eq_graph = filtered_haplotype_variants
-                .find_equivalence_class(
+                .find_equivalence_classes_with_graph(
                     "hla",
                     self.threshold_equivalence_class,
                     &self.outcsv.clone(),
@@ -142,7 +142,10 @@ impl Caller {
                     final_haplotypes.clone(),
                     upper_bond,
                     prior,
-                    eq_graph,
+                    Some(eq_graph),
+                    // None,
+                    // None,
+                    None,
                     self.enable_equivalence_class_constraint,
                     "hla".to_string(),
                 ),
