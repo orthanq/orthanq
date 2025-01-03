@@ -6,6 +6,7 @@ channels:
 dependencies:
   - coincbc
   - gcc_linux-64
+  - fontconfig
   - pkg-config
   - gsl =2.7
   - cmake
