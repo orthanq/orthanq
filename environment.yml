@@ -1,12 +1,8 @@
-name: orthanq
-channels:
-  - conda-forge
-  - bioconda
-  - nodefaults
 dependencies:
   - coincbc
-  - gcc_linux-64
+  - hdf5 =1.10.5
   - fontconfig
+  - gcc_linux-64
   - pkg-config
   - gsl =2.7
   - cmake
