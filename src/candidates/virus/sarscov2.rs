@@ -15,7 +15,6 @@ use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::prelude::Dfs;
 
-use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 use rust_htslib::faidx;
 use seq_io::fasta::Record as OtherRecord;
 use serde::Deserialize;

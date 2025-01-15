@@ -39,7 +39,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libgsl0-dev zlib1g-dev samtools libhdf5-dev
+          sudo apt-get install --yes libgsl0-dev zlib1g-dev samtools libhdf5-dev fontconfig libfontconfig1-dev
       
       - uses: Swatinem/rust-cache@v1.3.0
 
@@ -66,7 +66,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libgsl0-dev zlib1g-dev samtools libhdf5-dev coinor-cbc coinor-libcbc-dev
+          sudo apt-get install --yes libgsl0-dev zlib1g-dev samtools libhdf5-dev coinor-cbc coinor-libcbc-dev fontconfig libfontconfig1-dev
 
       - uses: Swatinem/rust-cache@v1.3.0
 
