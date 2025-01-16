@@ -590,6 +590,8 @@ pub fn linear_program(
     extend_haplotypes: bool,
     num_variant_distance: i64,
 ) -> Result<(Vec<Haplotype>, Vec<Haplotype>)> {
+    //define the number to constrain the number of haplotypes that LP finds. Currently more than 6 is not runtime-friendly for the Bayesian model.
+    let constraint_num = 6.0;
     //first init the problem
     let mut problem = ProblemVariables::new();
     //introduce variables
@@ -612,6 +614,10 @@ pub fn linear_program(
     //define temporary variables
     let t_vars: Vec<Variable> = problem.add_vector(variable().min(0.0).max(1.0), constraints.len());
 
+    // introduce auxiliary binary variables for sparsity (these will act as switches for real variables)
+    let binary_vars: Vec<Variable> =
+        problem.add_vector(variable().integer().min(0.0).max(1.0), variables.len());
+
     //create the model to minimise the sum of temporary variables
     let mut sum_tvars = Expression::from_other_affine(0.);
     for t_var in t_vars.iter() {
@@ -626,6 +632,18 @@ pub fn linear_program(
     }
     model = model.with(constraint!(sum == 1.0));
 
+    // add constraints linking binary variables and the original variables
+    for (var, bin_var) in variables.iter().zip(binary_vars.iter()) {
+        model = model.with(constraint!(*var <= *bin_var));
+    }
+
+    // add the sparsity constraint: sum of binary variables <= 6
+    let mut binary_sum = Expression::from_other_affine(0);
+    for bin_var in binary_vars.iter() {
+        binary_sum += Expression::from_other_affine(bin_var);
+    }
+    model = model.with(constraint!(binary_sum <= constraint_num));
+
     //add the constraints to the model
     for (c, t_var) in constraints.iter().zip(t_vars.iter()) {
         model = model.with(constraint!(t_var >= c.clone()));
@@ -639,7 +657,7 @@ pub fn linear_program(
     //finally, print the variables and the sum
     let mut lp_haplotypes = BTreeMap::new();
     for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
-        // println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
+        println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
         best_variables.push(solution.value(var.clone()).clone());
         if solution.value(*var) >= lp_cutoff {
             //the speed of fraction exploration is managable in case of diploid priors
