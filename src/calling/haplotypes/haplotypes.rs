@@ -100,7 +100,7 @@ impl FromStr for PriorTypes {
 }
 
 #[derive(Derefable, DerefMut, Debug, Clone)]
-pub struct VariantCalls(#[deref] BTreeMap<VariantID, (f32, AlleleFreqDist)>); //The place of f32 is maximum a posteriori estimate of AF.
+pub struct VariantCalls(#[deref] BTreeMap<VariantID, (f32, AlleleFreqDist, i32)>); //The place of f32 is maximum a posteriori estimate of AF.
 
 impl VariantCalls {
     pub fn new(variant_calls: &mut bcf::Reader) -> Result<Self> {
@@ -112,23 +112,28 @@ impl VariantCalls {
             let _prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
-            let read_depths = record.format(b"DP").integer().unwrap();
-            if read_depths[0] != &[0]
-            // && (&prob_absent_prob <= &Prob(0.05) || &prob_absent_prob >= &Prob(0.95))
-            {
-                //because some afd strings are just "." and that throws an error while splitting below.
-                let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
-                let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
-                let mut vaf_density = BTreeMap::new();
-                for pair in afd.split(',') {
-                    if let Some((vaf, density)) = pair.split_once("=") {
-                        let (vaf, density): (AlleleFreq, f64) =
-                            (vaf.parse().unwrap(), density.parse().unwrap());
-                        vaf_density.insert(vaf, LogProb::from(PHREDProb(density)));
-                    }
+            let read_depth = record.format(b"DP").integer().unwrap();
+            let read_depth_int = read_depth[0].get(0).unwrap();
+            //include all variants without making a difference for their depth of coverage.
+            // if read_depth[0] != &[0]
+            // // && (&prob_absent_prob <= &Prob(0.05) || &prob_absent_prob >= &Prob(0.95))
+            // {
+            //because some afd strings are just "." and that throws an error while splitting below.
+            let variant_id: i32 = String::from_utf8(record.id())?.parse().unwrap();
+            let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
+            let mut vaf_density = BTreeMap::new();
+            for pair in afd.split(',') {
+                if let Some((vaf, density)) = pair.split_once("=") {
+                    let (vaf, density): (AlleleFreq, f64) =
+                        (vaf.parse().unwrap(), density.parse().unwrap());
+                    vaf_density.insert(vaf, LogProb::from(PHREDProb(density)));
                 }
-                calls.insert(VariantID(variant_id), (af, AlleleFreqDist(vaf_density)));
             }
+            calls.insert(
+                VariantID(variant_id),
+                (af, AlleleFreqDist(vaf_density), *read_depth_int),
+            );
+            // }
         }
         Ok(VariantCalls(calls))
     }
@@ -260,7 +265,7 @@ impl HaplotypeVariants {
             .cloned()
             .collect();
         let mut common_variants = Vec::new();
-        for ((_genotype_matrix, coverage_matrix), (variant, (_af, _))) in
+        for ((_genotype_matrix, coverage_matrix), (variant, (_, _, _))) in
             candidate_matrix_values.iter().zip(variant_calls.iter())
         {
             let mut counter = 0;
@@ -483,7 +488,7 @@ pub fn plot_prediction(
     let mut plot_data_dataset_afd = Vec::new();
 
     if &solution == &"lp" {
-        for ((genotype_matrix, coverage_matrix), (variant_id, (af, _))) in
+        for ((genotype_matrix, coverage_matrix), (variant_id, (af, _, _))) in
             candidate_matrix_values.iter().zip(variant_calls.iter())
         {
             let mut counter = 0;
@@ -518,7 +523,7 @@ pub fn plot_prediction(
         candidate_matrix_values
             .iter()
             .zip(variant_calls.iter())
-            .for_each(|((genotypes, covered), (variant_id, (af, afd)))| {
+            .for_each(|((genotypes, covered), (variant_id, (af, afd, _)))| {
                 best_variables
                     .iter()
                     .zip(haplotypes.iter())
@@ -732,7 +737,7 @@ pub fn write_results(
     let variant_calls: Vec<AlleleFreqDist> = data
         .variant_calls
         .iter()
-        .map(|(_, (_, afd))| afd.clone())
+        .map(|(_, (_, afd, _))| afd.clone())
         .collect();
     let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
     // let event_posteriors = computed_model.event_posteriors();
@@ -904,7 +909,7 @@ pub fn collect_constraints_and_variants(
         haplotypes.iter().map(|h| (h.clone(), vec![])).collect();
     //variant-wise iteration
     let mut expr = Expression::from_other_affine(0.); // A constant expression
-    for ((genotype_matrix, coverage_matrix), (variant, (af, _))) in
+    for ((genotype_matrix, coverage_matrix), (variant, (af, _, _))) in
         candidate_matrix_values.iter().zip(variant_calls.iter())
     {
         let mut fraction_cont = Expression::from_other_affine(0.);

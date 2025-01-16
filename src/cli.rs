@@ -280,12 +280,12 @@ pub enum CallKind {
             help = "Enable extension of haplotypes that are computed with linear program."
         )]
         extend_haplotypes: Option<bool>,
-        #[structopt(
-            long,
-            default_value = "0.35",
-            help = "Percent threshold for evaluated variants."
-        )]
-        threshold_considered_variants: f64,
+        // #[structopt(
+        //     long,
+        //     default_value = "0.35",
+        //     help = "Percent threshold for evaluated variants."
+        // )]
+        // threshold_considered_variants: f64,
         #[structopt(
             long,
             default_value = "2",
@@ -331,11 +331,11 @@ pub enum VirusKind {
             help = "Enable equivalence based constrain during model exploration."
         )]
         enable_equivalence_class_constraint: bool,
-        #[structopt(
-            default_value = "0.5",
-            help = "Percent threshold for evaluated variants."
-        )]
-        threshold_considered_variants: f64,
+        // #[structopt(
+        //     default_value = "0.5",
+        //     help = "Percent threshold for evaluated variants."
+        // )]
+        // threshold_considered_variants: f64,
     },
     Generic {
         #[structopt(
@@ -362,11 +362,11 @@ pub enum VirusKind {
             help = "Enable equivalence based constrain during model exploration."
         )]
         enable_equivalence_class_constraint: bool,
-        #[structopt(
-            default_value = "0.5",
-            help = "Percent threshold for evaluated variants."
-        )]
-        threshold_considered_variants: f64,
+        // #[structopt(
+        //     default_value = "0.5",
+        //     help = "Percent threshold for evaluated variants."
+        // )]
+        // threshold_considered_variants: f64,
     },
 }
 
@@ -417,7 +417,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 enable_equivalence_class_constraint,
                 extend_haplotypes,
                 threshold_equivalence_class,
-                threshold_considered_variants,
+                // threshold_considered_variants,
                 num_extend_haplotypes,
             } => {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
@@ -429,7 +429,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .enable_equivalence_class_constraint(enable_equivalence_class_constraint)
                     .extend_haplotypes(extend_haplotypes)
                     .threshold_equivalence_class(threshold_equivalence_class)
-                    .threshold_considered_variants(threshold_considered_variants)
+                    // .threshold_considered_variants(threshold_considered_variants)
                     .num_extend_haplotypes(num_extend_haplotypes)
                     .build()
                     .unwrap();

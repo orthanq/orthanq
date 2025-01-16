@@ -37,7 +37,7 @@ pub struct Caller {
     lp_cutoff: f64,
     enable_equivalence_class_constraint: bool,
     extend_haplotypes: Option<bool>,
-    threshold_considered_variants: f64,
+    // threshold_considered_variants: f64,
     threshold_equivalence_class: usize,
     num_extend_haplotypes: i64,
 }
@@ -61,135 +61,135 @@ impl Caller {
             let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
             let haplotype_variants = HaplotypeVariants::new(&mut haplotype_variants_rdr)?;
 
-            // check if there is enough observations in the data, and do that by checking rate of evaluated variants
-            // if this does not pass, print insufficient data
-            if variant_calls
-                .check_variant_threshold(&haplotype_variants, self.threshold_considered_variants)?
-            {
-                // filter haplotype variants to contain only the evaluated variants in the model.
-                let filtered_haplotype_variants =
-                    haplotype_variants.filter_for_variants(&variant_ids)?;
+            // // check if there is enough observations in the data, and do that by checking rate of evaluated variants
+            // // if this does not pass, print insufficient data
+            // if variant_calls
+            //     .check_variant_threshold(&haplotype_variants, self.threshold_considered_variants)?
+            // {
+            // filter haplotype variants to contain only the evaluated variants in the model.
+            let filtered_haplotype_variants =
+                haplotype_variants.filter_for_variants(&variant_ids)?;
 
-                // output haplotype list and candidate matrix to be used in lp
-                let (_, haplotype_matrix) = filtered_haplotype_variants.iter().next().unwrap();
-                let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-                let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
+            // output haplotype list and candidate matrix to be used in lp
+            let (_, haplotype_matrix) = filtered_haplotype_variants.iter().next().unwrap();
+            let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
+            let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
 
-                // employ the linear program and find the resulting haplotypes that are found and *extended* depending on --extend-haplotypes and --num-extend-haplotypes (0 default)
-                let (extended_lp_haplotypes, lp_haplotypes) = haplotypes::linear_program(
-                    &self.outcsv,
-                    &candidate_matrix,
-                    &haplotypes,
-                    &variant_calls,
-                    self.lp_cutoff,
-                    self.extend_haplotypes.unwrap_or(true),
-                    self.num_extend_haplotypes, //for now it has to be 0 only
-                )?;
+            // employ the linear program and find the resulting haplotypes that are found and *extended* depending on --extend-haplotypes and --num-extend-haplotypes (0 default)
+            let (extended_lp_haplotypes, lp_haplotypes) = haplotypes::linear_program(
+                &self.outcsv,
+                &candidate_matrix,
+                &haplotypes,
+                &variant_calls,
+                self.lp_cutoff,
+                self.extend_haplotypes.unwrap_or(true),
+                self.num_extend_haplotypes, //for now it has to be 0 only
+            )?;
 
-                //take only haplotypes that are found by lp
-                let lp_haplotype_variants =
-                    filtered_haplotype_variants.filter_for_haplotypes(&lp_haplotypes)?;
+            //take only haplotypes that are found by lp
+            let lp_haplotype_variants =
+                filtered_haplotype_variants.filter_for_haplotypes(&lp_haplotypes)?;
 
-                //construct candidate matrix
-                let lp_candidate_matrix = CandidateMatrix::new(&lp_haplotype_variants).unwrap();
+            //construct candidate matrix
+            let lp_candidate_matrix = CandidateMatrix::new(&lp_haplotype_variants).unwrap();
 
-                //compute model
-                let prior = PriorTypes::from_str(&self.prior).unwrap();
-                let upper_bond = NotNan::new(1.0).unwrap();
-                let model = Model::new(
-                    Likelihood::new(),
-                    Prior::new(prior.clone()),
-                    Posterior::new(),
-                );
+            //compute model
+            let prior = PriorTypes::from_str(&self.prior).unwrap();
+            let upper_bond = NotNan::new(1.0).unwrap();
+            let model = Model::new(
+                Likelihood::new(),
+                Prior::new(prior.clone()),
+                Posterior::new(),
+            );
 
-                let data = Data::new(lp_candidate_matrix.clone(), variant_calls.clone());
+            let data = Data::new(lp_candidate_matrix.clone(), variant_calls.clone());
 
-                //marginal computation
-                let computed_model = model.compute_from_marginal(
-                    &Marginal::new(
-                        lp_haplotypes.len(),
-                        lp_haplotypes.clone(),
-                        upper_bond,
-                        prior,
-                        None,
-                        self.enable_equivalence_class_constraint,
-                        "virus".to_string(),
-                    ),
-                    &data,
-                );
+            //marginal computation
+            let computed_model = model.compute_from_marginal(
+                &Marginal::new(
+                    lp_haplotypes.len(),
+                    lp_haplotypes.clone(),
+                    upper_bond,
+                    prior,
+                    None,
+                    self.enable_equivalence_class_constraint,
+                    "virus".to_string(),
+                ),
+                &data,
+            );
 
-                //find event posteriors
-                let event_posteriors = computed_model.event_posteriors();
+            //find event posteriors
+            let event_posteriors = computed_model.event_posteriors();
 
-                //remove zero densities from the table
-                let mut event_posteriors = Vec::new();
-                computed_model
-                    .event_posteriors()
-                    .for_each(|(fractions, logprob)| {
-                        if logprob.exp() != 0.0 {
-                            event_posteriors.push((fractions.clone(), logprob.clone()));
-                        }
-                    });
+            //remove zero densities from the table
+            let mut event_posteriors = Vec::new();
+            computed_model
+                .event_posteriors()
+                .for_each(|(fractions, logprob)| {
+                    if logprob.exp() != 0.0 {
+                        event_posteriors.push((fractions.clone(), logprob.clone()));
+                    }
+                });
 
-                //extend the resulting table with zero distance haplotypes. For that, compute distance matrix (hamming distance) with lp haplotypes.
-                let extended_lp_haplotype_variants =
-                    filtered_haplotype_variants.filter_for_haplotypes(&extended_lp_haplotypes)?;
+            //extend the resulting table with zero distance haplotypes. For that, compute distance matrix (hamming distance) with lp haplotypes.
+            let extended_lp_haplotype_variants =
+                filtered_haplotype_variants.filter_for_haplotypes(&extended_lp_haplotypes)?;
 
-                let distance_matrix = extended_lp_haplotype_variants
-                    .find_equivalence_classes_hamming_distance("virus")
+            let distance_matrix = extended_lp_haplotype_variants
+                .find_equivalence_classes_hamming_distance("virus")
+                .unwrap();
+
+            let (new_event_posteriors, all_haplotypes) =
+                extend_resulting_table(&lp_haplotypes, &event_posteriors, &distance_matrix)
                     .unwrap();
 
-                let (new_event_posteriors, all_haplotypes) =
-                    extend_resulting_table(&lp_haplotypes, &event_posteriors, &distance_matrix)
-                        .unwrap();
+            //plot the best solution as final solution plot
+            let (best_fractions, _) = new_event_posteriors.iter().next().unwrap();
+            let candidate_matrix_all = CandidateMatrix::new(
+                &filtered_haplotype_variants
+                    .filter_for_haplotypes(&all_haplotypes)
+                    .unwrap(),
+            )
+            .unwrap()
+            .values()
+            .cloned()
+            .collect();
 
-                //plot the best solution as final solution plot
-                let (best_fractions, _) = new_event_posteriors.iter().next().unwrap();
-                let candidate_matrix_all = CandidateMatrix::new(
-                    &filtered_haplotype_variants
-                        .filter_for_haplotypes(&all_haplotypes)
-                        .unwrap(),
-                )
-                .unwrap()
-                .values()
-                .cloned()
-                .collect();
+            let best_fractions = best_fractions
+                .iter()
+                .map(|f| NotNan::into_inner(*f))
+                .collect::<Vec<f64>>();
 
-                let best_fractions = best_fractions
-                    .iter()
-                    .map(|f| NotNan::into_inner(*f))
-                    .collect::<Vec<f64>>();
+            haplotypes::plot_prediction(
+                &self.outcsv,
+                &"final",
+                &candidate_matrix_all,
+                &all_haplotypes,
+                &data.variant_calls,
+                &best_fractions,
+            )?;
 
-                haplotypes::plot_prediction(
-                    &self.outcsv,
-                    &"final",
-                    &candidate_matrix_all,
-                    &all_haplotypes,
-                    &data.variant_calls,
-                    &best_fractions,
-                )?;
+            //write results to tsv
+            haplotypes::write_results(
+                &self.outcsv,
+                &data,
+                &new_event_posteriors,
+                &all_haplotypes,
+                self.prior.clone(),
+                false,
+            )?;
 
-                //write results to tsv
-                haplotypes::write_results(
-                    &self.outcsv,
-                    &data,
-                    &new_event_posteriors,
-                    &all_haplotypes,
-                    self.prior.clone(),
-                    false,
-                )?;
-
-                //plot first 10 posteriors of orthanq output
-                haplotypes::plot_densities(
-                    &self.outcsv,
-                    &new_event_posteriors,
-                    &all_haplotypes,
-                    "viral",
-                )?;
-            } else {
-                self.output_empty_files()?;
-                warn!("Insufficient observations from data!");
-            }
+            //plot first 10 posteriors of orthanq output
+            haplotypes::plot_densities(
+                &self.outcsv,
+                &new_event_posteriors,
+                &all_haplotypes,
+                "viral",
+            )?;
+            // } else {
+            //     self.output_empty_files()?;
+            //     warn!("Insufficient observations from data!");
+            // }
             Ok(())
         }
     }
