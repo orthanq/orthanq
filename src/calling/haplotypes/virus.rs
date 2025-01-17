@@ -40,6 +40,7 @@ pub struct Caller {
     // threshold_considered_variants: f64,
     threshold_equivalence_class: usize,
     num_extend_haplotypes: i64,
+    num_constraint_haplotypes: i32,
 }
 
 impl Caller {
@@ -84,6 +85,7 @@ impl Caller {
                 self.lp_cutoff,
                 self.extend_haplotypes.unwrap_or(true),
                 self.num_extend_haplotypes, //for now it has to be 0 only
+                self.num_constraint_haplotypes,
             )?;
 
             //take only haplotypes that are found by lp

@@ -40,6 +40,7 @@ pub struct Caller {
     extend_haplotypes: Option<bool>,
     threshold_equivalence_class: usize,
     num_extend_haplotypes: i64,
+    num_constraint_haplotypes: i32,
 }
 
 impl Caller {
@@ -104,6 +105,7 @@ impl Caller {
                 self.lp_cutoff,
                 self.extend_haplotypes.unwrap(),
                 self.num_extend_haplotypes,
+                self.num_constraint_haplotypes,
             )?;
             dbg!(&lp_haplotypes);
 

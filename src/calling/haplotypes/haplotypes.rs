@@ -594,9 +594,8 @@ pub fn linear_program(
     lp_cutoff: f64,
     extend_haplotypes: bool,
     num_variant_distance: i64,
+    num_constraint_haplotypes: i32,
 ) -> Result<(Vec<Haplotype>, Vec<Haplotype>)> {
-    //define the number to constrain the number of haplotypes that LP finds. Currently more than 6 is not runtime-friendly for the Bayesian model.
-    let constraint_num = 6.0;
     //first init the problem
     let mut problem = ProblemVariables::new();
     //introduce variables
@@ -647,7 +646,7 @@ pub fn linear_program(
     for bin_var in binary_vars.iter() {
         binary_sum += Expression::from_other_affine(bin_var);
     }
-    model = model.with(constraint!(binary_sum <= constraint_num));
+    model = model.with(constraint!(binary_sum <= num_constraint_haplotypes));
 
     //add the constraints to the model
     for (c, t_var) in constraints.iter().zip(t_vars.iter()) {
