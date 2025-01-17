@@ -1,4 +1,5 @@
 [![DOI](https://zenodo.org/badge/475406908.svg)](https://zenodo.org/badge/latestdoi/475406908)
+[![Affiliated with RTG WisPerMed](https://img.shields.io/badge/Affiliated-RTG%202535%20WisPerMed-blue)](https://wispermed.org/)
 
 <img src="orthanq-black.svg" alt="Orthanq" width="400"/>
 
