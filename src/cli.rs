@@ -248,7 +248,7 @@ pub enum CallKind {
         num_extend_haplotypes: i64,
         #[structopt(
             long,
-            default_value = "6.0",
+            default_value = "6",
             help = "Number to constrain the number of haplotypes that LP finds. Currently more than 6 is not runtime-friendly for the Bayesian model."
         )]
         num_constraint_haplotypes: i32,
@@ -306,7 +306,7 @@ pub enum CallKind {
         num_extend_haplotypes: i64, //larger than 0 is not yet supported.
         #[structopt(
             long,
-            default_value = "6.0",
+            default_value = "6",
             help = "Number to constrain the number of haplotypes that LP finds. Currently more than 6 is not runtime-friendly for the Bayesian model."
         )]
         num_constraint_haplotypes: i32,
