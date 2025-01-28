@@ -146,6 +146,17 @@ impl VariantCalls {
         }
         Ok(variant_calls_filtered)
     }
+    pub fn without_zero_dp(&self) -> VariantCalls {
+        // Filter out entries with 0 in the last element of the tuple
+        let filtered_map: BTreeMap<_, _> = self
+            .0
+            .iter()
+            .filter(|(_, &(_, _, dp))| dp != 0) // Keep only entries where dp != 0
+            .map(|(k, v)| (k.clone(), v.clone())) // Clone key-value pairs to create a new map
+            .collect();
+
+        VariantCalls(filtered_map) // Return a new VariantCalls struct
+    }
     pub fn check_variant_threshold(
         &self,
         haplotype_variants: &HaplotypeVariants,

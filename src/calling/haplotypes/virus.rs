@@ -49,51 +49,53 @@ impl Caller {
         //initially prepare haplotype_variants and variant_calls
         let variant_calls = VariantCalls::new(&mut self.variant_calls)?;
 
-        //read candidates vcf
-        let haplotype_variants_dir = self.candidates_folder.join("candidates.vcf");
-        let mut haplotype_variants_rdr = bcf::Reader::from_path(haplotype_variants_dir)?;
-
         //write blank plots and tsv table if no variants are available.
         if variant_calls.len() == 0 {
             //write blank plots, required for the workflow!
             self.output_empty_files()?;
             Ok(())
         } else {
-            let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
-            let haplotype_variants = HaplotypeVariants::new(&mut haplotype_variants_rdr)?;
+            //FIRST, perform linear program using only nonzero DP variants
+            //prepare haplotype variants for all variants
+            let mut haplotype_variants_rdr =
+                bcf::Reader::from_path(self.candidates_folder.join("candidates.vcf"))?;
+            let haplotype_variants_all = HaplotypeVariants::new(&mut haplotype_variants_rdr)?;
 
-            // // check if there is enough observations in the data, and do that by checking rate of evaluated variants
-            // // if this does not pass, print insufficient data
-            // if variant_calls
-            //     .check_variant_threshold(&haplotype_variants, self.threshold_considered_variants)?
-            // {
-            // filter haplotype variants to contain only the evaluated variants in the model.
-            let filtered_haplotype_variants =
-                haplotype_variants.filter_for_variants(&variant_ids)?;
+            //filter variant calls
+            let filtered_calls = variant_calls.without_zero_dp();
+            let nonzero_dp_variants: Vec<VariantID> = filtered_calls.keys().cloned().collect();
+            //filter haplotype variants
+            let var_filt_haplotype_variants =
+                haplotype_variants_all.filter_for_variants(&nonzero_dp_variants)?;
 
-            // output haplotype list and candidate matrix to be used in lp
-            let (_, haplotype_matrix) = filtered_haplotype_variants.iter().next().unwrap();
-            let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-            let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
+            //prepare inputs for linear program
+            let haplotypes: Vec<Haplotype> = var_filt_haplotype_variants
+                .iter()
+                .next()
+                .unwrap()
+                .1
+                .keys()
+                .cloned()
+                .collect();
+            let candidate_matrix = CandidateMatrix::new(&var_filt_haplotype_variants).unwrap();
 
-            // employ the linear program and find the resulting haplotypes that are found and *extended* depending on --extend-haplotypes and --num-extend-haplotypes (0 default)
+            //employ the linear program and find the resulting haplotypes that are found and *extended* depending on --extend-haplotypes and --num-extend-haplotypes (0 default)
             let (extended_lp_haplotypes, lp_haplotypes) = haplotypes::linear_program(
                 &self.outcsv,
                 &candidate_matrix,
                 &haplotypes,
-                &variant_calls,
+                &filtered_calls,
                 self.lp_cutoff,
                 self.extend_haplotypes.unwrap_or(true),
                 self.num_extend_haplotypes, //for now it has to be 0 only
                 self.num_constraint_haplotypes,
             )?;
-
-            //take only haplotypes that are found by lp
-            let lp_haplotype_variants =
-                filtered_haplotype_variants.filter_for_haplotypes(&lp_haplotypes)?;
-
-            //construct candidate matrix
-            let lp_candidate_matrix = CandidateMatrix::new(&lp_haplotype_variants).unwrap();
+            dbg!(&lp_haplotypes);
+            //SECOND, model evaluation using ALL variants but only the LP- selected haplotypes
+            //prepare inputs of model evaluation
+            let hap_filt_haplotype_variants =
+                haplotype_variants_all.filter_for_haplotypes(&lp_haplotypes)?;
+            let model_candidate_matrix = CandidateMatrix::new(&hap_filt_haplotype_variants)?;
 
             //compute model
             let prior = PriorTypes::from_str(&self.prior).unwrap();
@@ -104,7 +106,7 @@ impl Caller {
                 Posterior::new(),
             );
 
-            let data = Data::new(lp_candidate_matrix.clone(), variant_calls.clone());
+            let data = Data::new(model_candidate_matrix.clone(), variant_calls.clone());
 
             //marginal computation
             let computed_model = model.compute_from_marginal(
@@ -129,15 +131,17 @@ impl Caller {
                 .event_posteriors()
                 .for_each(|(fractions, logprob)| {
                     if logprob.exp() != 0.0 {
+                        dbg!(&fractions.clone(), &logprob.clone());
                         event_posteriors.push((fractions.clone(), logprob.clone()));
                     }
                 });
 
+            //THIRD, extend the table using the distance matrix. Distance matrix contains only the nonzero variants. If all variants are used, there would be no variants that would have 0 distance to each other.
             //extend the resulting table with zero distance haplotypes. For that, compute distance matrix (hamming distance) with lp haplotypes.
-            let extended_lp_haplotype_variants =
-                filtered_haplotype_variants.filter_for_haplotypes(&extended_lp_haplotypes)?;
+            let extended_haplotype_variants =
+                var_filt_haplotype_variants.filter_for_haplotypes(&extended_lp_haplotypes)?;
 
-            let distance_matrix = extended_lp_haplotype_variants
+            let distance_matrix = extended_haplotype_variants
                 .find_equivalence_classes_hamming_distance("virus")
                 .unwrap();
 
@@ -148,7 +152,7 @@ impl Caller {
             //plot the best solution as final solution plot
             let (best_fractions, _) = new_event_posteriors.iter().next().unwrap();
             let candidate_matrix_all = CandidateMatrix::new(
-                &filtered_haplotype_variants
+                &haplotype_variants_all
                     .filter_for_haplotypes(&all_haplotypes)
                     .unwrap(),
             )
