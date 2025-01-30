@@ -1,7 +1,6 @@
 use crate::calling::haplotypes::haplotypes;
 use crate::calling::haplotypes::haplotypes::{
     CandidateMatrix, Haplotype, HaplotypeVariants, PriorTypes, VariantCalls, VariantID,
-    VariantStatus,
 };
 use crate::model::{Data, HaplotypeFractions, Likelihood, Marginal, Posterior, Prior};
 use anyhow::Result;
@@ -40,6 +39,7 @@ pub struct Caller {
     extend_haplotypes: Option<bool>,
     threshold_equivalence_class: usize,
     num_extend_haplotypes: i64,
+    num_constraint_haplotypes: i32,
 }
 
 impl Caller {
@@ -104,6 +104,7 @@ impl Caller {
                 self.lp_cutoff,
                 self.extend_haplotypes.unwrap(),
                 self.num_extend_haplotypes,
+                self.num_constraint_haplotypes,
             )?;
             dbg!(&lp_haplotypes);
 
@@ -153,7 +154,7 @@ impl Caller {
             let (best_fractions, _) = event_posteriors.next().unwrap();
 
             //Step 2: plot the final solution
-            let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
+            let candidate_matrix_values: Vec<(BitVec, BitVec)> =
                 data.candidate_matrix.values().cloned().collect();
             let best_fractions = best_fractions
                 .iter()
