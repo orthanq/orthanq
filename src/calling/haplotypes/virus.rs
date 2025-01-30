@@ -27,6 +27,7 @@ use std::{path::PathBuf, str};
 use super::haplotypes::DistanceMatrix;
 use itertools::Itertools;
 use std::collections::HashSet;
+use std::collections::HashMap;                                                                                                                                                                         
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
@@ -80,14 +81,13 @@ impl Caller {
                 .collect();
             let candidate_matrix = CandidateMatrix::new(&var_filt_haplotype_variants).unwrap();
             dbg!(&"ch1");
-            //use representative haplotypes for lp
-            let distance_matrix_before_lp = var_filt_haplotype_variants
-            .find_equivalence_classes_hamming_distance("virus")
-            .unwrap();
+            // //use representative haplotypes for lp
+            // let distance_matrix_before_lp = var_filt_haplotype_variants
+            // .find_equivalence_classes_hamming_distance("virus")
+            // .unwrap();
             let distance_matrix_before_lp = candidate_matrix
             .compute_hamming_distance(&haplotypes);
             dbg!(&"ch2");
-            dbg!(&distance_matrix_before_lp);
             let representatives =
             filter_representatives(haplotypes, distance_matrix_before_lp.clone());
             dbg!(&representatives.len());
@@ -105,7 +105,7 @@ impl Caller {
                 self.num_extend_haplotypes, //for now it has to be 0 only
                 self.num_constraint_haplotypes,
             )?;
-            dbg!(&lp_haplotypes);
+            // dbg!(&lp_haplotypes);
             //SECOND, model evaluation using ALL variants but only the LP- selected haplotypes
             //prepare inputs of model evaluation
             let hap_filt_haplotype_variants =
@@ -359,39 +359,46 @@ fn extend_resulting_table(
     Ok((new_event_posteriors, all_haplotypes))
 }
 
-//todo: double check this function
 fn filter_representatives(
     haplotypes: Vec<Haplotype>,
     distance_matrix: DistanceMatrix,
 ) -> Vec<Haplotype> {
-    let mut representative_set = BTreeSet::new(); // Use BTreeSet for deterministic ordering
+    let mut representative_set = BTreeSet::new();
     let mut visited = HashSet::new();
+    
+    //precompute zero-distance clusters in a HashMap for fast lookup
+    let mut zero_distance_clusters: HashMap<Haplotype, Vec<Haplotype>> = HashMap::new();
+    
+    for ((h1, h2), &distance) in &*distance_matrix {
+        if distance == 0 {
+            zero_distance_clusters.entry(h1.clone()).or_default().push(h2.clone());
+            zero_distance_clusters.entry(h2.clone()).or_default().push(h1.clone());
+        }
+    }
 
     for haplotype in &haplotypes {
         if visited.contains(haplotype) {
             continue;
         }
 
-        // Collect all haplotypes in the same zero-distance group
         let mut group = vec![haplotype.clone()];
         visited.insert(haplotype.clone());
 
-        for ((h1, h2), &distance) in &*distance_matrix {
-            if distance == 0 {
-                if h1 == haplotype && !visited.contains(h2) {
-                    group.push(h2.clone());
-                    visited.insert(h2.clone());
-                } else if h2 == haplotype && !visited.contains(h1) {
-                    group.push(h1.clone());
-                    visited.insert(h1.clone());
+        //retrieve precomputed zero-distance neighbors
+        if let Some(neighbors) = zero_distance_clusters.get(haplotype) {
+            for neighbor in neighbors {
+                if !visited.contains(neighbor) { //to prevent redundant addition
+                    group.push(neighbor.clone());
+                    visited.insert(neighbor.clone());
                 }
             }
         }
 
-        // Sort group and pick the smallest haplotype as representative
-        group.sort(); // Ensure consistent ordering
-        representative_set.insert(group[0].clone()); // Lexicographically smallest
+        //find the smallest haplotype in the group (lexicographically)
+        if let Some(min_hap) = group.iter().min() {
+            representative_set.insert(min_hap.clone());
+        }
     }
 
-    representative_set.into_iter().collect() // Convert to Vec while preserving order
+    representative_set.into_iter().collect()
 }
