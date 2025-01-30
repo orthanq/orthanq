@@ -26,6 +26,7 @@ use std::{path::PathBuf, str};
 
 use super::haplotypes::DistanceMatrix;
 use itertools::Itertools;
+use std::collections::HashSet;
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
@@ -78,12 +79,26 @@ impl Caller {
                 .cloned()
                 .collect();
             let candidate_matrix = CandidateMatrix::new(&var_filt_haplotype_variants).unwrap();
-
+            dbg!(&"ch1");
+            //use representative haplotypes for lp
+            let distance_matrix_before_lp = var_filt_haplotype_variants
+            .find_equivalence_classes_hamming_distance("virus")
+            .unwrap();
+            let distance_matrix_before_lp = candidate_matrix
+            .compute_hamming_distance(&haplotypes);
+            dbg!(&"ch2");
+            dbg!(&distance_matrix_before_lp);
+            let representatives =
+            filter_representatives(haplotypes, distance_matrix_before_lp.clone());
+            dbg!(&representatives.len());
+            dbg!(&representatives);
+            let repr_haplotype_variants = var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
+            let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
             //employ the linear program and find the resulting haplotypes that are found and *extended* depending on --extend-haplotypes and --num-extend-haplotypes (0 default)
             let (extended_lp_haplotypes, lp_haplotypes) = haplotypes::linear_program(
                 &self.outcsv,
-                &candidate_matrix,
-                &haplotypes,
+                &repr_candidate_matrix,
+                &representatives,
                 &filtered_calls,
                 self.lp_cutoff,
                 self.extend_haplotypes.unwrap_or(true),
@@ -342,4 +357,41 @@ fn extend_resulting_table(
         }
     }
     Ok((new_event_posteriors, all_haplotypes))
+}
+
+//todo: double check this function
+fn filter_representatives(
+    haplotypes: Vec<Haplotype>,
+    distance_matrix: DistanceMatrix,
+) -> Vec<Haplotype> {
+    let mut representative_set = BTreeSet::new(); // Use BTreeSet for deterministic ordering
+    let mut visited = HashSet::new();
+
+    for haplotype in &haplotypes {
+        if visited.contains(haplotype) {
+            continue;
+        }
+
+        // Collect all haplotypes in the same zero-distance group
+        let mut group = vec![haplotype.clone()];
+        visited.insert(haplotype.clone());
+
+        for ((h1, h2), &distance) in &*distance_matrix {
+            if distance == 0 {
+                if h1 == haplotype && !visited.contains(h2) {
+                    group.push(h2.clone());
+                    visited.insert(h2.clone());
+                } else if h2 == haplotype && !visited.contains(h1) {
+                    group.push(h1.clone());
+                    visited.insert(h1.clone());
+                }
+            }
+        }
+
+        // Sort group and pick the smallest haplotype as representative
+        group.sort(); // Ensure consistent ordering
+        representative_set.insert(group[0].clone()); // Lexicographically smallest
+    }
+
+    representative_set.into_iter().collect() // Convert to Vec while preserving order
 }

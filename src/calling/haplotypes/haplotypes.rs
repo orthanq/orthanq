@@ -18,6 +18,8 @@ use rust_htslib::bcf::{
 use good_lp::IntoAffineExpression;
 use good_lp::*;
 use good_lp::{variable, Expression};
+// use good_lp::{Variable, Expression, Constraint, ProblemVariables, SolverModel, default_solver};
+// use good_lp::solvers::CbcSolver;
 
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
@@ -58,7 +60,7 @@ impl AlleleFreqDist {
 }
 
 #[derive(Derefable, Debug, Clone)]
-pub struct CandidateMatrix(#[deref] BTreeMap<VariantID, (Vec<VariantStatus>, BitVec)>);
+pub struct CandidateMatrix(#[deref] BTreeMap<VariantID, (BitVec, BitVec)>);
 
 impl CandidateMatrix {
     pub fn new(
@@ -67,15 +69,42 @@ impl CandidateMatrix {
     ) -> Result<Self> {
         let mut candidate_matrix = BTreeMap::new();
         haplotype_variants.iter().for_each(|(variant_id, bmap)| {
-            let mut haplotype_variants_gt = Vec::new();
+            let mut haplotype_variants_gt = BitVec::new();
             let mut haplotype_variants_c = BitVec::new();
             bmap.iter().for_each(|(_haplotype, (gt, c))| {
                 haplotype_variants_c.push(*c);
-                haplotype_variants_gt.push(gt.clone());
+                haplotype_variants_gt.push(*gt);
             });
             candidate_matrix.insert(*variant_id, (haplotype_variants_gt, haplotype_variants_c));
         });
         Ok(CandidateMatrix(candidate_matrix))
+    }
+    pub fn compute_hamming_distance(
+        &self,
+        haplotypes: &Vec<Haplotype>,
+    ) -> DistanceMatrix {
+        let mut distances: BTreeMap<(Haplotype, Haplotype), usize> = BTreeMap::new();
+
+        // Ensure we have haplotypes to compare
+        let haplotype_count = haplotypes.len();
+        if haplotype_count == 0 {
+            return DistanceMatrix(distances);
+        }
+
+        // Compute pairwise Hamming distances
+        for i in 0..haplotype_count {
+            for j in (i + 1)..haplotype_count {
+                let mut distance = 0;
+                for (genotypes, _) in self.0.values() {
+                    if genotypes[i as u64] != genotypes[j as u64] {
+                        distance += 1;
+                    }
+                }
+                distances.insert((haplotypes[i].clone(), haplotypes[j].clone()), distance);
+            }
+        }
+
+        DistanceMatrix(distances)
     }
 }
 
@@ -171,16 +200,16 @@ impl VariantCalls {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, PartialOrd)]
-pub enum VariantStatus {
-    Present,
-    NotPresent,
-    Unknown,
-}
+// #[derive(Clone, Debug, Eq, PartialEq, PartialOrd)]
+// pub enum VariantStatus {
+//     Present,
+//     NotPresent,
+//     Unknown,
+// }
 
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, PartialOrd, DerefMut)]
 pub struct HaplotypeVariants(
-    #[deref] pub BTreeMap<VariantID, BTreeMap<Haplotype, (VariantStatus, bool)>>,
+    #[deref] pub BTreeMap<VariantID, BTreeMap<Haplotype, (bool, bool)>>,
 );
 
 #[derive(Derefable, Debug, Clone)]
@@ -217,12 +246,12 @@ impl HaplotypeVariants {
                     if *gta == Unphased(1) || *gta == Phased(1) {
                         matrices.insert(
                             haplotype.clone(),
-                            (VariantStatus::Present, loci[index] == &[1]),
+                            (true, loci[index] == &[1]),
                         );
                     } else {
                         matrices.insert(
                             haplotype.clone(),
-                            (VariantStatus::NotPresent, loci[index] == &[1]),
+                            (false, loci[index] == &[1]),
                         );
                     }
                 }
@@ -235,7 +264,7 @@ impl HaplotypeVariants {
     pub fn filter_for_variants(&self, variant_ids: &Vec<VariantID>) -> Result<HaplotypeVariants> {
         let mut filtered_haplotype_variants: BTreeMap<
             VariantID,
-            BTreeMap<Haplotype, (VariantStatus, bool)>,
+            BTreeMap<Haplotype, (bool, bool)>,
         > = BTreeMap::new();
         for (variant, haplotype_map) in self.iter() {
             if variant_ids.contains(&variant) {
@@ -248,7 +277,7 @@ impl HaplotypeVariants {
     pub fn filter_for_haplotypes(&self, haplotypes: &Vec<Haplotype>) -> Result<Self> {
         let mut new_haplotype_variants: BTreeMap<
             VariantID,
-            BTreeMap<Haplotype, (VariantStatus, bool)>,
+            BTreeMap<Haplotype, (bool, bool)>,
         > = BTreeMap::new();
         for (variant, matrix_map) in self.iter() {
             let mut new_matrix_map = BTreeMap::new();
@@ -270,7 +299,7 @@ impl HaplotypeVariants {
         variant_calls: &VariantCalls,
         haplotypes: &Vec<Haplotype>,
     ) -> Result<Vec<VariantID>> {
-        let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> = CandidateMatrix::new(self)
+        let candidate_matrix_values: Vec<(BitVec, BitVec)> = CandidateMatrix::new(self)
             .unwrap()
             .values()
             .cloned()
@@ -324,7 +353,7 @@ impl HaplotypeVariants {
         for (variant, haplotype_map) in self.iter() {
             for (haplotype, (variant_in_gt, _variant_in_c)) in haplotype_map.iter() {
                 match variant_in_gt {
-                    VariantStatus::Present => {
+                    true => {
                         let mut variants_in_haplotype = equivalence_classes[&haplotype].clone();
                         variants_in_haplotype.push(variant.clone());
                         equivalence_classes.insert(haplotype.clone(), variants_in_haplotype);
@@ -429,7 +458,7 @@ impl HaplotypeVariants {
         let haplotype_keys: Vec<Haplotype> = self
             .values()
             .cloned()
-            .collect::<Vec<BTreeMap<Haplotype, (VariantStatus, bool)>>>()[0]
+            .collect::<Vec<BTreeMap<Haplotype, (bool, bool)>>>()[0]
             .keys()
             .cloned()
             .collect();
@@ -484,7 +513,7 @@ pub(crate) struct DatasetAfd {
 pub fn plot_prediction(
     outdir: &PathBuf,
     solution: &str,
-    candidate_matrix_values: &Vec<(Vec<VariantStatus>, BitVec)>,
+    candidate_matrix_values: &Vec<(BitVec, BitVec)>,
     haplotypes: &Vec<Haplotype>,
     variant_calls: &VariantCalls,
     best_variables: &Vec<f64>,
@@ -512,7 +541,7 @@ pub fn plot_prediction(
                 for (i, (variable, haplotype)) in
                     best_variables.iter().zip(haplotypes.iter()).enumerate()
                 {
-                    if genotype_matrix[i] == VariantStatus::Present {
+                    if genotype_matrix[i as u64] {
                         plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
                             haplotype: haplotype.to_string(),
                             fraction: NotNan::new(*variable).unwrap(),
@@ -540,7 +569,7 @@ pub fn plot_prediction(
                     .zip(haplotypes.iter())
                     .enumerate()
                     .for_each(|(i, (fraction, haplotype))| {
-                        if genotypes[i] == VariantStatus::Present && covered[i as u64] {
+                        if genotypes[i as u64] && covered[i as u64] {
                             plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
                                 haplotype: haplotype.to_string(),
                                 fraction: NotNan::new(*fraction).unwrap(),
@@ -628,7 +657,7 @@ pub fn linear_program(
 
     //define temporary variables
     let t_vars: Vec<Variable> = problem.add_vector(variable().min(0.0).max(1.0), constraints.len());
-
+    
     // introduce auxiliary binary variables for sparsity (these will act as switches for real variables)
     let binary_vars: Vec<Variable> =
         problem.add_vector(variable().integer().min(0.0).max(1.0), variables.len());
@@ -648,8 +677,10 @@ pub fn linear_program(
     model = model.with(constraint!(sum == 1.0));
 
     // add constraints linking binary variables and the original variables
+    let m_constant = 100;
     for (var, bin_var) in variables.iter().zip(binary_vars.iter()) {
-        model = model.with(constraint!(*var <= *bin_var));
+        model = model.with(constraint!(*bin_var >= *var));
+        model = model.with(constraint!(*bin_var <= m_constant * *var));
     }
 
     // add the sparsity constraint: sum of binary variables <= 6
@@ -657,7 +688,7 @@ pub fn linear_program(
     for bin_var in binary_vars.iter() {
         binary_sum += Expression::from_other_affine(bin_var);
     }
-    model = model.with(constraint!(binary_sum <= num_constraint_haplotypes));
+    model = model.with(constraint!(binary_sum == num_constraint_haplotypes));
 
     //add the constraints to the model
     for (c, t_var) in constraints.iter().zip(t_vars.iter()) {
@@ -674,15 +705,34 @@ pub fn linear_program(
     for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
         println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
         best_variables.push(solution.value(var.clone()).clone());
-        if solution.value(*var) >= lp_cutoff {
-            //the speed of fraction exploration is managable in case of diploid priors
+        if solution.value(*var) > 0.0 {
+        //the speed of fraction exploration is managable in case of diploid priors
             lp_haplotypes.insert(haplotype.clone(), solution.value(*var).clone());
         }
     }
+    let total_hap_const = haplotypes.len() + constraints.len();
+    for bin_var in binary_vars.iter() {
+        let value = solution.value(*bin_var);
+        dbg!(&bin_var,&value);
+    }
+    dbg!(&constraints);
+    let first = 7088-total_hap_const;
+    let second = 7250-total_hap_const;
+    let third = 7253-total_hap_const;
+    let fourth = 7363-total_hap_const;
+    let fifth = 7415-total_hap_const;
+
+    dbg!(&first);
+    dbg!(&variables[first], &haplotypes[first]);
+    dbg!(&variables[second], &haplotypes[second]);
+    dbg!(&variables[third], &haplotypes[third]);
+    dbg!(&variables[fourth], &haplotypes[fourth]);
+    dbg!(&variables[fifth], &haplotypes[fifth]);
+
     // println!("sum = {}", solution.eval(sum_tvars));
-    // dbg!(&lp_haplotypes);
+    dbg!(&lp_haplotypes);
     //plot the best result
-    let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
+    let candidate_matrix_values: Vec<(BitVec, BitVec)> =
         candidate_matrix.values().cloned().collect();
     plot_prediction(
         outdir,
@@ -762,16 +812,18 @@ pub fn write_results(
                     let mut vaf_sum = NotNan::new(0.0).unwrap();
                     let mut counter = 0;
                     fractions.iter().enumerate().for_each(|(i, fraction)| {
-                        if genotypes[i] == VariantStatus::Present && covered[i as u64] {
+                        if genotypes[i as u64] && covered[i as u64] {
                             vaf_sum += *fraction;
                             counter += 1;
-                        } else if genotypes[i] == VariantStatus::Unknown && covered[i as u64] {
-                            todo!();
-                        } else if genotypes[i] == VariantStatus::Unknown
-                            && covered[i as u64] == false
-                        {
-                            todo!();
-                        } else if genotypes[i] == VariantStatus::NotPresent
+                        } 
+                        // else if genotypes[i] == VariantStatus::Unknown && covered[i as u64] {
+                        //     todo!();
+                        // } else if genotypes[i] == VariantStatus::Unknown
+                        //     && covered[i as u64] == false
+                        // {
+                        //     todo!();
+                        // } 
+                        else if genotypes[i as u64] == false
                             && covered[i as u64] == false
                         {
                             denom -= *fraction;
@@ -912,7 +964,7 @@ pub fn collect_constraints_and_variants(
     variables: &Vec<Variable>,
     constraints: &mut Vec<Expression>,
 ) -> Result<HashMap<Haplotype, Vec<VariantID>>> {
-    let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
+    let candidate_matrix_values: Vec<(BitVec, BitVec)> =
         candidate_matrix.values().cloned().collect();
     //collect haplotype-to-variants information
     let mut haplotype_dict: HashMap<Haplotype, Vec<VariantID>> =
@@ -933,7 +985,7 @@ pub fn collect_constraints_and_variants(
         }
         if counter == variables.len() {
             for (i, (variable, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
-                if genotype_matrix[i] == VariantStatus::Present {
+                if genotype_matrix[i as u64] {
                     fraction_cont += *variable;
                     let mut existing = haplotype_dict.get(&haplotype).unwrap().clone();
                     existing.push(variant.clone());

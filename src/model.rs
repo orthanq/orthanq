@@ -1,6 +1,5 @@
 use crate::calling::haplotypes::haplotypes::{
     AlleleFreqDist, CandidateMatrix, Haplotype, HaplotypeGraph, PriorTypes, VariantCalls,
-    VariantStatus,
 };
 
 use bio::stats::probs::adaptive_integration;
@@ -174,7 +173,7 @@ impl Likelihood {
         data: &Data,
         _cache: &mut Cache,
     ) -> LogProb {
-        let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
+        let candidate_matrix_values: Vec<(BitVec, BitVec)> =
             data.candidate_matrix.values().cloned().collect();
         let variant_calls: Vec<(AlleleFreqDist, i32)> = data
             .variant_calls
@@ -190,11 +189,13 @@ impl Likelihood {
                     let mut denom = NotNan::new(1.0).unwrap();
                     let mut vaf_sum = NotNan::new(0.0).unwrap();
                     event.iter().enumerate().for_each(|(i, fraction)| {
-                        if genotypes[i] == VariantStatus::Present && covered[i as u64] {
+                        if genotypes[i as u64] && covered[i as u64] {
                             vaf_sum += *fraction;
-                        } else if genotypes[i] == VariantStatus::Unknown || covered[i as u64] {
-                            ()
-                        } else if genotypes[i] == VariantStatus::NotPresent && !covered[i as u64] {
+                        } 
+                        // else if genotypes[i] == VariantStatus::Unknown || covered[i as u64] {
+                        //     ()
+                        // } 
+                        else if !genotypes[i as u64] && !covered[i as u64] {
                             denom -= *fraction;
                         }
                     });
