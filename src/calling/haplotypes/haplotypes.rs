@@ -545,7 +545,7 @@ pub fn plot_prediction(
     let mut plot_data_dataset_afd = Vec::new();
 
     if &solution == &"lp" {
-        for ((genotype_matrix, coverage_matrix), (variant_id, (af, _, _))) in
+        for ((genotype_matrix, coverage_matrix), (variant_id, (af, _, dp))) in
             candidate_matrix_values.iter().zip(variant_calls.iter())
         {
             let mut counter = 0;
@@ -567,10 +567,12 @@ pub fn plot_prediction(
                             variant: *variant_id,
                             haplotype: haplotype.to_string(),
                         });
-                        plot_data_variants.push(DatasetVariants {
-                            variant: *variant_id,
-                            vaf: af.clone(),
-                        });
+                        if *dp != 0 { //todo: check this part again, also, check LP plot
+                            plot_data_variants.push(DatasetVariants {
+                                variant: *variant_id,
+                                vaf: af.clone(),
+                            });
+                        }
                     }
                 }
             }
@@ -580,8 +582,16 @@ pub fn plot_prediction(
         candidate_matrix_values
             .iter()
             .zip(variant_calls.iter())
-            .for_each(|((genotypes, covered), (variant_id, (af, afd, _)))| {
-                best_variables
+            .for_each(|((genotypes, covered), (variant_id, (af, afd, dp)))| {
+                if *af > 0.0 {
+                    if *dp != 0 {
+                        plot_data_variants.push(DatasetVariants {
+                            variant: *variant_id,
+                            vaf: *af,
+                        });
+                    }
+                    
+                    best_variables
                     .iter()
                     .zip(haplotypes.iter())
                     .enumerate()
@@ -595,31 +605,30 @@ pub fn plot_prediction(
                                 variant: *variant_id,
                                 haplotype: haplotype.to_string(),
                             });
-                            plot_data_variants.push(DatasetVariants {
-                                variant: *variant_id,
-                                vaf: *af,
-                            });
-                            //addition of one more rect plot for coverage matrix in addition to genotype matrix
-                            //create the plot_data_covered_variants using only the variants that have GT:1 for at least one haplotype.
-                            for (j, haplotype) in haplotypes.iter().enumerate() {
-                                if covered[j as u64] {
-                                    plot_data_covered_variants.push(DatasetHaplotypeVariants {
-                                        variant: *variant_id,
-                                        haplotype: haplotype.to_string(),
-                                    });
-                                }
-                            }
-
-                            //also add the heatmap for afd below the covered panels
-                            for (allele_freq, prob) in afd.iter() {
-                                plot_data_dataset_afd.push(DatasetAfd {
+                        } 
+                        //addition of one more rect plot for coverage matrix in addition to genotype matrix
+                        //create the plot_data_covered_variants using only the variants that have GT:1 for at least one haplotype.
+                        for (j, haplotype) in haplotypes.iter().enumerate() {
+                            if covered[j as u64] {
+                                plot_data_covered_variants.push(DatasetHaplotypeVariants {
                                     variant: *variant_id,
-                                    allele_freq: *allele_freq,
-                                    probability: f64::from(*prob),
-                                })
+                                    haplotype: haplotype.to_string(),
+                                });
                             }
                         }
+
+                        //also add the heatmap for afd below the covered panels
+                        for (allele_freq, prob) in afd.iter() {
+                            plot_data_dataset_afd.push(DatasetAfd {
+                                variant: *variant_id,
+                                allele_freq: *allele_freq,
+                                probability: f64::from(*prob),
+                            })
+                        }
+                        // }
                     });
+                }
+
             });
         file_name.push_str("final_solution.json");
     }
