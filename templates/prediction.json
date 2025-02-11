@@ -55,25 +55,17 @@
     },
     {
       "data": {"name": "haplotype_variants"},
-      "transform": [
-        {
-          "lookup": "haplotype",
-          "from": {
-            "data": {"name": "haplotype_fractions"},
-            "key": "haplotype",
-            "fields": ["fraction"]
-          }
-        },
-        { "filter": "datum.fraction !== null" }
-      ],
       "mark": {"type":"rect", "tooltip": true},
       "encoding": {
         "y": {"field": "haplotype", "type": "ordinal", "axis": {"titleFontSize": 16, "labelFontSize": 12}},
-        "x": {"field": "variant", "type": "ordinal", "axis": {"titleFontSize": 16, "labels": true, "labelFontSize": 12}},
+        "x": {"field": "variant", "type": "ordinal", "title": null, "axis": {"titleFontSize": 16, "labels": true, "labelFontSize": 12}},
         "color": {
-          "field": "haplotype",
-          "scale": {"scheme": "category20"},
-          "legend": null
+          "condition": {
+            "test": "datum.haplotype !== 'B'",
+            "field": "haplotype",
+            "scale": {"scheme": "category20"}
+          },
+          "value": "transparent"
         }
       }
     },
@@ -82,7 +74,7 @@
       "mark": {"type": "rect", "tooltip": true},
       "encoding": {
         "y": {"field": "haplotype", "type": "ordinal", "axis": {"titleFontSize": 16, "labelFontSize": 12}},
-        "x": {"field": "variant", "type": "ordinal", "axis": {"titleFontSize": 16, "labels": true, "labelFontSize": 12}},
+        "x": {"field": "variant", "type": "ordinal", "title": null, "axis": {"titleFontSize": 16, "labels": true, "labelFontSize": 12}},
         "color": {
           "field": "haplotype",
           "scale": {"scheme": "category20"},

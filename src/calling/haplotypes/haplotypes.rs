@@ -583,20 +583,24 @@ pub fn plot_prediction(
             .iter()
             .zip(variant_calls.iter())
             .for_each(|((genotypes, covered), (variant_id, (af, afd, dp)))| {
-                if *af > 0.0 {
-                    if *dp != 0 {
-                        plot_data_variants.push(DatasetVariants {
-                            variant: *variant_id,
-                            vaf: *af,
-                        });
-                    }
-                    
+                    let mut b_check = false;
+                    let mut b_fraction = 0.0;
                     best_variables
                     .iter()
                     .zip(haplotypes.iter())
                     .enumerate()
                     .for_each(|(i, (fraction, haplotype))| {
+                        //create an exception for B to add it both to haplotype variants and fractions
+                        if haplotype == &Haplotype("B".to_string()) {
+                            b_fraction = *fraction;
+                        }
                         if genotypes[i as u64] && covered[i as u64] {
+                            if *dp != 0 {
+                                plot_data_variants.push(DatasetVariants {
+                                    variant: *variant_id,
+                                    vaf: *af,
+                                });
+                            }
                             plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
                                 haplotype: haplotype.to_string(),
                                 fraction: NotNan::new(*fraction).unwrap(),
@@ -605,30 +609,62 @@ pub fn plot_prediction(
                                 variant: *variant_id,
                                 haplotype: haplotype.to_string(),
                             });
-                        } 
-                        //addition of one more rect plot for coverage matrix in addition to genotype matrix
-                        //create the plot_data_covered_variants using only the variants that have GT:1 for at least one haplotype.
-                        for (j, haplotype) in haplotypes.iter().enumerate() {
-                            if covered[j as u64] {
-                                plot_data_covered_variants.push(DatasetHaplotypeVariants {
+                            for (j, haplotype) in haplotypes.iter().enumerate() {
+                                if covered[j as u64] {
+                                    plot_data_covered_variants.push(DatasetHaplotypeVariants {
+                                        variant: *variant_id,
+                                        haplotype: haplotype.to_string(),
+                                    });
+                                }
+                            }
+                            //also add the heatmap for afd below the covered panels
+                            for (allele_freq, prob) in afd.iter() {
+                                plot_data_dataset_afd.push(DatasetAfd {
                                     variant: *variant_id,
-                                    haplotype: haplotype.to_string(),
-                                });
+                                    allele_freq: *allele_freq,
+                                    probability: f64::from(*prob),
+                                })
+                            }
+                            b_check = true;
+                        } else {
+                            if *af > 0.0 {
+                                if *dp != 0 {
+                                    plot_data_variants.push(DatasetVariants {
+                                        variant: *variant_id,
+                                        vaf: *af,
+                                    });
+                                }
+                                for (j, haplotype) in haplotypes.iter().enumerate() {
+                                    if covered[j as u64] {
+                                        plot_data_covered_variants.push(DatasetHaplotypeVariants {
+                                            variant: *variant_id,
+                                            haplotype: haplotype.to_string(),
+                                        });
+                                    }
+                                }
+                                //also add the heatmap for afd below the covered panels
+                                for (allele_freq, prob) in afd.iter() {
+                                    plot_data_dataset_afd.push(DatasetAfd {
+                                        variant: *variant_id,
+                                        allele_freq: *allele_freq,
+                                        probability: f64::from(*prob),
+                                    })
+                                }
                             }
                         }
 
-                        //also add the heatmap for afd below the covered panels
-                        for (allele_freq, prob) in afd.iter() {
-                            plot_data_dataset_afd.push(DatasetAfd {
-                                variant: *variant_id,
-                                allele_freq: *allele_freq,
-                                probability: f64::from(*prob),
-                            })
-                        }
-                        // }
                     });
-                }
-
+                    if b_check {
+                        dbg!(&b_fraction);
+                        plot_data_haplotype_variants.push(DatasetHaplotypeVariants {
+                            variant: *variant_id,
+                            haplotype: "B".to_string(),
+                        });
+                        plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
+                            haplotype: "B".to_string(),
+                            fraction: NotNan::new(b_fraction).unwrap(),
+                        });
+                    }
             });
         file_name.push_str("final_solution.json");
     }
