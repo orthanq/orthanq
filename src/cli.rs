@@ -255,11 +255,11 @@ pub enum CallKind {
     },
     Virus {
         #[structopt(
-            long = "candidates-folder",
+            long = "haplotype-variants",
             required = true,
-            help = "Folder that is used to create candidate variants."
+            help = "Path to candidate variants."
         )]
-        candidates_folder: PathBuf,
+        haplotype_variants: PathBuf,
         #[structopt(
             parse(from_os_str),
             long = "haplotype-calls",
@@ -423,7 +423,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 Ok(())
             }
             CallKind::Virus {
-                candidates_folder,
+                haplotype_variants,
                 variant_calls,
                 output,
                 prior,
@@ -436,7 +436,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 num_constraint_haplotypes,
             } => {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
-                    .candidates_folder(candidates_folder)
+                    .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
                     .variant_calls(bcf::Reader::from_path(variant_calls)?)
                     .outcsv(output)
                     .prior(prior)

@@ -32,7 +32,7 @@ use std::collections::HashMap;
 #[derive(Builder)]
 #[builder(pattern = "owned")]
 pub struct Caller {
-    candidates_folder: PathBuf,
+    haplotype_variants: bcf::Reader,
     variant_calls: bcf::Reader,
     outcsv: PathBuf,
     prior: String,
@@ -59,9 +59,7 @@ impl Caller {
         } else {
             //FIRST, perform linear program using only nonzero DP variants
             //prepare haplotype variants for all variants
-            let mut haplotype_variants_rdr =
-                bcf::Reader::from_path(self.candidates_folder.join("candidates.vcf"))?;
-            let haplotype_variants_all = HaplotypeVariants::new(&mut haplotype_variants_rdr)?;
+            let haplotype_variants_all = HaplotypeVariants::new(&mut self.haplotype_variants)?;
 
             //filter variant calls
             let filtered_calls = variant_calls.without_zero_dp();
