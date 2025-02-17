@@ -96,7 +96,7 @@ impl Caller {
             let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
 
             //employ the linear program
-            let (lp_haplotypes, _) = haplotypes::linear_program(
+            let lp_haplotypes = haplotypes::linear_program(
                 &self.outcsv,
                 &candidate_matrix,
                 &haplotypes,

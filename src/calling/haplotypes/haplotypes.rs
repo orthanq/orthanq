@@ -123,6 +123,38 @@ impl CandidateMatrix {
         }
         DistanceMatrix(distances)
     }
+    pub fn find_identical_haplotypes(
+        &self,
+        haplotypes: Vec<Haplotype>,
+    ) -> BTreeMap<Haplotype, Vec<Haplotype>> {
+        let mut signature_map: BTreeMap<Vec<bool>, Vec<Haplotype>> = BTreeMap::new();
+
+        // Iterate over each haplotype to generate its signature
+        for (index, haplotype) in haplotypes.iter().enumerate() {
+            let mut signature: Vec<bool> = Vec::new();
+
+            // Create the signature by extracting bits from each variant's BitVec
+            for (variant_id, (bitvec, _)) in &self.0 {
+                let presence = bitvec.get(index as u64); 
+                signature.push(presence);
+            }
+
+            // Group haplotypes with the same signature
+            signature_map.entry(signature)
+                .or_insert_with(Vec::new)
+                .push(haplotype.clone());
+        }
+
+        // Create a HashMap where the key is the representative haplotype
+        let mut representative_map: BTreeMap<Haplotype, Vec<Haplotype>> = BTreeMap::new();
+
+        for (_signature, group) in signature_map {
+            let representative = group[0].clone();  // First haplotype as representative
+            representative_map.insert(representative, group);
+        }
+
+        representative_map
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -655,7 +687,6 @@ pub fn plot_prediction(
 
                     });
                     if b_check {
-                        dbg!(&b_fraction);
                         plot_data_haplotype_variants.push(DatasetHaplotypeVariants {
                             variant: *variant_id,
                             haplotype: "B".to_string(),
@@ -697,7 +728,7 @@ pub fn linear_program(
     extend_haplotypes: bool,
     num_variant_distance: i64,
     num_constraint_haplotypes: i32,
-) -> Result<(Vec<Haplotype>, Vec<Haplotype>)> {
+) -> Result<Vec<Haplotype>> {
     //first init the problem
     let mut problem = ProblemVariables::new();
     //introduce variables
@@ -804,6 +835,7 @@ pub fn linear_program(
         &variant_calls,
         &best_variables,
     )?;
+    let lp_haplotypes_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
 
     //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list.
     //then sort by hamming distance, take the closest x additional alleles according to 'num_variant_distance'.
@@ -836,14 +868,11 @@ pub fn linear_program(
                     }
                 });
         });
-        let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
-        dbg!(&lp_keys, &extended_haplotypes);
-        Ok((extended_haplotypes, lp_keys))
+        dbg!(&extended_haplotypes);
+        Ok(extended_haplotypes)
     } else {
-        let lp_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
-        let extended_haplotypes = lp_keys.clone();
-        dbg!(&lp_keys, &extended_haplotypes);
-        Ok((extended_haplotypes, lp_keys))
+        dbg!(&extended_haplotypes);
+        Ok(lp_haplotypes_keys)
     }
 }
 
