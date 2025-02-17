@@ -95,7 +95,6 @@ impl Caller {
                 // self.num_extend_haplotypes, //for now it has to be 0 only
                 self.num_constraint_haplotypes,
             )?;
-            dbg!(&lp_haplotypes);
 
             //SECOND, model evaluation using ALL variants but only the LP- selected haplotypes
             //prepare inputs of model evaluation
@@ -193,10 +192,6 @@ impl Caller {
                 &all_haplotypes,
                 "viral",
             )?;
-            // } else {
-            //     self.output_empty_files()?;
-            //     warn!("Insufficient observations from data!");
-            // }
             Ok(())
         }
     }
