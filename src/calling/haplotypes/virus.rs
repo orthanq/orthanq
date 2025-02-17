@@ -26,20 +26,23 @@ use std::{path::PathBuf, str};
 
 use super::haplotypes::DistanceMatrix;
 use itertools::Itertools;
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
 pub struct Caller {
-    candidates_folder: PathBuf,
+    haplotype_variants: bcf::Reader,
     variant_calls: bcf::Reader,
     outcsv: PathBuf,
     prior: String,
     lp_cutoff: f64,
     enable_equivalence_class_constraint: bool,
     extend_haplotypes: Option<bool>,
-    threshold_considered_variants: f64,
+    // threshold_considered_variants: f64,
     threshold_equivalence_class: usize,
     num_extend_haplotypes: i64,
+    num_constraint_haplotypes: i32,
 }
 
 impl Caller {
@@ -48,148 +51,147 @@ impl Caller {
         //initially prepare haplotype_variants and variant_calls
         let variant_calls = VariantCalls::new(&mut self.variant_calls)?;
 
-        //read candidates vcf
-        let haplotype_variants_dir = self.candidates_folder.join("candidates.vcf");
-        let mut haplotype_variants_rdr = bcf::Reader::from_path(haplotype_variants_dir)?;
-
         //write blank plots and tsv table if no variants are available.
         if variant_calls.len() == 0 {
             //write blank plots, required for the workflow!
             self.output_empty_files()?;
             Ok(())
         } else {
-            let variant_ids: Vec<VariantID> = variant_calls.keys().cloned().collect();
-            let haplotype_variants = HaplotypeVariants::new(&mut haplotype_variants_rdr)?;
+            //FIRST, perform linear program using only nonzero DP variants
+            //prepare haplotype variants
+            let haplotype_variants_all = HaplotypeVariants::new(&mut self.haplotype_variants)?;
 
-            // check if there is enough observations in the data, and do that by checking rate of evaluated variants
-            // if this does not pass, print insufficient data
-            if variant_calls
-                .check_variant_threshold(&haplotype_variants, self.threshold_considered_variants)?
-            {
-                // filter haplotype variants to contain only the evaluated variants in the model.
-                let filtered_haplotype_variants =
-                    haplotype_variants.filter_for_variants(&variant_ids)?;
+            //filter variant calls and haplotype variants
+            let filtered_calls = variant_calls.without_zero_dp();
+            let nonzero_dp_variants: Vec<VariantID> = filtered_calls.keys().cloned().collect();
+            let var_filt_haplotype_variants =
+                haplotype_variants_all.filter_for_variants(&nonzero_dp_variants)?;
 
-                // output haplotype list and candidate matrix to be used in lp
-                let (_, haplotype_matrix) = filtered_haplotype_variants.iter().next().unwrap();
-                let haplotypes: Vec<Haplotype> = haplotype_matrix.keys().cloned().collect();
-                let candidate_matrix = CandidateMatrix::new(&filtered_haplotype_variants).unwrap();
-
-                // employ the linear program and find the resulting haplotypes that are found and *extended* depending on --extend-haplotypes and --num-extend-haplotypes (0 default)
-                let (extended_lp_haplotypes, lp_haplotypes) = haplotypes::linear_program(
-                    &self.outcsv,
-                    &candidate_matrix,
-                    &haplotypes,
-                    &variant_calls,
-                    self.lp_cutoff,
-                    self.extend_haplotypes.unwrap_or(true),
-                    self.num_extend_haplotypes, //for now it has to be 0 only
-                )?;
-
-                //take only haplotypes that are found by lp
-                let lp_haplotype_variants =
-                    filtered_haplotype_variants.filter_for_haplotypes(&lp_haplotypes)?;
-
-                //construct candidate matrix
-                let lp_candidate_matrix = CandidateMatrix::new(&lp_haplotype_variants).unwrap();
-
-                //compute model
-                let prior = PriorTypes::from_str(&self.prior).unwrap();
-                let upper_bond = NotNan::new(1.0).unwrap();
-                let model = Model::new(
-                    Likelihood::new(),
-                    Prior::new(prior.clone()),
-                    Posterior::new(),
-                );
-
-                let data = Data::new(lp_candidate_matrix.clone(), variant_calls.clone());
-
-                //marginal computation
-                let computed_model = model.compute_from_marginal(
-                    &Marginal::new(
-                        lp_haplotypes.len(),
-                        lp_haplotypes.clone(),
-                        upper_bond,
-                        prior,
-                        None,
-                        self.enable_equivalence_class_constraint,
-                        "virus".to_string(),
-                    ),
-                    &data,
-                );
-
-                //find event posteriors
-                let event_posteriors = computed_model.event_posteriors();
-
-                //remove zero densities from the table
-                let mut event_posteriors = Vec::new();
-                computed_model
-                    .event_posteriors()
-                    .for_each(|(fractions, logprob)| {
-                        if logprob.exp() != 0.0 {
-                            event_posteriors.push((fractions.clone(), logprob.clone()));
-                        }
-                    });
-
-                //extend the resulting table with zero distance haplotypes. For that, compute distance matrix (hamming distance) with lp haplotypes.
-                let extended_lp_haplotype_variants =
-                    filtered_haplotype_variants.filter_for_haplotypes(&extended_lp_haplotypes)?;
-
-                let distance_matrix = extended_lp_haplotype_variants
-                    .find_equivalence_classes_hamming_distance("virus")
-                    .unwrap();
-
-                let (new_event_posteriors, all_haplotypes) =
-                    extend_resulting_table(&lp_haplotypes, &event_posteriors, &distance_matrix)
-                        .unwrap();
-
-                //plot the best solution as final solution plot
-                let (best_fractions, _) = new_event_posteriors.iter().next().unwrap();
-                let candidate_matrix_all = CandidateMatrix::new(
-                    &filtered_haplotype_variants
-                        .filter_for_haplotypes(&all_haplotypes)
-                        .unwrap(),
-                )
+            //find identical haplotypes using variants and prepare LP inputs
+            let haplotypes: Vec<Haplotype> = var_filt_haplotype_variants
+                .iter()
+                .next()
                 .unwrap()
-                .values()
+                .1
+                .keys()
                 .cloned()
                 .collect();
+            let candidate_matrix = CandidateMatrix::new(&var_filt_haplotype_variants).unwrap();
+            let identical_haplotypes_map = candidate_matrix.find_identical_haplotypes(haplotypes);
+            let representatives = identical_haplotypes_map.keys().cloned().collect();
+            let repr_haplotype_variants =
+                var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
+            let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
 
-                let best_fractions = best_fractions
-                    .iter()
-                    .map(|f| NotNan::into_inner(*f))
-                    .collect::<Vec<f64>>();
+            //employ the linear program
+            //note: extension is disabled at the moment. see notes on linear_program function.
+            let lp_haplotypes = haplotypes::linear_program(
+                &self.outcsv,
+                &repr_candidate_matrix,
+                &representatives,
+                &filtered_calls,
+                self.lp_cutoff,
+                // self.extend_haplotypes.unwrap_or(true),
+                // self.num_extend_haplotypes, //for now it has to be 0 only
+                self.num_constraint_haplotypes,
+            )?;
 
-                haplotypes::plot_prediction(
-                    &self.outcsv,
-                    &"final",
-                    &candidate_matrix_all,
-                    &all_haplotypes,
-                    &data.variant_calls,
-                    &best_fractions,
-                )?;
+            //SECOND, model evaluation using ALL variants but only the LP- selected haplotypes
+            //prepare inputs of model evaluation
+            let hap_filt_haplotype_variants =
+                haplotype_variants_all.filter_for_haplotypes(&lp_haplotypes)?;
+            let model_candidate_matrix = CandidateMatrix::new(&hap_filt_haplotype_variants)?;
 
-                //write results to tsv
-                haplotypes::write_results(
-                    &self.outcsv,
-                    &data,
-                    &new_event_posteriors,
-                    &all_haplotypes,
-                    self.prior.clone(),
-                    false,
-                )?;
+            //compute model
+            let prior = PriorTypes::from_str(&self.prior).unwrap();
+            let upper_bond = NotNan::new(1.0).unwrap();
+            let model = Model::new(
+                Likelihood::new(),
+                Prior::new(prior.clone()),
+                Posterior::new(),
+            );
 
-                //plot first 10 posteriors of orthanq output
-                haplotypes::plot_densities(
-                    &self.outcsv,
-                    &new_event_posteriors,
-                    &all_haplotypes,
-                    "viral",
-                )?;
-            } else {
-                self.output_empty_files()?;
-                warn!("Insufficient observations from data!");
-            }
+            let data = Data::new(model_candidate_matrix.clone(), variant_calls.clone());
+
+            //marginal computation
+            let computed_model = model.compute_from_marginal(
+                &Marginal::new(
+                    lp_haplotypes.len(),
+                    lp_haplotypes.clone(),
+                    upper_bond,
+                    prior,
+                    None,
+                    false, //equivalence class constraint is currently disabled.
+                    "virus".to_string(),
+                ),
+                &data,
+            );
+
+            //find event posteriors
+            let event_posteriors = computed_model.event_posteriors();
+
+            //remove zero densities from the table
+            let mut event_posteriors = Vec::new();
+            computed_model
+                .event_posteriors()
+                .for_each(|(fractions, logprob)| {
+                    if logprob.exp() != 0.0 {
+                        dbg!(&fractions.clone(), &logprob.clone());
+                        event_posteriors.push((fractions.clone(), logprob.clone()));
+                    }
+                });
+
+            // Third, extend the table with identical haplotypes
+            let (new_event_posteriors, all_haplotypes) = extend_resulting_table(
+                &lp_haplotypes,
+                &event_posteriors,
+                &identical_haplotypes_map,
+            )
+            .unwrap();
+
+            //plot the best solution as final solution plot
+            let (best_fractions, _) = new_event_posteriors.iter().next().unwrap();
+            let candidate_matrix_all = CandidateMatrix::new(
+                &haplotype_variants_all
+                    .filter_for_haplotypes(&all_haplotypes)
+                    .unwrap(),
+            )
+            .unwrap()
+            .values()
+            .cloned()
+            .collect();
+
+            let best_fractions = best_fractions
+                .iter()
+                .map(|f| NotNan::into_inner(*f))
+                .collect::<Vec<f64>>();
+
+            haplotypes::plot_prediction(
+                &self.outcsv,
+                &"final",
+                &candidate_matrix_all,
+                &all_haplotypes,
+                &data.variant_calls,
+                &best_fractions,
+            )?;
+
+            //write results to tsv
+            haplotypes::write_results(
+                &self.outcsv,
+                &data,
+                &new_event_posteriors,
+                &all_haplotypes,
+                self.prior.clone(),
+                false,
+            )?;
+
+            //plot first 10 posteriors of orthanq output
+            haplotypes::plot_densities(
+                &self.outcsv,
+                &new_event_posteriors,
+                &all_haplotypes,
+                "viral",
+            )?;
             Ok(())
         }
     }
@@ -223,60 +225,23 @@ impl Caller {
     }
 }
 
-// //todo: double check this function
-// fn filter_representatives(
-//     haplotypes: Vec<Haplotype>,
-//     distance_matrix: DistanceMatrix,
-// ) -> Vec<Haplotype> {
-//     let mut representative_set = BTreeSet::new(); // Use BTreeSet for deterministic ordering
-//     let mut visited = HashSet::new();
-
-//     for haplotype in &haplotypes {
-//         if visited.contains(haplotype) {
-//             continue;
-//         }
-
-//         // Collect all haplotypes in the same zero-distance group
-//         let mut group = vec![haplotype.clone()];
-//         visited.insert(haplotype.clone());
-
-//         for ((h1, h2), &distance) in &*distance_matrix {
-//             if distance == 0 {
-//                 if h1 == haplotype && !visited.contains(h2) {
-//                     group.push(h2.clone());
-//                     visited.insert(h2.clone());
-//                 } else if h2 == haplotype && !visited.contains(h1) {
-//                     group.push(h1.clone());
-//                     visited.insert(h1.clone());
-//                 }
-//             }
-//         }
-
-//         // Sort group and pick the smallest haplotype as representative
-//         group.sort(); // Ensure consistent ordering
-//         representative_set.insert(group[0].clone()); // Lexicographically smallest
-//     }
-
-//     representative_set.into_iter().collect() // Convert to Vec while preserving order
-// }
-
 fn extend_resulting_table(
     representatives: &Vec<Haplotype>,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
-    distance_matrix: &DistanceMatrix,
+    identical_haplotypes_map: &BTreeMap<Haplotype, Vec<Haplotype>>,
 ) -> Result<(Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>)> {
-    //initialize new event_posteriors
-    let mut new_event_posteriors = Vec::new();
-
     // collect all lp haplotypes (with all distances)
-    let mut all_haplotypes: BTreeSet<Haplotype> = representatives.iter().cloned().collect();
-    for ((hap1, hap2), dist) in &**distance_matrix {
-        all_haplotypes.insert(hap1.clone());
-        all_haplotypes.insert(hap2.clone());
+    let mut all_haplotypes = BTreeSet::new();
+    for haplotype in representatives {
+        all_haplotypes.insert(haplotype.clone());
+        let identical_haplotypes = identical_haplotypes_map.get(haplotype).unwrap();
+        all_haplotypes.extend(identical_haplotypes.clone());
     }
     let all_haplotypes: Vec<Haplotype> = all_haplotypes.into_iter().collect();
-
     dbg!(&all_haplotypes);
+
+    //initialize new event_posteriors
+    let mut new_event_posteriors = Vec::new();
 
     // create indices for every haplotype
     let haplotype_indices: BTreeMap<Haplotype, usize> = all_haplotypes
@@ -305,35 +270,74 @@ fn extend_resulting_table(
         ));
 
         //push alternative solutions to event posteriors
-        for (haplotype, idx) in haplotype_indices.iter() {
-            // dbg!(&haplotype, &idx);
-            let fraction = expanded_fractions[*idx];
+        for (cur_haplotype, idx_current) in haplotype_indices.iter() {
+            // dbg!(&cur_haplotype, &idx_current);
+            let fraction = expanded_fractions[*idx_current];
             // dbg!(&fraction);
-            for ((hap1, hap2), &dist) in &**distance_matrix {
-                if dist == 0 && *fraction > 0.0 {
-                    // the second condition avoids having duplicate rows
-                    if hap1 == haplotype {
-                        if let (Some(idx1), Some(idx2)) =
-                            (haplotype_indices.get(hap1), haplotype_indices.get(hap2))
-                        {
-                            let mut alt1 = expanded_fractions.clone();
-                            alt1[*idx2] = fraction;
-                            alt1[*idx1] = NotNan::new(0.0).unwrap();
-                            new_event_posteriors.push((HaplotypeFractions(alt1), logprob.clone()));
-                        }
-                    } else if hap2 == haplotype {
-                        if let (Some(idx1), Some(idx2)) =
-                            (haplotype_indices.get(hap1), haplotype_indices.get(hap2))
-                        {
-                            let mut alt2 = expanded_fractions.clone();
-                            alt2[*idx1] = fraction;
-                            alt2[*idx2] = NotNan::new(0.0).unwrap();
-                            new_event_posteriors.push((HaplotypeFractions(alt2), logprob.clone()));
-                        }
+            let identical_haplotypes = identical_haplotypes_map.get(cur_haplotype).unwrap();
+            if fraction > NotNan::new(0.0).unwrap() {
+                for ident_h in identical_haplotypes.iter() {
+                    if ident_h != cur_haplotype {
+                        let idx_ident_h = haplotype_indices.get(ident_h).unwrap();
+                        let mut alt_row = expanded_fractions.clone();
+                        alt_row[*idx_ident_h] = fraction;
+                        alt_row[*idx_current] = NotNan::new(0.0).unwrap();
+                        new_event_posteriors.push((HaplotypeFractions(alt_row), logprob.clone()));
                     }
                 }
             }
         }
     }
     Ok((new_event_posteriors, all_haplotypes))
+}
+
+fn filter_representatives(
+    haplotypes: Vec<Haplotype>,
+    distance_matrix: DistanceMatrix,
+) -> Vec<Haplotype> {
+    let mut representative_set = BTreeSet::new();
+    let mut visited = HashSet::new();
+
+    //precompute zero-distance clusters in a HashMap for fast lookup
+    let mut zero_distance_clusters: HashMap<Haplotype, Vec<Haplotype>> = HashMap::new();
+
+    for ((h1, h2), &distance) in &*distance_matrix {
+        if distance == 0 {
+            zero_distance_clusters
+                .entry(h1.clone())
+                .or_default()
+                .push(h2.clone());
+            zero_distance_clusters
+                .entry(h2.clone())
+                .or_default()
+                .push(h1.clone());
+        }
+    }
+
+    for haplotype in &haplotypes {
+        if visited.contains(haplotype) {
+            continue;
+        }
+
+        let mut group = vec![haplotype.clone()];
+        visited.insert(haplotype.clone());
+
+        //retrieve precomputed zero-distance neighbors
+        if let Some(neighbors) = zero_distance_clusters.get(haplotype) {
+            for neighbor in neighbors {
+                if !visited.contains(neighbor) {
+                    //to prevent redundant addition
+                    group.push(neighbor.clone());
+                    visited.insert(neighbor.clone());
+                }
+            }
+        }
+
+        //find the smallest haplotype in the group (lexicographically)
+        if let Some(min_hap) = group.iter().min() {
+            representative_set.insert(min_hap.clone());
+        }
+    }
+
+    representative_set.into_iter().collect()
 }
