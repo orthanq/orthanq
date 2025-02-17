@@ -26,8 +26,8 @@ use std::{path::PathBuf, str};
 
 use super::haplotypes::DistanceMatrix;
 use itertools::Itertools;
+use std::collections::HashMap;
 use std::collections::HashSet;
-use std::collections::HashMap;                                                                                                                                                                         
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
@@ -66,7 +66,7 @@ impl Caller {
             let nonzero_dp_variants: Vec<VariantID> = filtered_calls.keys().cloned().collect();
             let var_filt_haplotype_variants =
                 haplotype_variants_all.filter_for_variants(&nonzero_dp_variants)?;
-            
+
             //find identical haplotypes using variants and prepare LP inputs
             let haplotypes: Vec<Haplotype> = var_filt_haplotype_variants
                 .iter()
@@ -79,7 +79,8 @@ impl Caller {
             let candidate_matrix = CandidateMatrix::new(&var_filt_haplotype_variants).unwrap();
             let identical_haplotypes_map = candidate_matrix.find_identical_haplotypes(haplotypes);
             let representatives = identical_haplotypes_map.keys().cloned().collect();
-            let repr_haplotype_variants = var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
+            let repr_haplotype_variants =
+                var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
             let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
 
             //employ the linear program
@@ -121,7 +122,7 @@ impl Caller {
                     upper_bond,
                     prior,
                     None,
-                    self.enable_equivalence_class_constraint,
+                    false, //equivalence class constraint is currently disabled.
                     "virus".to_string(),
                 ),
                 &data,
@@ -142,9 +143,12 @@ impl Caller {
                 });
 
             // Third, extend the table with identical haplotypes
-            let (new_event_posteriors, all_haplotypes) =
-                extend_resulting_table(&lp_haplotypes, &event_posteriors, &identical_haplotypes_map)
-                    .unwrap();
+            let (new_event_posteriors, all_haplotypes) = extend_resulting_table(
+                &lp_haplotypes,
+                &event_posteriors,
+                &identical_haplotypes_map,
+            )
+            .unwrap();
 
             //plot the best solution as final solution plot
             let (best_fractions, _) = new_event_posteriors.iter().next().unwrap();
@@ -240,7 +244,7 @@ fn extend_resulting_table(
     }
     let all_haplotypes: Vec<Haplotype> = all_haplotypes.into_iter().collect();
     dbg!(&all_haplotypes);
-    
+
     //initialize new event_posteriors
     let mut new_event_posteriors = Vec::new();
 
@@ -298,14 +302,20 @@ fn filter_representatives(
 ) -> Vec<Haplotype> {
     let mut representative_set = BTreeSet::new();
     let mut visited = HashSet::new();
-    
+
     //precompute zero-distance clusters in a HashMap for fast lookup
     let mut zero_distance_clusters: HashMap<Haplotype, Vec<Haplotype>> = HashMap::new();
-    
+
     for ((h1, h2), &distance) in &*distance_matrix {
         if distance == 0 {
-            zero_distance_clusters.entry(h1.clone()).or_default().push(h2.clone());
-            zero_distance_clusters.entry(h2.clone()).or_default().push(h1.clone());
+            zero_distance_clusters
+                .entry(h1.clone())
+                .or_default()
+                .push(h2.clone());
+            zero_distance_clusters
+                .entry(h2.clone())
+                .or_default()
+                .push(h1.clone());
         }
     }
 
@@ -320,7 +330,8 @@ fn filter_representatives(
         //retrieve precomputed zero-distance neighbors
         if let Some(neighbors) = zero_distance_clusters.get(haplotype) {
             for neighbor in neighbors {
-                if !visited.contains(neighbor) { //to prevent redundant addition
+                if !visited.contains(neighbor) {
+                    //to prevent redundant addition
                     group.push(neighbor.clone());
                     visited.insert(neighbor.clone());
                 }

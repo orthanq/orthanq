@@ -18,8 +18,6 @@ use rust_htslib::bcf::{
 use good_lp::IntoAffineExpression;
 use good_lp::*;
 use good_lp::{variable, Expression};
-// use good_lp::{Variable, Expression, Constraint, ProblemVariables, SolverModel, default_solver};
-// use good_lp::solvers::CbcSolver;
 
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
@@ -32,9 +30,6 @@ use std::fs;
 use std::io::Write;
 use std::str::FromStr;
 use std::{path::PathBuf, str};
-use rayon::prelude::*;
-use rayon::ThreadPoolBuilder;
-use rayon::current_num_threads;
 
 #[derive(Derefable, Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize)]
 pub struct VariantID(#[deref] pub i32);
@@ -82,47 +77,47 @@ impl CandidateMatrix {
         });
         Ok(CandidateMatrix(candidate_matrix))
     }
-    pub fn compute_hamming_distance(
-        &self,
-        haplotypes: &Vec<Haplotype>,
-    ) -> DistanceMatrix {
-        let mut distances: BTreeMap<(Haplotype, Haplotype), usize> = BTreeMap::new();
-        let haplotype_count = haplotypes.len();
-        if haplotype_count == 0 {
-            return DistanceMatrix(distances);
-        }
-        ThreadPoolBuilder::new().num_threads(20).build_global().unwrap();
-        let num_threads = current_num_threads();
-        println!("Rayon is using {} threads.", num_threads);
-    
-        // Parallelizing using Rayon
-        let distances: BTreeMap<(Haplotype, Haplotype), usize> = (0..haplotype_count)
-            .into_par_iter()
-            .flat_map_iter(|i| {
-                (i + 1..haplotype_count).map(move |j| {
-                    let mut distance = 0;
+    // pub fn compute_hamming_distance(
+    //     &self,
+    //     haplotypes: &Vec<Haplotype>,
+    // ) -> DistanceMatrix {
+    //     let mut distances: BTreeMap<(Haplotype, Haplotype), usize> = BTreeMap::new();
+    //     let haplotype_count = haplotypes.len();
+    //     if haplotype_count == 0 {
+    //         return DistanceMatrix(distances);
+    //     }
+    //     ThreadPoolBuilder::new().num_threads(20).build_global().unwrap();
+    //     let num_threads = current_num_threads();
+    //     println!("Rayon is using {} threads.", num_threads);
 
-                    // Iterate over the variants and compute Hamming distance
-                    for (bitvec, _) in self.0.values() {
-                        let bits1 = bitvec.get(i as u64);
-                        let bits2 = bitvec.get(j as u64);
+    //     // Parallelizing using Rayon
+    //     let distances: BTreeMap<(Haplotype, Haplotype), usize> = (0..haplotype_count)
+    //         .into_par_iter()
+    //         .flat_map_iter(|i| {
+    //             (i + 1..haplotype_count).map(move |j| {
+    //                 let mut distance = 0;
 
-                        // XOR operation (bitwise difference)
-                        if bits1 != bits2 {
-                            distance += 1;
-                        }
-                    }
+    //                 // Iterate over the variants and compute Hamming distance
+    //                 for (bitvec, _) in self.0.values() {
+    //                     let bits1 = bitvec.get(i as u64);
+    //                     let bits2 = bitvec.get(j as u64);
 
-                    ((haplotypes[i].clone(), haplotypes[j].clone()), distance)
-                })
-            })
-            .collect();
-        //print the distances
-        for ((hap1, hap2), distance) in &distances {
-            println!("Distance between {:?} and {:?}: {}", hap1, hap2, distance);
-        }
-        DistanceMatrix(distances)
-    }
+    //                     // XOR operation (bitwise difference)
+    //                     if bits1 != bits2 {
+    //                         distance += 1;
+    //                     }
+    //                 }
+
+    //                 ((haplotypes[i].clone(), haplotypes[j].clone()), distance)
+    //             })
+    //         })
+    //         .collect();
+    //     //print the distances
+    //     for ((hap1, hap2), distance) in &distances {
+    //         println!("Distance between {:?} and {:?}: {}", hap1, hap2, distance);
+    //     }
+    //     DistanceMatrix(distances)
+    // }
     pub fn find_identical_haplotypes(
         &self,
         haplotypes: Vec<Haplotype>,
@@ -135,12 +130,13 @@ impl CandidateMatrix {
 
             // Create the signature by extracting bits from each variant's BitVec
             for (variant_id, (bitvec, _)) in &self.0 {
-                let presence = bitvec.get(index as u64); 
+                let presence = bitvec.get(index as u64);
                 signature.push(presence);
             }
 
             // Group haplotypes with the same signature
-            signature_map.entry(signature)
+            signature_map
+                .entry(signature)
                 .or_insert_with(Vec::new)
                 .push(haplotype.clone());
         }
@@ -149,7 +145,7 @@ impl CandidateMatrix {
         let mut representative_map: BTreeMap<Haplotype, Vec<Haplotype>> = BTreeMap::new();
 
         for (_signature, group) in signature_map {
-            let representative = group[0].clone();  // First haplotype as representative
+            let representative = group[0].clone(); // First haplotype as representative
             representative_map.insert(representative, group);
         }
 
@@ -249,17 +245,8 @@ impl VariantCalls {
     }
 }
 
-// #[derive(Clone, Debug, Eq, PartialEq, PartialOrd)]
-// pub enum VariantStatus {
-//     Present,
-//     NotPresent,
-//     Unknown,
-// }
-
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, PartialOrd, DerefMut)]
-pub struct HaplotypeVariants(
-    #[deref] pub BTreeMap<VariantID, BTreeMap<Haplotype, (bool, bool)>>,
-);
+pub struct HaplotypeVariants(#[deref] pub BTreeMap<VariantID, BTreeMap<Haplotype, (bool, bool)>>);
 
 #[derive(Derefable, Debug, Clone)]
 pub struct HaplotypeGraph {
@@ -293,15 +280,9 @@ impl HaplotypeVariants {
                 for gta in gts.get(index).iter().skip(1) {
                     //maternal and paternal gts will be the same in the vcf i.e. 0|0 and 1|1
                     if *gta == Unphased(1) || *gta == Phased(1) {
-                        matrices.insert(
-                            haplotype.clone(),
-                            (true, loci[index] == &[1]),
-                        );
+                        matrices.insert(haplotype.clone(), (true, loci[index] == &[1]));
                     } else {
-                        matrices.insert(
-                            haplotype.clone(),
-                            (false, loci[index] == &[1]),
-                        );
+                        matrices.insert(haplotype.clone(), (false, loci[index] == &[1]));
                     }
                 }
             }
@@ -324,10 +305,8 @@ impl HaplotypeVariants {
     }
 
     pub fn filter_for_haplotypes(&self, haplotypes: &Vec<Haplotype>) -> Result<Self> {
-        let mut new_haplotype_variants: BTreeMap<
-            VariantID,
-            BTreeMap<Haplotype, (bool, bool)>,
-        > = BTreeMap::new();
+        let mut new_haplotype_variants: BTreeMap<VariantID, BTreeMap<Haplotype, (bool, bool)>> =
+            BTreeMap::new();
         for (variant, matrix_map) in self.iter() {
             let mut new_matrix_map = BTreeMap::new();
             for (haplotype_m, (variant_status, coverage_status)) in matrix_map {
@@ -599,7 +578,8 @@ pub fn plot_prediction(
                             variant: *variant_id,
                             haplotype: haplotype.to_string(),
                         });
-                        if *dp != 0 { //todo: check this part again, also, check LP plot
+                        if *dp != 0 {
+                            //todo: check this part again, also, check LP plot
                             plot_data_variants.push(DatasetVariants {
                                 variant: *variant_id,
                                 vaf: af.clone(),
@@ -615,9 +595,9 @@ pub fn plot_prediction(
             .iter()
             .zip(variant_calls.iter())
             .for_each(|((genotypes, covered), (variant_id, (af, afd, dp)))| {
-                    let mut b_check = false;
-                    let mut b_fraction = 0.0;
-                    best_variables
+                let mut b_check = false;
+                let mut b_fraction = 0.0;
+                best_variables
                     .iter()
                     .zip(haplotypes.iter())
                     .enumerate()
@@ -684,18 +664,17 @@ pub fn plot_prediction(
                                 }
                             }
                         }
-
                     });
-                    if b_check {
-                        plot_data_haplotype_variants.push(DatasetHaplotypeVariants {
-                            variant: *variant_id,
-                            haplotype: "B".to_string(),
-                        });
-                        plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
-                            haplotype: "B".to_string(),
-                            fraction: NotNan::new(b_fraction).unwrap(),
-                        });
-                    }
+                if b_check {
+                    plot_data_haplotype_variants.push(DatasetHaplotypeVariants {
+                        variant: *variant_id,
+                        haplotype: "B".to_string(),
+                    });
+                    plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
+                        haplotype: "B".to_string(),
+                        fraction: NotNan::new(b_fraction).unwrap(),
+                    });
+                }
             });
         file_name.push_str("final_solution.json");
     }
@@ -750,7 +729,7 @@ pub fn linear_program(
 
     //define temporary variables
     let t_vars: Vec<Variable> = problem.add_vector(variable().min(0.0).max(1.0), constraints.len());
-    
+
     // introduce auxiliary binary variables for sparsity (these will act as switches for real variables)
     let binary_vars: Vec<Variable> =
         problem.add_vector(variable().integer().min(0.0).max(1.0), variables.len());
@@ -799,7 +778,7 @@ pub fn linear_program(
         println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
         best_variables.push(solution.value(var.clone()).clone());
         if solution.value(*var) > 0.0 {
-        //the speed of fraction exploration is managable in case of diploid priors
+            //the speed of fraction exploration is managable in case of diploid priors
             lp_haplotypes.insert(haplotype.clone(), solution.value(*var).clone());
         }
     }
@@ -907,17 +886,7 @@ pub fn write_results(
                         if genotypes[i as u64] && covered[i as u64] {
                             vaf_sum += *fraction;
                             counter += 1;
-                        } 
-                        // else if genotypes[i] == VariantStatus::Unknown && covered[i as u64] {
-                        //     todo!();
-                        // } else if genotypes[i] == VariantStatus::Unknown
-                        //     && covered[i as u64] == false
-                        // {
-                        //     todo!();
-                        // } 
-                        else if genotypes[i as u64] == false
-                            && covered[i as u64] == false
-                        {
+                        } else if genotypes[i as u64] == false && covered[i as u64] == false {
                             denom -= *fraction;
                         }
                     });
@@ -1001,9 +970,6 @@ pub fn write_results(
     }
 
     wtr.write_record(records)?;
-
-    //write the rest of the records
-    // dbg!(&event_posteriors);
 
     if variant_info {
         event_posteriors

@@ -191,10 +191,10 @@ impl Likelihood {
                     event.iter().enumerate().for_each(|(i, fraction)| {
                         if genotypes[i as u64] && covered[i as u64] {
                             vaf_sum += *fraction;
-                        } 
+                        }
                         // else if genotypes[i] == VariantStatus::Unknown || covered[i as u64] {
                         //     ()
-                        // } 
+                        // }
                         else if !genotypes[i as u64] && !covered[i as u64] {
                             denom -= *fraction;
                         }
