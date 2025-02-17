@@ -82,19 +82,20 @@ impl Caller {
             let repr_haplotype_variants = var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
             let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
 
-            //employ the linear program and find the resulting haplotypes that are found and *extended* depending on --extend-haplotypes and --num-extend-haplotypes (0 default)
+            //employ the linear program
+            //note: extension is disabled at the moment. see notes on linear_program function.
             let lp_haplotypes = haplotypes::linear_program(
                 &self.outcsv,
                 &repr_candidate_matrix,
                 &representatives,
                 &filtered_calls,
                 self.lp_cutoff,
-                self.extend_haplotypes.unwrap_or(true),
-                self.num_extend_haplotypes, //for now it has to be 0 only
+                // self.extend_haplotypes.unwrap_or(true),
+                // self.num_extend_haplotypes, //for now it has to be 0 only
                 self.num_constraint_haplotypes,
             )?;
             dbg!(&lp_haplotypes);
-            
+
             //SECOND, model evaluation using ALL variants but only the LP- selected haplotypes
             //prepare inputs of model evaluation
             let hap_filt_haplotype_variants =
