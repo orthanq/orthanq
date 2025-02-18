@@ -929,7 +929,7 @@ pub fn write_results(
     let mut records = Vec::new();
     // let mut event_posteriors = computed_model.event_posteriors(); //compute a second time because event_posteriors can't be cloned from above.
     let (haplotype_frequencies, best_density) = event_posteriors.iter().next().unwrap();
-    let best_odds = 1;
+    let best_odds: f64 = 1.00;
     let format_f64 = |number: f64, records: &mut Vec<String>| {
         if number <= 0.01 {
             records.push(format!("{:+.2e}", number))
@@ -938,12 +938,12 @@ pub fn write_results(
         }
     };
     format_f64(best_density.exp(), &mut records);
-    records.push(best_odds.to_string());
+    records.push(format!("{:.2}", best_odds));
     let format_freqs = |frequency: NotNan<f64>, records: &mut Vec<String>| {
         if frequency <= NotNan::new(0.01).unwrap() {
-            records.push(format!("{:+.2e}", NotNan::into_inner(frequency)))
+            records.push(format!("{:+.4e}", NotNan::into_inner(frequency)))
         } else {
-            records.push(format!("{:.2}", frequency))
+            records.push(format!("{:.4}", frequency))
         }
     };
     haplotype_frequencies
