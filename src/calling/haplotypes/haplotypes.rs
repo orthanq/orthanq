@@ -121,7 +121,10 @@ impl CandidateMatrix {
     pub fn find_identical_haplotypes(
         &self,
         haplotypes: Vec<Haplotype>,
-    ) -> BTreeMap<Haplotype, Vec<Haplotype>> {
+    ) -> (
+        BTreeMap<Haplotype, Vec<Haplotype>>,
+        BTreeMap<Haplotype, Vec<Haplotype>>,
+    ) {
         let mut signature_map: BTreeMap<Vec<bool>, Vec<Haplotype>> = BTreeMap::new();
 
         // Iterate over each haplotype to generate its signature
@@ -141,15 +144,22 @@ impl CandidateMatrix {
                 .push(haplotype.clone());
         }
 
-        // Create a HashMap where the key is the representative haplotype
-        let mut representative_map: BTreeMap<Haplotype, Vec<Haplotype>> = BTreeMap::new();
+        // Create a BTreeMap where each haplotype from groups has its own entry
+        let mut haplotype_map: BTreeMap<Haplotype, Vec<Haplotype>> = BTreeMap::new();
+
+        //and create a BTreeMap where every group has only one representative key
+        let mut haplotype_map_representative: BTreeMap<Haplotype, Vec<Haplotype>> = BTreeMap::new();
 
         for (_signature, group) in signature_map {
             let representative = group[0].clone(); // First haplotype as representative
-            representative_map.insert(representative, group);
+            haplotype_map_representative.insert(representative, group.clone());
+
+            for haplotype in &group {
+                haplotype_map.insert(haplotype.clone(), group.clone());
+            }
         }
 
-        representative_map
+        (haplotype_map_representative, haplotype_map)
     }
 }
 

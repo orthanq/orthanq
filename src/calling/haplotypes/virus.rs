@@ -77,8 +77,10 @@ impl Caller {
                 .cloned()
                 .collect();
             let candidate_matrix = CandidateMatrix::new(&var_filt_haplotype_variants).unwrap();
-            let identical_haplotypes_map = candidate_matrix.find_identical_haplotypes(haplotypes);
-            let representatives = identical_haplotypes_map.keys().cloned().collect();
+            //generate one map with representative haplotypes as key (required for lp) and one map with all haplotypes as key (required for extension of resulting table)
+            let (identical_haplotypes_map_rep, identical_haplotypes_map) =
+                candidate_matrix.find_identical_haplotypes(haplotypes);
+            let representatives = identical_haplotypes_map_rep.keys().cloned().collect();
             let repr_haplotype_variants =
                 var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
             let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
@@ -224,13 +226,45 @@ impl Caller {
         Ok(())
     }
 }
+fn generate_combinations(
+    expanded_fractions: &Vec<AlleleFreq>,
+    haplotype_indices: &BTreeMap<Haplotype, usize>,
+    identical_haplotypes_map: &BTreeMap<Haplotype, Vec<Haplotype>>,
+) -> Vec<Vec<AlleleFreq>> {
+    let mut result = vec![expanded_fractions.clone()];
+
+    for (cur_haplotype, &idx_current) in haplotype_indices.iter() {
+        let fraction = expanded_fractions[idx_current];
+
+        if fraction > NotNan::new(0.0).unwrap() {
+            if let Some(identical_haplotypes) = identical_haplotypes_map.get(cur_haplotype) {
+                let mut new_combinations = Vec::new();
+
+                for existing_row in &result {
+                    for ident_h in identical_haplotypes {
+                        if ident_h != cur_haplotype {
+                            let idx_ident_h = haplotype_indices.get(ident_h).unwrap();
+                            let mut alt_row = existing_row.clone();
+                            alt_row[*idx_ident_h] = fraction;
+                            alt_row[idx_current] = NotNan::new(0.0).unwrap();
+                            new_combinations.push(alt_row);
+                        }
+                    }
+                }
+
+                result.extend(new_combinations);
+            }
+        }
+    }
+
+    result
+}
 
 fn extend_resulting_table(
     representatives: &Vec<Haplotype>,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     identical_haplotypes_map: &BTreeMap<Haplotype, Vec<Haplotype>>,
 ) -> Result<(Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>)> {
-    // collect all lp haplotypes (with all distances)
     let mut all_haplotypes = BTreeSet::new();
     for haplotype in representatives {
         all_haplotypes.insert(haplotype.clone());
@@ -238,58 +272,102 @@ fn extend_resulting_table(
         all_haplotypes.extend(identical_haplotypes.clone());
     }
     let all_haplotypes: Vec<Haplotype> = all_haplotypes.into_iter().collect();
-    dbg!(&all_haplotypes);
 
-    //initialize new event_posteriors
     let mut new_event_posteriors = Vec::new();
 
-    // create indices for every haplotype
     let haplotype_indices: BTreeMap<Haplotype, usize> = all_haplotypes
         .iter()
         .enumerate()
         .map(|(i, hap)| (hap.clone(), i))
         .collect();
-    dbg!(&haplotype_indices);
 
     for (fractions, logprob) in event_posteriors {
-        // create a new fractions vector by extending existing fractions initialized with 0.0
-        let mut expanded_fractions: Vec<AlleleFreq> =
-            vec![NotNan::new(0.0).unwrap(); all_haplotypes.len()];
+        let mut expanded_fractions = vec![NotNan::new(0.0).unwrap(); all_haplotypes.len()];
 
-        // extend fractions using indices from representative haplotypes
         for (i, &fraction) in fractions.iter().enumerate() {
             if let Some(&idx) = haplotype_indices.get(&representatives[i]) {
                 expanded_fractions[idx] = fraction;
             }
         }
 
-        //push the row to event posteriors
-        new_event_posteriors.push((
-            HaplotypeFractions(expanded_fractions.clone()),
-            logprob.clone(),
-        ));
+        let all_combinations = generate_combinations(
+            &expanded_fractions,
+            &haplotype_indices,
+            identical_haplotypes_map,
+        );
 
-        //push alternative solutions to event posteriors
-        for (cur_haplotype, idx_current) in haplotype_indices.iter() {
-            // dbg!(&cur_haplotype, &idx_current);
-            let fraction = expanded_fractions[*idx_current];
-            // dbg!(&fraction);
-            let identical_haplotypes = identical_haplotypes_map.get(cur_haplotype).unwrap();
-            if fraction > NotNan::new(0.0).unwrap() {
-                for ident_h in identical_haplotypes.iter() {
-                    if ident_h != cur_haplotype {
-                        let idx_ident_h = haplotype_indices.get(ident_h).unwrap();
-                        let mut alt_row = expanded_fractions.clone();
-                        alt_row[*idx_ident_h] = fraction;
-                        alt_row[*idx_current] = NotNan::new(0.0).unwrap();
-                        new_event_posteriors.push((HaplotypeFractions(alt_row), logprob.clone()));
-                    }
-                }
-            }
+        for combination in all_combinations {
+            new_event_posteriors.push((HaplotypeFractions(combination), logprob.clone()));
         }
     }
+
     Ok((new_event_posteriors, all_haplotypes))
 }
+// fn extend_resulting_table(
+//     representatives: &Vec<Haplotype>,
+//     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
+//     identical_haplotypes_map: &BTreeMap<Haplotype, Vec<Haplotype>>,
+// ) -> Result<(Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>)> {
+//     // collect all lp haplotypes (with all distances)
+//     let mut all_haplotypes = BTreeSet::new();
+//     for haplotype in representatives {
+//         all_haplotypes.insert(haplotype.clone());
+//         let identical_haplotypes = identical_haplotypes_map.get(haplotype).unwrap();
+//         all_haplotypes.extend(identical_haplotypes.clone());
+//     }
+//     let all_haplotypes: Vec<Haplotype> = all_haplotypes.into_iter().collect();
+//     dbg!(&all_haplotypes);
+
+//     //initialize new event_posteriors
+//     let mut new_event_posteriors = Vec::new();
+
+//     // create indices for every haplotype
+//     let haplotype_indices: BTreeMap<Haplotype, usize> = all_haplotypes
+//         .iter()
+//         .enumerate()
+//         .map(|(i, hap)| (hap.clone(), i))
+//         .collect();
+//     dbg!(&haplotype_indices);
+
+//     for (fractions, logprob) in event_posteriors {
+//         // create a new fractions vector by extending existing fractions initialized with 0.0
+//         let mut expanded_fractions: Vec<AlleleFreq> =
+//             vec![NotNan::new(0.0).unwrap(); all_haplotypes.len()];
+
+//         // extend fractions using indices from representative haplotypes
+//         for (i, &fraction) in fractions.iter().enumerate() {
+//             if let Some(&idx) = haplotype_indices.get(&representatives[i]) {
+//                 expanded_fractions[idx] = fraction;
+//             }
+//         }
+
+//         //push the row to event posteriors
+//         new_event_posteriors.push((
+//             HaplotypeFractions(expanded_fractions.clone()),
+//             logprob.clone(),
+//         ));
+
+//         //push alternative solutions to event posteriors
+//         for (cur_haplotype, idx_current) in haplotype_indices.iter() {
+//             dbg!(&cur_haplotype, &idx_current);
+//             let fraction = expanded_fractions[*idx_current];
+//             // dbg!(&fraction);
+//             let identical_haplotypes = identical_haplotypes_map.get(cur_haplotype).unwrap();
+//             if fraction > NotNan::new(0.0).unwrap() {
+//                 for ident_h in identical_haplotypes.iter() {
+//                     if ident_h != cur_haplotype {
+//                         let idx_ident_h = haplotype_indices.get(ident_h).unwrap();
+//                         let mut alt_row = expanded_fractions.clone();
+//                         alt_row[*idx_ident_h] = fraction;
+//                         alt_row[*idx_current] = NotNan::new(0.0).unwrap();
+//                         new_event_posteriors.push((HaplotypeFractions(alt_row), logprob.clone()));
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//     Ok((new_event_posteriors, all_haplotypes))
+// }
 
 fn filter_representatives(
     haplotypes: Vec<Haplotype>,
