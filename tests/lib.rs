@@ -38,8 +38,8 @@ fn check_haplotype_fractions_5050() {
             if header.contains("B*") {
                 let splitted = header.split(':').collect::<Vec<&str>>();
                 let first_two = splitted[0].to_owned() + ":" + splitted[1];
-                if (first_two == "B*44:02" && fraction == "0.50")
-                    || (first_two == "B*44:03" && fraction == "0.50")
+                if (first_two == "B*44:02" && fraction == "0.5000")
+                    || (first_two == "B*44:03" && fraction == "0.5000")
                 {
                     check_two_alleles += 1;
                 }
