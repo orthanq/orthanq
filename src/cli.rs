@@ -286,7 +286,7 @@ pub enum CallKind {
             default_value = "1",
             help = "Number of variant distances to extend haplotype list coming from the linear program."
         )]
-        num_extend_haplotypes: i64, 
+        num_extend_haplotypes: i64,
         #[structopt(
             long,
             default_value = "5",

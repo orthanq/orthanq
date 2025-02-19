@@ -791,7 +791,8 @@ pub fn linear_program(
                             }
                         }
                         //0 distance is excluded because lp gets only the representative, nonidentical haplotypes as input.
-                        if (difference.len() as i64 <= num_variant_distance && difference.len() as i64 != 0)
+                        if (difference.len() as i64 <= num_variant_distance
+                            && difference.len() as i64 != 0)
                             && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
                                 <= num_variant_distance)
                             && !extended_haplotypes.contains(&haplotype)
