@@ -102,8 +102,8 @@ impl Caller {
                 &haplotypes,
                 &variant_calls,
                 self.lp_cutoff,
-                // self.extend_haplotypes.unwrap(),
-                // self.num_extend_haplotypes,
+                self.extend_haplotypes.unwrap(),
+                self.num_extend_haplotypes, //extension functionality for hla case using uniform priors is not recommended for now as it will lead to performance problems.
                 self.num_constraint_haplotypes,
             )?;
             dbg!(&lp_haplotypes);

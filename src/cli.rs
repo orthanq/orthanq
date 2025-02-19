@@ -242,7 +242,7 @@ pub enum CallKind {
         threshold_equivalence_class: usize,
         #[structopt(
             long,
-            default_value = "3",
+            default_value = "1",
             help = "Number of variant distances to extend haplotype list coming from the linear program."
         )]
         num_extend_haplotypes: i64,
@@ -278,32 +278,15 @@ pub enum CallKind {
         lp_cutoff: f64,
         #[structopt(
             long,
-            help = "Enable equivalence based constrain during model exploration."
-        )]
-        enable_equivalence_class_constraint: bool,
-        #[structopt(
-            long,
             help = "Enable extension of haplotypes that are computed with linear program."
         )]
         extend_haplotypes: Option<bool>,
-        // #[structopt(
-        //     long,
-        //     default_value = "0.35",
-        //     help = "Percent threshold for evaluated variants."
-        // )]
-        // threshold_considered_variants: f64,
         #[structopt(
             long,
-            default_value = "2",
-            help = "Threshold for assigning equivalence classes."
-        )]
-        threshold_equivalence_class: usize,
-        #[structopt(
-            long,
-            default_value = "0",
+            default_value = "1",
             help = "Number of variant distances to extend haplotype list coming from the linear program."
         )]
-        num_extend_haplotypes: i64, //larger than 0 is not yet supported.
+        num_extend_haplotypes: i64, 
         #[structopt(
             long,
             default_value = "5",
@@ -428,10 +411,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 output,
                 prior,
                 lp_cutoff,
-                enable_equivalence_class_constraint,
                 extend_haplotypes,
-                threshold_equivalence_class,
-                // threshold_considered_variants,
                 num_extend_haplotypes,
                 num_constraint_haplotypes,
             } => {
@@ -441,10 +421,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .outcsv(output)
                     .prior(prior)
                     .lp_cutoff(lp_cutoff)
-                    .enable_equivalence_class_constraint(enable_equivalence_class_constraint)
                     .extend_haplotypes(extend_haplotypes)
-                    .threshold_equivalence_class(threshold_equivalence_class)
-                    // .threshold_considered_variants(threshold_considered_variants)
                     .num_extend_haplotypes(num_extend_haplotypes)
                     .num_constraint_haplotypes(num_constraint_haplotypes)
                     .build()

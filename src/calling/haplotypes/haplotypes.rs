@@ -673,8 +673,8 @@ pub fn linear_program(
     haplotypes: &Vec<Haplotype>,
     variant_calls: &VariantCalls,
     lp_cutoff: f64,
-    // extend_haplotypes: bool,
-    // num_variant_distance: i64,
+    extend_haplotypes: bool,
+    num_variant_distance: i64,
     num_constraint_haplotypes: i32,
 ) -> Result<Vec<Haplotype>> {
     //first init the problem
@@ -769,45 +769,44 @@ pub fn linear_program(
         &best_variables,
     )?;
     let lp_haplotypes_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
-    Ok(lp_haplotypes_keys)
-    //extension is disabled until we figure out a way to optimize the performance. In case of activation, do not extend by 0 distance but with distance > 1.
-    // //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list.
-    // //then sort by hamming distance, take the closest x additional alleles according to 'num_variant_distance'.
-    // //this is done by storing only the variants that have GT:1 and C:1 for all haplotypes in haplotype_dict and remaining variants are not included.
-    // let mut extended_haplotypes = Vec::new();
-    // if extend_haplotypes {
-    //     lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
-    //         let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
-    //         haplotype_dict
-    //             .iter()
-    //             .for_each(|(haplotype, haplotype_variants)| {
-    //                 if &variants == haplotype_variants && !extended_haplotypes.contains(haplotype) {
-    //                     //fix: the last operand '&&' is required to avoid duplicate additions
-    //                     extended_haplotypes.push(haplotype.clone());
-    //                 } else {
-    //                     let mut difference = vec![];
-    //                     for i in haplotype_variants.iter() {
-    //                         if !variants.contains(&i) {
-    //                             difference.push(i);
-    //                         }
-    //                     }
-    //                     if (difference.len() as i64 <= num_variant_distance)
-    //                         && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
-    //                             <= num_variant_distance)
-    //                         && !extended_haplotypes.contains(&haplotype)
-    //                     //fix: the last operand '&&' is required to avoid duplicate additions
-    //                     {
-    //                         extended_haplotypes.push(haplotype.clone());
-    //                     }
-    //                 }
-    //             });
-    //     });
-    //     dbg!(&extended_haplotypes);
-    //     Ok(extended_haplotypes)
-    // } else {
-    //     dbg!(&extended_haplotypes);
-    //     Ok(lp_haplotypes_keys)
-    // }
+    dbg!(&lp_haplotypes_keys);
+    //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list.
+    //then sort by hamming distance, take the closest x additional alleles according to 'num_variant_distance'.
+    //this is done by storing only the variants that have GT:1 and C:1 for all haplotypes in haplotype_dict and remaining variants are not included.
+    let mut extended_haplotypes = Vec::new();
+    if extend_haplotypes {
+        lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
+            let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
+            haplotype_dict
+                .iter()
+                .for_each(|(haplotype, haplotype_variants)| {
+                    if &variants == haplotype_variants && !extended_haplotypes.contains(haplotype) {
+                        //fix: the last operand '&&' is required to avoid duplicate additions
+                        extended_haplotypes.push(haplotype.clone());
+                    } else {
+                        let mut difference = vec![];
+                        for i in haplotype_variants.iter() {
+                            if !variants.contains(&i) {
+                                difference.push(i);
+                            }
+                        }
+                        //0 distance is excluded because lp gets only the representative, nonidentical haplotypes as input.
+                        if (difference.len() as i64 <= num_variant_distance && difference.len() as i64 != 0)
+                            && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
+                                <= num_variant_distance)
+                            && !extended_haplotypes.contains(&haplotype)
+                        //fix: the last operand '&&' is required to avoid duplicate additions
+                        {
+                            extended_haplotypes.push(haplotype.clone());
+                        }
+                    }
+                });
+        });
+        dbg!(&extended_haplotypes);
+        Ok(extended_haplotypes)
+    } else {
+        Ok(lp_haplotypes_keys)
+    }
 }
 
 pub fn write_results(

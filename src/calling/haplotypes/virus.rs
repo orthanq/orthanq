@@ -37,10 +37,7 @@ pub struct Caller {
     outcsv: PathBuf,
     prior: String,
     lp_cutoff: f64,
-    enable_equivalence_class_constraint: bool,
     extend_haplotypes: Option<bool>,
-    // threshold_considered_variants: f64,
-    threshold_equivalence_class: usize,
     num_extend_haplotypes: i64,
     num_constraint_haplotypes: i32,
 }
@@ -93,8 +90,8 @@ impl Caller {
                 &representatives,
                 &filtered_calls,
                 self.lp_cutoff,
-                // self.extend_haplotypes.unwrap_or(true),
-                // self.num_extend_haplotypes, //for now it has to be 0 only
+                self.extend_haplotypes.unwrap_or(false),
+                self.num_extend_haplotypes, //extension functionality for virus case is not recommended for now as it will lead to performance problems.
                 self.num_constraint_haplotypes,
             )?;
 
