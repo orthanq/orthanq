@@ -37,7 +37,7 @@ pub struct Caller {
     outcsv: PathBuf,
     prior: String,
     lp_cutoff: f64,
-    extend_haplotypes: Option<bool>,
+    extend_haplotypes: bool,
     num_extend_haplotypes: i64,
     num_constraint_haplotypes: i32,
 }
@@ -90,7 +90,7 @@ impl Caller {
                 &representatives,
                 &filtered_calls,
                 self.lp_cutoff,
-                self.extend_haplotypes.unwrap_or(false),
+                self.extend_haplotypes,
                 self.num_extend_haplotypes, //extension functionality for virus case is not recommended for now as it will lead to performance problems.
                 self.num_constraint_haplotypes,
             )?;

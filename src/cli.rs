@@ -233,7 +233,7 @@ pub enum CallKind {
             long,
             help = "Enable extension of haplotypes that are computed with linear program."
         )]
-        extend_haplotypes: Option<bool>,
+        extend_haplotypes: bool,
         #[structopt(
             long,
             default_value = "1",
@@ -242,7 +242,7 @@ pub enum CallKind {
         threshold_equivalence_class: usize,
         #[structopt(
             long,
-            default_value = "1",
+            default_value = "3",
             help = "Number of variant distances to extend haplotype list coming from the linear program."
         )]
         num_extend_haplotypes: i64,
@@ -280,7 +280,7 @@ pub enum CallKind {
             long,
             help = "Enable extension of haplotypes that are computed with linear program."
         )]
-        extend_haplotypes: Option<bool>,
+        extend_haplotypes: bool,
         #[structopt(
             long,
             default_value = "1",
