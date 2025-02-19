@@ -77,47 +77,6 @@ impl CandidateMatrix {
         });
         Ok(CandidateMatrix(candidate_matrix))
     }
-    // pub fn compute_hamming_distance(
-    //     &self,
-    //     haplotypes: &Vec<Haplotype>,
-    // ) -> DistanceMatrix {
-    //     let mut distances: BTreeMap<(Haplotype, Haplotype), usize> = BTreeMap::new();
-    //     let haplotype_count = haplotypes.len();
-    //     if haplotype_count == 0 {
-    //         return DistanceMatrix(distances);
-    //     }
-    //     ThreadPoolBuilder::new().num_threads(20).build_global().unwrap();
-    //     let num_threads = current_num_threads();
-    //     println!("Rayon is using {} threads.", num_threads);
-
-    //     // Parallelizing using Rayon
-    //     let distances: BTreeMap<(Haplotype, Haplotype), usize> = (0..haplotype_count)
-    //         .into_par_iter()
-    //         .flat_map_iter(|i| {
-    //             (i + 1..haplotype_count).map(move |j| {
-    //                 let mut distance = 0;
-
-    //                 // Iterate over the variants and compute Hamming distance
-    //                 for (bitvec, _) in self.0.values() {
-    //                     let bits1 = bitvec.get(i as u64);
-    //                     let bits2 = bitvec.get(j as u64);
-
-    //                     // XOR operation (bitwise difference)
-    //                     if bits1 != bits2 {
-    //                         distance += 1;
-    //                     }
-    //                 }
-
-    //                 ((haplotypes[i].clone(), haplotypes[j].clone()), distance)
-    //             })
-    //         })
-    //         .collect();
-    //     //print the distances
-    //     for ((hap1, hap2), distance) in &distances {
-    //         println!("Distance between {:?} and {:?}: {}", hap1, hap2, distance);
-    //     }
-    //     DistanceMatrix(distances)
-    // }
     pub fn find_identical_haplotypes(
         &self,
         haplotypes: Vec<Haplotype>,
@@ -795,24 +754,9 @@ pub fn linear_program(
     let total_hap_const = haplotypes.len() + constraints.len();
     for bin_var in binary_vars.iter() {
         let value = solution.value(*bin_var);
-        // dbg!(&bin_var,&value);
     }
-    // dbg!(&constraints);
-    // let first = 7088-total_hap_const;
-    // let second = 7250-total_hap_const;
-    // let third = 7253-total_hap_const;
-    // let fourth = 7363-total_hap_const;
-    // let fifth = 7415-total_hap_const;
-
-    // dbg!(&first);
-    // dbg!(&variables[first], &haplotypes[first]);
-    // dbg!(&variables[second], &haplotypes[second]);
-    // dbg!(&variables[third], &haplotypes[third]);
-    // dbg!(&variables[fourth], &haplotypes[fourth]);
-    // dbg!(&variables[fifth], &haplotypes[fifth]);
-
     // println!("sum = {}", solution.eval(sum_tvars));
-    dbg!(&lp_haplotypes);
+    // dbg!(&lp_haplotypes);
     //plot the best result
     let candidate_matrix_values: Vec<(BitVec, BitVec)> =
         candidate_matrix.values().cloned().collect();
