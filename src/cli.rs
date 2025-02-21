@@ -217,11 +217,11 @@ pub enum CallKind {
         output: PathBuf,
         #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
         prior: String,
-        #[structopt(
-            long,
-            help = "If true, only common variants of considered haplotypes will be used in the model. Unusable at the moment."
-        )]
-        common_variants: bool,
+        // #[structopt(
+        //     long,
+        //     help = "If true, only common variants of considered haplotypes will be used in the model. Unusable at the moment."
+        // )]
+        // common_variants: bool,
         #[structopt(default_value = "0.01", help = "Cutoff for linear program solutions.")]
         lp_cutoff: f64,
         #[structopt(
@@ -373,11 +373,9 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 haplotype_variants,
                 variant_calls,
                 xml,
-                // max_haplotypes,
-                // min_norm_counts,
                 output,
                 prior,
-                common_variants,
+                // common_variants,
                 lp_cutoff,
                 enable_equivalence_class_constraint,
                 extend_haplotypes,
@@ -393,7 +391,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     // .min_norm_counts(min_norm_counts)
                     .outcsv(output)
                     .prior(prior)
-                    .common_variants(common_variants)
+                    // .common_variants(common_variants)
                     .lp_cutoff(lp_cutoff)
                     .enable_equivalence_class_constraint(enable_equivalence_class_constraint)
                     .extend_haplotypes(extend_haplotypes)

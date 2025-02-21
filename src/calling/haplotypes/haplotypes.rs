@@ -1,9 +1,9 @@
 use crate::model::{AlleleFreq, Data, HaplotypeFractions};
+use crate::model::{Likelihood, Marginal, Posterior, Prior};
 use anyhow::Result;
+use bio::stats::bayesian::model::Model;
 use bio::stats::{probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
-use crate::model::{Likelihood, Marginal, Posterior, Prior};
-use bio::stats::{bayesian::model::Model};
 
 use derefable::Derefable;
 
@@ -28,12 +28,12 @@ use serde::Serialize;
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap};
 
+use derive_new::new;
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 use std::str::FromStr;
 use std::{path::PathBuf, str};
-use std::collections::BTreeSet;
-use derive_new::new;
 
 #[derive(Derefable, Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize)]
 pub struct VariantID(#[deref] pub i32);
@@ -1078,7 +1078,19 @@ pub fn plot_densities(
     Ok(())
 }
 
-pub fn get_event_posteriors(haplotype_variants: &HaplotypeVariants, variant_calls: VariantCalls, application: &str, prior: &String ,outfile: &PathBuf, extend_haplotypes: bool, num_extend_haplotypes: i64, num_constraint_haplotypes: i32, lp_cutoff:f64, enable_equivalence_class_constraint: bool, threshold_equivalence_class: Option<usize>) -> Result<(Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>, Data)> {
+pub fn get_event_posteriors(
+    haplotype_variants: &HaplotypeVariants,
+    variant_calls: VariantCalls,
+    application: &str,
+    prior: &String,
+    outfile: &PathBuf,
+    extend_haplotypes: bool,
+    num_extend_haplotypes: i64,
+    num_constraint_haplotypes: i32,
+    lp_cutoff: f64,
+    enable_equivalence_class_constraint: bool,
+    threshold_equivalence_class: Option<usize>,
+) -> Result<(Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>, Data)> {
     //FIRST, perform linear program using only nonzero DP variants
     //filter variant calls and haplotype variants
     let filtered_calls = variant_calls.without_zero_dp();
@@ -1124,8 +1136,7 @@ pub fn get_event_posteriors(haplotype_variants: &HaplotypeVariants, variant_call
 
     //SECOND, model evaluation using ALL variants but only the LP- selected haplotypes
     //prepare inputs of model evaluation
-    let hap_filt_haplotype_variants =
-        haplotype_variants.filter_for_haplotypes(&lp_haplotypes)?;
+    let hap_filt_haplotype_variants = haplotype_variants.filter_for_haplotypes(&lp_haplotypes)?;
     let model_candidate_matrix = CandidateMatrix::new(&hap_filt_haplotype_variants)?;
 
     //compute model
@@ -1144,15 +1155,17 @@ pub fn get_event_posteriors(haplotype_variants: &HaplotypeVariants, variant_call
 
     if &application == &"hla" {
         //equivalence graph based optimization is at the developmental phase.
-        eq_graph = Some(hap_filt_haplotype_variants
-            .find_equivalence_classes_with_graph(
-                "hla",
-                threshold_equivalence_class.unwrap(),
-                &outfile,
-            ).unwrap());
+        eq_graph = Some(
+            hap_filt_haplotype_variants
+                .find_equivalence_classes_with_graph(
+                    "hla",
+                    threshold_equivalence_class.unwrap(),
+                    &outfile,
+                )
+                .unwrap(),
+        );
         application_name = &"hla";
-
-    } else if &application == &"virus"{
+    } else if &application == &"virus" {
         eq_graph = None;
         application_name = &"virus";
     }
@@ -1183,11 +1196,8 @@ pub fn get_event_posteriors(haplotype_variants: &HaplotypeVariants, variant_call
         });
 
     // Third, extend the table with identical haplotypes
-    let (new_event_posteriors, all_haplotypes) = extend_resulting_table(
-        &lp_haplotypes,
-        &event_posteriors,
-        &identical_haplotypes_map,
-    )?;
+    let (new_event_posteriors, all_haplotypes) =
+        extend_resulting_table(&lp_haplotypes, &event_posteriors, &identical_haplotypes_map)?;
     Ok((new_event_posteriors, all_haplotypes, data))
 }
 fn generate_combinations(

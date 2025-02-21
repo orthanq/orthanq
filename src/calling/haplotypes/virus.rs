@@ -54,100 +54,20 @@ impl Caller {
             self.output_empty_files()?;
             Ok(())
         } else {
-
-            // //FIRST, perform linear program using only nonzero DP variants
-            // //prepare haplotype variants
-            // let haplotype_variants_all = HaplotypeVariants::new(&mut self.haplotype_variants)?;
-
-            // //filter variant calls and haplotype variants
-            // let filtered_calls = variant_calls.without_zero_dp();
-            // let nonzero_dp_variants: Vec<VariantID> = filtered_calls.keys().cloned().collect();
-            // let var_filt_haplotype_variants =
-            //     haplotype_variants_all.filter_for_variants(&nonzero_dp_variants)?;
-
-            // //find identical haplotypes using variants and prepare LP inputs
-            // let haplotypes: Vec<Haplotype> = var_filt_haplotype_variants
-            //     .iter()
-            //     .next()
-            //     .unwrap()
-            //     .1
-            //     .keys()
-            //     .cloned()
-            //     .collect();
-            // let candidate_matrix = CandidateMatrix::new(&var_filt_haplotype_variants).unwrap();
-            // //generate one map with representative haplotypes as key (required for lp) and one map with all haplotypes as key (required for extension of resulting table)
-            // let (identical_haplotypes_map_rep, identical_haplotypes_map) =
-            //     candidate_matrix.find_identical_haplotypes(haplotypes);
-            // let representatives = identical_haplotypes_map_rep.keys().cloned().collect();
-            // let repr_haplotype_variants =
-            //     var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
-            // let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
-
-            // //employ the linear program
-            // //note: extension is disabled at the moment. see notes on linear_program function.
-            // let lp_haplotypes = haplotypes::linear_program(
-            //     &self.outcsv,
-            //     &repr_candidate_matrix,
-            //     &representatives,
-            //     &filtered_calls,
-            //     self.lp_cutoff,
-            //     self.extend_haplotypes,
-            //     self.num_extend_haplotypes, //extension functionality for virus case is not recommended for now as it will lead to performance problems.
-            //     self.num_constraint_haplotypes,
-            // )?;
-
-            // //SECOND, model evaluation using ALL variants but only the LP- selected haplotypes
-            // //prepare inputs of model evaluation
-            // let hap_filt_haplotype_variants =
-            //     haplotype_variants_all.filter_for_haplotypes(&lp_haplotypes)?;
-            // let model_candidate_matrix = CandidateMatrix::new(&hap_filt_haplotype_variants)?;
-
-            // //compute model
-            // let prior = PriorTypes::from_str(&self.prior).unwrap();
-            // let upper_bond = NotNan::new(1.0).unwrap();
-            // let model = Model::new(
-            //     Likelihood::new(),
-            //     Prior::new(prior.clone()),
-            //     Posterior::new(),
-            // );
-
-            // let data = Data::new(model_candidate_matrix.clone(), variant_calls.clone());
-
-            // //marginal computation
-            // let computed_model = model.compute_from_marginal(
-            //     &Marginal::new(
-            //         lp_haplotypes.len(),
-            //         lp_haplotypes.clone(),
-            //         upper_bond,
-            //         prior,
-            //         None,
-            //         false, //equivalence class constraint is currently disabled.
-            //         "virus".to_string(),
-            //     ),
-            //     &data,
-            // );
-
-            // //find event posteriors
-            // let event_posteriors = computed_model.event_posteriors();
-
-            // //remove zero densities from the table
-            // let mut event_posteriors = Vec::new();
-            // computed_model
-            //     .event_posteriors()
-            //     .for_each(|(fractions, logprob)| {
-            //         if logprob.exp() != 0.0 {
-            //             event_posteriors.push((fractions.clone(), logprob.clone()));
-            //         }
-            //     });
-
-            // // Third, extend the table with identical haplotypes
-            // let (new_event_posteriors, all_haplotypes) = extend_resulting_table(
-            //     &lp_haplotypes,
-            //     &event_posteriors,
-            //     &identical_haplotypes_map,
-            // )?;
             let haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
-            let (event_posteriors, all_haplotypes, data) = get_event_posteriors(&haplotype_variants, variant_calls, &"virus", &self.prior, &self.outcsv, self.extend_haplotypes, self.num_extend_haplotypes, self.num_constraint_haplotypes, self.lp_cutoff, false, None)?;
+            let (event_posteriors, all_haplotypes, data) = get_event_posteriors(
+                &haplotype_variants,
+                variant_calls,
+                &"virus",
+                &self.prior,
+                &self.outcsv,
+                self.extend_haplotypes,
+                self.num_extend_haplotypes,
+                self.num_constraint_haplotypes,
+                self.lp_cutoff,
+                false,
+                None,
+            )?;
 
             //plot the best solution as final solution plot
             let (best_fractions, _) = event_posteriors.iter().next().unwrap();
@@ -186,12 +106,7 @@ impl Caller {
             )?;
 
             //plot first 10 posteriors of orthanq output
-            haplotypes::plot_densities(
-                &self.outcsv,
-                &event_posteriors,
-                &all_haplotypes,
-                "viral",
-            )?;
+            haplotypes::plot_densities(&self.outcsv, &event_posteriors, &all_haplotypes, "viral")?;
             Ok(())
         }
     }
