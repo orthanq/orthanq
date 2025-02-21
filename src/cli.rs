@@ -219,7 +219,7 @@ pub enum CallKind {
         prior: String,
         #[structopt(
             long,
-            help = "If true, only common variants of considered haplotypes will be used in the model."
+            help = "If true, only common variants of considered haplotypes will be used in the model. Unusable at the moment."
         )]
         common_variants: bool,
         #[structopt(default_value = "0.01", help = "Cutoff for linear program solutions.")]
