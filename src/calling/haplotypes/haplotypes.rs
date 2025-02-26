@@ -749,7 +749,7 @@ pub fn linear_program(
     for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
         println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
         best_variables.push(solution.value(var.clone()).clone());
-        if solution.value(*var) > 0.0 {
+        if solution.value(*var) > lp_cutoff {
             //the speed of fraction exploration is managable in case of diploid priors
             lp_haplotypes.insert(haplotype.clone(), solution.value(*var).clone());
         }
