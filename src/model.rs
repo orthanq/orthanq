@@ -19,7 +19,6 @@ pub struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
 pub(crate) struct Marginal {
     n_haplotypes: usize,
     haplotypes: Vec<Haplotype>,
-    upper_bond: NotNan<f64>,
     prior_info: PriorTypes,
     haplotype_graph: Option<HaplotypeGraph>,
     enable_equivalence_class_constraint: bool,
@@ -40,7 +39,8 @@ impl Marginal {
             let event = HaplotypeFractions(fractions.to_vec());
             joint_prob(&event, data)
         } else {
-            let fraction_upper_bound = self.upper_bond - fractions.iter().sum::<NotNan<f64>>();
+            let fraction_upper_bound =
+                NotNan::new(1.00).unwrap() - fractions.iter().sum::<NotNan<f64>>();
             let mut density = |fraction| {
                 if self.enable_equivalence_class_constraint
                     && fraction > NotNan::new(0.0).unwrap()

@@ -483,7 +483,6 @@ impl HaplotypeVariants {
         for ((hap1, hap2), distance) in &distances {
             println!("Distance between {:?} and {:?}: {}", hap1, hap2, distance);
         }
-        dbg!(&distances);
         Ok(DistanceMatrix(distances))
     }
 }
@@ -760,7 +759,6 @@ pub fn linear_program(
         let value = solution.value(*bin_var);
     }
     // println!("sum = {}", solution.eval(sum_tvars));
-    // dbg!(&lp_haplotypes);
     //plot the best result
     let candidate_matrix_values: Vec<(BitVec, BitVec)> =
         candidate_matrix.values().cloned().collect();
@@ -773,40 +771,33 @@ pub fn linear_program(
         &best_variables,
     )?;
     let lp_haplotypes_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
-    dbg!(&lp_haplotypes_keys);
     //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list.
     //then sort by hamming distance, take the closest x additional alleles according to 'num_variant_distance'.
-    //this is done by storing only the variants that have GT:1 and C:1 for all haplotypes in haplotype_dict and remaining variants are not included.
-    let mut extended_haplotypes = Vec::new();
+    //this is done using haplotype_dict, hence ONLY the nonzero DP variants that are covered by all haplotypes (C:1) are included in this extension.
+    let mut extended_haplotypes_bset = BTreeSet::new();
     if extend_haplotypes {
         lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
             let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
             haplotype_dict
                 .iter()
                 .for_each(|(haplotype, haplotype_variants)| {
-                    if &variants == haplotype_variants && !extended_haplotypes.contains(haplotype) {
-                        //fix: the last operand '&&' is required to avoid duplicate additions
-                        extended_haplotypes.push(haplotype.clone());
-                    } else {
-                        let mut difference = vec![];
-                        for i in haplotype_variants.iter() {
-                            if !variants.contains(&i) {
-                                difference.push(i);
-                            }
+                    let mut difference = vec![];
+                    for i in haplotype_variants.iter() {
+                        if !variants.contains(&i) {
+                            difference.push(i);
                         }
-                        //0 distance is excluded because lp gets only the representative, nonidentical haplotypes as input.
-                        if (difference.len() as i64 <= num_variant_distance
-                            && difference.len() as i64 != 0)
-                            && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
-                                <= num_variant_distance)
-                            && !extended_haplotypes.contains(&haplotype)
-                        //fix: the last operand '&&' is required to avoid duplicate additions
-                        {
-                            extended_haplotypes.push(haplotype.clone());
-                        }
+                    }
+                    //0 distance is excluded because lp gets only the representative, nonidentical haplotypes as input.
+                    if (difference.len() as i64 <= num_variant_distance
+                        && difference.len() as i64 != 0)
+                        && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
+                            <= num_variant_distance)
+                    {
+                        extended_haplotypes_bset.insert(haplotype.clone());
                     }
                 });
         });
+        let extended_haplotypes = extended_haplotypes_bset.into_iter().collect();
         dbg!(&extended_haplotypes);
         Ok(extended_haplotypes)
     } else {
@@ -1113,16 +1104,15 @@ pub fn get_event_posteriors(
     let (identical_haplotypes_map_rep, identical_haplotypes_map) =
         candidate_matrix.find_identical_haplotypes(haplotypes);
     // Print the result
-    for (representative, group) in &identical_haplotypes_map {
-        println!("Representative: {:?}, Group: {:?}", representative, group);
-    }
+    // for (representative, group) in &identical_haplotypes_map {
+    //     println!("Representative: {:?}, Group: {:?}", representative, group);
+    // }
     let representatives = identical_haplotypes_map_rep.keys().cloned().collect();
     let repr_haplotype_variants =
         var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
     let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
 
     //employ the linear program
-    //note: extension is disabled at the moment. see notes on linear_program function.
     let lp_haplotypes = linear_program(
         &outfile,
         &repr_candidate_matrix,
@@ -1141,13 +1131,11 @@ pub fn get_event_posteriors(
 
     //compute model
     let prior = PriorTypes::from_str(&prior).unwrap();
-    let upper_bond = NotNan::new(1.0).unwrap();
     let model = Model::new(
         Likelihood::new(),
         Prior::new(prior.clone()),
         Posterior::new(),
     );
-
     let data = Data::new(model_candidate_matrix.clone(), variant_calls.clone());
 
     let mut eq_graph: Option<_> = Some(HaplotypeGraph::new(Graph::default(), HashMap::new()));
@@ -1169,12 +1157,10 @@ pub fn get_event_posteriors(
         eq_graph = None;
         application_name = &"virus";
     }
-
     let computed_model = model.compute_from_marginal(
         &Marginal::new(
             lp_haplotypes.len(),
             lp_haplotypes.clone(),
-            upper_bond,
             prior,
             eq_graph,
             enable_equivalence_class_constraint,

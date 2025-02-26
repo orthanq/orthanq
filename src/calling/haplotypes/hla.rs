@@ -85,7 +85,7 @@ impl Caller {
                 self.enable_equivalence_class_constraint,
                 Some(self.threshold_equivalence_class),
             )?;
-            dbg!(&event_posteriors, &all_haplotypes);
+            // dbg!(&event_posteriors, &all_haplotypes);
 
             //plot the best solution as final solution plot
             let (best_fractions, _) = event_posteriors.iter().next().unwrap();
@@ -275,7 +275,7 @@ fn convert_to_two_field(
     haplotypes: &Vec<Haplotype>,
 ) -> Result<(Vec<Haplotype>, Vec<(HaplotypeFractions, LogProb)>)> {
     let mut event_posteriors_map: Vec<(BTreeMap<Haplotype, NotNan<f64>>, LogProb)> = Vec::new();
-    dbg!(&event_posteriors);
+    // dbg!(&event_posteriors);
     for (fractions, logprob) in event_posteriors.iter() {
         //firstly, initiate a map for haplotype and fraction info for each event
         //by having zero fraction as first values
@@ -335,7 +335,7 @@ fn convert_to_two_field(
         let haplotype_fractions = HaplotypeFractions(map.values().cloned().collect());
         event_posteriors_two_field.push((haplotype_fractions, **lp));
     }
-    dbg!(&event_posteriors_two_field);
+    // dbg!(&event_posteriors_two_field);
     Ok((final_haplotypes, event_posteriors_two_field))
     // Ok(())
 }
