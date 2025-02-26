@@ -29,7 +29,6 @@ impl Caller {
         //find the output folder
         let mut parent = outdir.clone();
         parent.pop();
-        dbg!(&parent);
         let cargo_dir = env!("CARGO_MANIFEST_DIR");
 
         //create the folder first if it doesn't exist
@@ -84,7 +83,7 @@ impl Caller {
             let splitted = stem_of_sample_dir.split('_').collect::<Vec<&str>>();
             sample_name = splitted[0].to_string();
         } else {
-            panic!("Please provide either fastq reads with --reads or BWA aligned BAM input with --bam-input!")
+            return Err(anyhow::anyhow!("Please provide either fastq reads with --reads or BWA aligned BAM input with --bam-input !"));
         }
 
         //create the output file name for sorting
