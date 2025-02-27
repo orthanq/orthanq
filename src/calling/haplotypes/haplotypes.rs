@@ -637,7 +637,8 @@ pub fn plot_prediction(
                             }
                         }
                     });
-                if b_check && haplotypes.contains(&Haplotype("B".to_string())) { //todo: refactor this as this is not ideal to check for every sample and every variant.
+                if b_check && haplotypes.contains(&Haplotype("B".to_string())) {
+                    //todo: refactor this as this is not ideal to check for every sample and every variant.
                     plot_data_haplotype_variants.push(DatasetHaplotypeVariants {
                         variant: *variant_id,
                         haplotype: "B".to_string(),
@@ -1288,7 +1289,8 @@ pub fn extend_resulting_table(
 
     let prob_sum: f64 = normal_probs.iter().sum();
 
-    if prob_sum > 0.0 { //to avoid issues with dividing to 0
+    if prob_sum > 0.0 {
+        //to avoid issues with dividing to 0
         //normalize probabilities and convert back to log space
         for (i, (_, logprob)) in new_event_posteriors.iter_mut().enumerate() {
             let normalized_prob = normal_probs[i] / prob_sum;
