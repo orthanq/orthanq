@@ -785,7 +785,6 @@ pub fn linear_program(
                     let haplotype_set: BTreeSet<_> = haplotype_variants.iter().collect();
                     let difference: Vec<_> =
                         variant_set.symmetric_difference(&haplotype_set).collect();
-                    dbg!(&difference);
                     //0 distance is excluded because lp gets only the representative, nonidentical haplotypes as input.
                     if (difference.len() as i64 <= num_variant_distance
                         && difference.len() as i64 != 0)
@@ -1161,7 +1160,7 @@ pub fn get_event_posteriors(
         &Marginal::new(
             lp_haplotypes.len(),
             lp_haplotypes.clone(),
-            prior,
+            prior.clone(),
             eq_graph,
             enable_equivalence_class_constraint,
             application_name.to_string(),
@@ -1182,13 +1181,19 @@ pub fn get_event_posteriors(
         });
 
     // Third, extend the table with identical haplotypes
-    let (new_event_posteriors, all_haplotypes) =
-        extend_resulting_table(&lp_haplotypes, &event_posteriors, &identical_haplotypes_map)?;
+    let (new_event_posteriors, all_haplotypes) = extend_resulting_table(
+        &lp_haplotypes,
+        &event_posteriors,
+        &prior,
+        &identical_haplotypes_map,
+    )?;
     Ok((new_event_posteriors, all_haplotypes, data))
 }
+
 fn generate_combinations(
     expanded_fractions: &Vec<AlleleFreq>,
     haplotype_indices: &BTreeMap<Haplotype, usize>,
+    prior: &PriorTypes,
     identical_haplotypes_map: &BTreeMap<Haplotype, Vec<Haplotype>>,
 ) -> Vec<Vec<AlleleFreq>> {
     let mut result = vec![expanded_fractions.clone()];
@@ -1204,10 +1209,22 @@ fn generate_combinations(
                     for ident_h in identical_haplotypes {
                         if ident_h != cur_haplotype {
                             let idx_ident_h = haplotype_indices.get(ident_h).unwrap();
+
+                            // Standard case: Transfer full fraction
                             let mut alt_row = existing_row.clone();
                             alt_row[*idx_ident_h] = fraction;
                             alt_row[idx_current] = NotNan::new(0.0).unwrap();
                             new_combinations.push(alt_row);
+
+                            // Diploid-specific case: If fraction is 1.0, create a row with 0.5 fractions
+                            if let PriorTypes::Diploid = prior {
+                                if fraction == NotNan::new(1.0).unwrap() {
+                                    let mut diploid_row = existing_row.clone();
+                                    diploid_row[*idx_ident_h] = NotNan::new(0.5).unwrap();
+                                    diploid_row[idx_current] = NotNan::new(0.5).unwrap();
+                                    new_combinations.push(diploid_row);
+                                }
+                            }
                         }
                     }
                 }
@@ -1223,6 +1240,7 @@ fn generate_combinations(
 pub fn extend_resulting_table(
     representatives: &Vec<Haplotype>,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
+    prior: &PriorTypes,
     identical_haplotypes_map: &BTreeMap<Haplotype, Vec<Haplotype>>,
 ) -> Result<(Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>)> {
     let mut all_haplotypes = BTreeSet::new();
@@ -1253,6 +1271,7 @@ pub fn extend_resulting_table(
         let all_combinations = generate_combinations(
             &expanded_fractions,
             &haplotype_indices,
+            &prior,
             identical_haplotypes_map,
         );
 
