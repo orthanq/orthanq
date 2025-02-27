@@ -1280,5 +1280,20 @@ pub fn extend_resulting_table(
         }
     }
 
+    //convert logprobs to normal probabilities using
+    let mut normal_probs: Vec<f64> = new_event_posteriors
+        .iter()
+        .map(|(_, logprob)| logprob.exp())
+        .collect();
+
+    let prob_sum: f64 = normal_probs.iter().sum();
+
+    if prob_sum > 0.0 { //to avoid issues with dividing to 0
+        //normalize probabilities and convert back to log space
+        for (i, (_, logprob)) in new_event_posteriors.iter_mut().enumerate() {
+            let normalized_prob = normal_probs[i] / prob_sum;
+            *logprob = LogProb::from(Prob(normalized_prob));
+        }
+    }
     Ok((new_event_posteriors, all_haplotypes))
 }
