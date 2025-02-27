@@ -637,7 +637,7 @@ pub fn plot_prediction(
                             }
                         }
                     });
-                if b_check {
+                if b_check && haplotypes.contains(&Haplotype("B".to_string())) { //todo: refactor this as this is not ideal to check for every sample and every variant.
                     plot_data_haplotype_variants.push(DatasetHaplotypeVariants {
                         variant: *variant_id,
                         haplotype: "B".to_string(),
