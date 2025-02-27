@@ -778,20 +778,20 @@ pub fn linear_program(
     if extend_haplotypes {
         lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
             let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
+            let variant_set: BTreeSet<_> = variants.iter().collect();
             haplotype_dict
                 .iter()
                 .for_each(|(haplotype, haplotype_variants)| {
-                    let mut difference = vec![];
-                    for i in haplotype_variants.iter() {
-                        if !variants.contains(&i) {
-                            difference.push(i);
-                        }
-                    }
+                    let haplotype_set: BTreeSet<_> = haplotype_variants.iter().collect();
+                    let difference: Vec<_> =
+                        variant_set.symmetric_difference(&haplotype_set).collect();
+                    dbg!(&difference);
                     //0 distance is excluded because lp gets only the representative, nonidentical haplotypes as input.
                     if (difference.len() as i64 <= num_variant_distance
                         && difference.len() as i64 != 0)
                         && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
                             <= num_variant_distance)
+                    //the last check is necessary to make sure the difference on haplotypes is also correlated with the lengths of vectors of variants.
                     {
                         extended_haplotypes_bset.insert(haplotype.clone());
                     }
