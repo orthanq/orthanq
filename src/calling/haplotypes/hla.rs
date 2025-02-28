@@ -60,7 +60,7 @@ impl Caller {
                 "2_field_solutions.json".to_string(),
                 "3_field_solutions.json".to_string(),
             ] {
-                let json = include_str!("../../../templates/prediction.json");
+                let json = include_str!("../../../templates/final_prediction.json");
                 let blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
                 let file = fs::File::create(parent.join(file_name)).unwrap();
                 serde_json::to_writer(file, &blueprint)?;

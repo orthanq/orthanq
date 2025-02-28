@@ -116,7 +116,7 @@ impl Caller {
         parent.pop();
         fs::create_dir_all(&parent)?;
 
-        let json: &str = include_str!("../../../templates/prediction.json");
+        let json: &str = include_str!("../../../templates/final_prediction.json");
         let blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
 
         for file_name in vec![

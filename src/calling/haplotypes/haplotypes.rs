@@ -519,7 +519,10 @@ pub fn plot_prediction(
     best_variables: &Vec<f64>,
 ) -> Result<()> {
     let mut file_name = "".to_string();
-    let json = include_str!("../../../templates/prediction.json");
+    let mut json = include_str!("../../../templates/final_prediction.json");
+    if &solution == &"lp" {
+        json = include_str!("../../../templates/lp_prediction.json");
+    }
     let mut blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
     let mut plot_data_variants = Vec::new();
     let mut plot_data_haplotype_variants = Vec::new();
@@ -550,13 +553,10 @@ pub fn plot_prediction(
                             variant: *variant_id,
                             haplotype: haplotype.to_string(),
                         });
-                        if *dp != 0 {
-                            //todo: check this part again, also, check LP plot
-                            plot_data_variants.push(DatasetVariants {
-                                variant: *variant_id,
-                                vaf: af.clone(),
-                            });
-                        }
+                        plot_data_variants.push(DatasetVariants {
+                            variant: *variant_id,
+                            vaf: af.clone(),
+                        });
                     }
                 }
             }
