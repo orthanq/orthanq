@@ -1205,27 +1205,44 @@ fn generate_combinations(
         if fraction > NotNan::new(0.0).unwrap() {
             if let Some(identical_haplotypes) = identical_haplotypes_map.get(cur_haplotype) {
                 let mut new_combinations = Vec::new();
+                let mut previous_haplotypes = Vec::new(); // Store previous haplotypes in the group
 
                 for existing_row in &result {
                     for ident_h in identical_haplotypes {
                         if ident_h != cur_haplotype {
                             let idx_ident_h = haplotype_indices.get(ident_h).unwrap();
 
-                            // Standard case: Transfer full fraction
+                            //standard case: transfer full fraction
                             let mut alt_row = existing_row.clone();
                             alt_row[*idx_ident_h] = fraction;
                             alt_row[idx_current] = NotNan::new(0.0).unwrap();
                             new_combinations.push(alt_row);
 
-                            // Diploid-specific case: If fraction is 1.0, create a row with 0.5 fractions
+                            //diploid-specific case: If fraction is 1.0, create a row with 0.5 fractions
                             if let PriorTypes::Diploid = prior {
                                 if fraction == NotNan::new(1.0).unwrap() {
                                     let mut diploid_row = existing_row.clone();
                                     diploid_row[*idx_ident_h] = NotNan::new(0.5).unwrap();
                                     diploid_row[idx_current] = NotNan::new(0.5).unwrap();
                                     new_combinations.push(diploid_row);
+
+                                    //handle within-group pairs in diploid case
+                                    for prev_hap in &previous_haplotypes {
+                                        let idx_prev = haplotype_indices.get(prev_hap).unwrap();
+
+                                        if idx_ident_h != idx_prev {
+                                            let mut pair_row = existing_row.clone();
+                                            pair_row[*idx_ident_h] = NotNan::new(0.5).unwrap();
+                                            pair_row[*idx_prev] = NotNan::new(0.5).unwrap();
+                                            pair_row[idx_current] = NotNan::new(0.0).unwrap();
+                                            new_combinations.push(pair_row);
+                                        }
+                                    }
                                 }
                             }
+
+                            //track the current haplotype for pair generation
+                            previous_haplotypes.push(ident_h.clone());
                         }
                     }
                 }
