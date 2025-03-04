@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://www.github.com/orthanq/orthanq/compare/v1.8.0...v1.9.0) (2025-03-04)
+
+
+### Features
+
+* constrain lp haplotypes to 5 by default, disable the threshold for number of variants & include all variants (nonzero DP), do not compute HD, add all variants in final solution plot ([#42](https://www.github.com/orthanq/orthanq/issues/42)) ([9926086](https://www.github.com/orthanq/orthanq/commit/9926086b61efca185e2b9840f8e659403e7690b8))
+
 ## [1.8.0](https://www.github.com/orthanq/orthanq/compare/v1.7.9...v1.8.0) (2025-02-26)
 
 
