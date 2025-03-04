@@ -1,27 +1,27 @@
 use crate::calling::haplotypes::haplotypes;
-use crate::calling::haplotypes::haplotypes::{extend_resulting_table, get_event_posteriors};
+use crate::calling::haplotypes::haplotypes::{get_event_posteriors};
 // use crate::calling::haplotypes::haplotypes::HaplotypeGraphVirus;
 // use crate::calling::haplotypes::haplotypes::SimilarL;
 use crate::calling::haplotypes::haplotypes::{
-    CandidateMatrix, Haplotype, HaplotypeVariants, PriorTypes, VariantCalls, VariantID,
+    CandidateMatrix, Haplotype, HaplotypeVariants, VariantCalls,
 };
 
-use crate::model::{AlleleFreq, Data, HaplotypeFractions, Likelihood, Marginal, Posterior, Prior};
+
 
 use anyhow::Result;
-use bio::stats::bayesian::model::Model;
+
 use derive_builder::Builder;
-use log::warn;
+
 
 use ordered_float::NotNan;
 
 use rust_htslib::bcf::{self};
 
-use bio::stats::LogProb;
-use std::collections::BTreeMap;
+
+
 use std::collections::BTreeSet;
 use std::fs;
-use std::str::FromStr;
+
 use std::{path::PathBuf, str};
 
 use super::haplotypes::DistanceMatrix;

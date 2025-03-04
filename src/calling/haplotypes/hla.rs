@@ -1,12 +1,12 @@
 use crate::calling::haplotypes::haplotypes;
-use crate::calling::haplotypes::haplotypes::{extend_resulting_table, get_event_posteriors};
+use crate::calling::haplotypes::haplotypes::{get_event_posteriors};
 use crate::calling::haplotypes::haplotypes::{
-    CandidateMatrix, Haplotype, HaplotypeVariants, PriorTypes, VariantCalls, VariantID,
+    CandidateMatrix, Haplotype, HaplotypeVariants, VariantCalls,
 };
-use crate::model::{Data, HaplotypeFractions, Likelihood, Marginal, Posterior, Prior};
+use crate::model::{HaplotypeFractions};
 use anyhow::Result;
-use bio::stats::{bayesian::model::Model, probs::LogProb};
-use bv::BitVec;
+use bio::stats::{probs::LogProb};
+
 use core::cmp::Ordering;
 
 use derive_builder::Builder;
@@ -21,7 +21,7 @@ use rust_htslib::bcf::{self};
 use std::collections::{BTreeMap, HashMap};
 
 use std::fs;
-use std::str::FromStr;
+
 use std::{path::PathBuf, str};
 
 #[derive(Builder)]

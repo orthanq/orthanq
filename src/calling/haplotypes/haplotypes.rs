@@ -95,7 +95,7 @@ impl CandidateMatrix {
             let mut signature: Vec<bool> = Vec::new();
 
             // Create the signature by extracting bits from each variant's BitVec
-            for (variant_id, (bitvec, _)) in &self.0 {
+            for (_variant_id, (bitvec, _)) in &self.0 {
                 let presence = bitvec.get(index as u64);
                 signature.push(presence);
             }
@@ -450,7 +450,7 @@ impl HaplotypeVariants {
 
     pub fn find_equivalence_classes_hamming_distance(
         &self,
-        application: &str,
+        _application: &str,
     ) -> Result<DistanceMatrix> {
         //initialize distances as a HashMap
         let mut distances: BTreeMap<(Haplotype, Haplotype), usize> = BTreeMap::new();
@@ -468,7 +468,7 @@ impl HaplotypeVariants {
                 let mut distance = 0;
                 let hap1 = &haplotype_keys[i];
                 let hap2 = &haplotype_keys[j];
-                for (variant, haplotype_map) in self.iter() {
+                for (_variant, haplotype_map) in self.iter() {
                     let gt1 = &haplotype_map[&hap1].0;
                     let gt2 = &haplotype_map[&hap2].0;
                     if *gt1 != *gt2 {
@@ -531,7 +531,7 @@ pub fn plot_prediction(
     let mut plot_data_dataset_afd = Vec::new();
 
     if &solution == &"lp" {
-        for ((genotype_matrix, coverage_matrix), (variant_id, (af, _, dp))) in
+        for ((genotype_matrix, coverage_matrix), (variant_id, (af, _, _dp))) in
             candidate_matrix_values.iter().zip(variant_calls.iter())
         {
             let mut counter = 0;
@@ -754,10 +754,6 @@ pub fn linear_program(
             //the speed of fraction exploration is managable in case of diploid priors
             lp_haplotypes.insert(haplotype.clone(), solution.value(*var).clone());
         }
-    }
-    let total_hap_const = haplotypes.len() + constraints.len();
-    for bin_var in binary_vars.iter() {
-        let value = solution.value(*bin_var);
     }
     // println!("sum = {}", solution.eval(sum_tvars));
     //plot the best result
@@ -1168,9 +1164,7 @@ pub fn get_event_posteriors(
         ),
         &data,
     );
-    //find event posteriors
-    let event_posteriors = computed_model.event_posteriors();
-
+    
     //remove zero densities from the table
     let mut event_posteriors = Vec::new();
     computed_model
@@ -1299,7 +1293,7 @@ pub fn extend_resulting_table(
     }
 
     //convert logprobs to normal probabilities using
-    let mut normal_probs: Vec<f64> = new_event_posteriors
+    let normal_probs: Vec<f64> = new_event_posteriors
         .iter()
         .map(|(_, logprob)| logprob.exp())
         .collect();
