@@ -168,6 +168,7 @@ impl Caller {
                 let conv_haplotype = Haplotype(conv_haplotype[0].clone());
                 final_haplotypes_converted.push(conv_haplotype);
             });
+            //todo: retest this part and convert to true
             haplotypes::write_results(
                 &converted_name,
                 &data,
