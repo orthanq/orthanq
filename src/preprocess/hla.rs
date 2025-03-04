@@ -32,7 +32,6 @@ impl Caller {
         dbg!(&parent);
         let _cargo_dir = env!("CARGO_MANIFEST_DIR");
 
-
         //create the folder first if it doesn't exist
         fs::create_dir_all(&parent)?;
 
