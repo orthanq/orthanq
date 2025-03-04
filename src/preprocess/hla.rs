@@ -13,7 +13,8 @@ use tempfile::NamedTempFile;
 #[derive(Builder, Clone)]
 pub struct Caller {
     genome: PathBuf,
-    reads: Vec<PathBuf>,
+    reads: Option<Vec<PathBuf>>,
+    bam_input: Option<PathBuf>,
     haplotype_variants: PathBuf,
     bwa_index: Option<PathBuf>,
     vg_index: PathBuf,
@@ -30,6 +31,7 @@ impl Caller {
         parent.pop();
         dbg!(&parent);
         let _cargo_dir = env!("CARGO_MANIFEST_DIR");
+
 
         //create the folder first if it doesn't exist
         fs::create_dir_all(&parent)?;
@@ -71,64 +73,96 @@ impl Caller {
             );
         }
 
-        //perform the alignment for paired end reads
-        let _temp_aligned = NamedTempFile::new()?;
-
         //find sample name of one of the fastq files from the read pair
-        let stem_of_sample_dir = &self.reads[0].file_stem().unwrap().to_str().unwrap();
-        //get rid of any underscore (PE reads contain them)
-        let splitted = stem_of_sample_dir.split('_').collect::<Vec<&str>>();
-        let sample_name = splitted[0];
+        let mut sample_name = "".to_string();
+        if let Some(fastq_reads) = &self.reads {
+            let stem_of_sample_dir = fastq_reads[0].file_stem().unwrap().to_str().unwrap();
+            //get rid of any underscore (PE reads contain them)
+            let splitted = stem_of_sample_dir.split('_').collect::<Vec<&str>>();
+            sample_name = splitted[0].to_string();
+        } else if let Some(bam_input) = &self.bam_input {
+            let stem_of_sample_dir = bam_input.file_stem().unwrap().to_str().unwrap();
+            let splitted = stem_of_sample_dir.split('_').collect::<Vec<&str>>();
+            sample_name = splitted[0].to_string();
+        } else {
+            return Err(anyhow::anyhow!("Please provide either fastq reads with --reads or BWA aligned BAM input with --bam-input !"));
+        }
 
-        //create the output file name in temp directory
-        let file_aligned = temp_dir.path().join(format!("{}.bam", sample_name));
-        println!("{}", file_aligned.display());
+        //create the output file name for sorting
+        // let file_aligned_sorted: PathBuf =
+        //     temp_dir.path().join(format!("{}_sorted.bam", sample_name));
+        let file_aligned_sorted = parent.join(format!("{}_sorted.bam", sample_name));
 
-        //insert read_group info from the sample names
-        let read_group = format!("@RG\\tID:{}\\tSM:{}", sample_name, sample_name);
+        // use bwa-aligned bam input if provided.
+        if let Some(bam_input) = &self.bam_input {
+            //directly sort the aligned reads by coordinate
 
-        //Step-1: align reads to the bwa index
-        let align = {
-            Command::new("bwa")
-                .arg("mem")
-                .arg("-t")
-                .arg("10")
-                .arg("-R")
-                .arg(&read_group)
-                .arg(linear_genome_index)
-                .arg(&self.reads[0])
-                .arg(&self.reads[1])
-                .arg("-o")
-                .arg(&file_aligned)
-                // .arg("2>")
-                // .arg("log.txt")
-                .status()
-                .expect("failed to execute the alignment process")
-        };
-        println!("The alignment was exited with: {}", align);
-        println!("{}", file_aligned.display());
-        //sort the aligned reads by coordinate
+            println!("Sorting input bam..");
 
-        //create the output file name in temp directory
-        let file_aligned_sorted: PathBuf =
-            temp_dir.path().join(format!("{}_sorted.bam", sample_name));
-        // let file_aligned_sorted: PathBuf = outdir.join(format!("{}_sorted.bam", sample_name));
+            let sort = {
+                Command::new("samtools")
+                    .arg("sort")
+                    .arg(bam_input)
+                    .arg("-o")
+                    .arg(&file_aligned_sorted)
+                    .arg("-@")
+                    .arg(&self.threads)
+                    .arg("--write-index")
+                    .status()
+                    .expect("failed to execute the sorting process")
+            };
+            println!("The sorting was exited with: {}", sort);
+            println!("{}", file_aligned_sorted.display());
+        } else {
+            //else case contains the input file for BAM input or no input files at all. but the program will panic before this point if none given during sample name retrieval.
+            //BWA alignment//
+            println!("Aligning provided FASTQ files.");
 
-        let sort = {
-            Command::new("samtools")
-                .arg("sort")
-                .arg(file_aligned)
-                .arg("-o")
-                .arg(&file_aligned_sorted)
-                .arg("-@")
-                .arg(&self.threads)
-                .arg("--write-index")
-                .status()
-                .expect("failed to execute the sorting process")
-        };
-        println!("The sorting was exited with: {}", sort);
-        println!("{}", file_aligned_sorted.display());
+            //create the output file name in temp directory
+            let file_aligned = temp_dir.path().join(format!("{}.bam", sample_name));
+            println!("{}", file_aligned.display());
 
+            //insert read_group info from the sample names
+            let read_group = format!("@RG\\tID:{}\\tSM:{}", sample_name, sample_name);
+
+            let reads = &self.reads.as_ref().unwrap();
+            //Step-1: align reads to the bwa index
+            let align = {
+                Command::new("bwa")
+                    .arg("mem")
+                    .arg("-t")
+                    .arg("10")
+                    .arg("-R")
+                    .arg(&read_group)
+                    .arg(linear_genome_index)
+                    .arg(&reads[0])
+                    .arg(&reads[1])
+                    .arg("-o")
+                    .arg(&file_aligned)
+                    // .arg("2>")
+                    // .arg("log.txt")
+                    .status()
+                    .expect("failed to execute the alignment process")
+            };
+            println!("The alignment was exited with: {}", align);
+            println!("{}", file_aligned.display());
+
+            //sort the aligned reads by coordinate
+            let sort = {
+                Command::new("samtools")
+                    .arg("sort")
+                    .arg(file_aligned)
+                    .arg("-o")
+                    .arg(&file_aligned_sorted)
+                    .arg("-@")
+                    .arg(&self.threads)
+                    .arg("--write-index")
+                    .status()
+                    .expect("failed to execute the sorting process")
+            };
+            println!("The sorting was exited with: {}", sort);
+            println!("{}", file_aligned_sorted.display());
+        }
         //Step-2: extract reads that map to HLA genes (classical and nonclassical class of genes)
 
         //before the extraction with samtools, check if the used genome has has ensembl or ucsc style chr namings and write regions to file
@@ -151,17 +185,6 @@ impl Caller {
         let mut reader = ReaderBuilder::new()
             .delimiter(b'\t')
             .from_path(path_idxstats)?;
-
-        // for result in reader.records() {
-        //     // break after the first record, because one record is enough to see the chr naming style
-        //     let record = result?;
-        //     let record_string = record[0].to_string();
-        //     // println!("{:?}", record_string);
-        //     if record_string.starts_with("chr") {
-        //         chr_naming = &"ucsc";
-        //     }
-        //     break;
-        // }
 
         if let Some(result) = reader.records().next() {
             let record = result?;
@@ -215,7 +238,7 @@ chr6\t31353872\t31367067";
         let extract = {
             Command::new("samtools")
                 .arg("view")
-                .arg(file_aligned_sorted)
+                .arg(&file_aligned_sorted)
                 .arg("-L")
                 .arg(path_to_regions)
                 .arg("--write-index") //??
@@ -225,6 +248,9 @@ chr6\t31353872\t31367067";
                 .expect("failed to execute the extracting process")
         };
         println!("The extraction was exited with: {}", extract);
+
+        //delete sorted bam file
+        fs::remove_file(file_aligned_sorted)?;
 
         //convert the alignment file to fq
 

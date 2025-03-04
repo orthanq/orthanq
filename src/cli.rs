@@ -60,10 +60,16 @@ pub enum PreprocessKind {
         bwa_index: Option<PathBuf>,
         #[structopt(
             long = "reads",
-            required = true,
+            // required = true,
             help = "Input FASTQ reads belonging to the sample."
         )]
-        reads: Vec<PathBuf>,
+        reads: Option<Vec<PathBuf>>,
+        #[structopt(
+            long = "bam-input",
+            // required = true,
+            help = "Input BAM file (has to be aligned with BWA and annotated with read group information)."
+        )]
+        bam_input: Option<PathBuf>,
         #[structopt(
             parse(from_os_str),
             long = "haplotype-variants",
@@ -485,6 +491,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
             PreprocessKind::Hla {
                 genome,
                 reads,
+                bam_input,
                 haplotype_variants,
                 vg_index,
                 bwa_index,
@@ -496,6 +503,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .vg_index(vg_index)
                     .bwa_index(bwa_index)
                     .reads(reads)
+                    .bam_input(bam_input)
                     .haplotype_variants(haplotype_variants)
                     .output(output)
                     .threads(threads)
