@@ -10,14 +10,14 @@ fn check_haplotype_fractions_5050() {
             bcf::Reader::from_path("tests/Sample_HLA00318-0.5_HLA00319-0.5_B.bcf").unwrap(),
         )
         .xml("tests/hla.xml".into())
-        .common_variants(false)
         .enable_equivalence_class_constraint(false)
         .outcsv(output)
         .prior("diploid".to_string())
         .lp_cutoff(0.01)
         .threshold_equivalence_class(1)
-        .extend_haplotypes(Some(true))
+        .extend_haplotypes(true)
         .num_extend_haplotypes(3)
+        .num_constraint_haplotypes(6)
         .build()
         .unwrap()
         .call();
@@ -37,8 +37,8 @@ fn check_haplotype_fractions_5050() {
             if header.contains("B*") {
                 let splitted = header.split(':').collect::<Vec<&str>>();
                 let first_two = splitted[0].to_owned() + ":" + splitted[1];
-                if (first_two == "B*44:02" && fraction == "0.50")
-                    || (first_two == "B*44:03" && fraction == "0.50")
+                if (first_two == "B*44:02" && fraction == "0.5000")
+                    || (first_two == "B*44:03" && fraction == "0.5000")
                 {
                     check_two_alleles += 1;
                 }

@@ -223,12 +223,16 @@ pub enum CallKind {
         output: PathBuf,
         #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
         prior: String,
+        // #[structopt(
+        //     long,
+        //     help = "If true, only common variants of considered haplotypes will be used in the model. Unusable at the moment."
+        // )]
+        // common_variants: bool,
         #[structopt(
+            default_value = "0.0",
             long,
-            help = "If true, only common variants of considered haplotypes will be used in the model."
+            help = "Cutoff for linear program solutions."
         )]
-        common_variants: bool,
-        #[structopt(default_value = "0.01", help = "Cutoff for linear program solutions.")]
         lp_cutoff: f64,
         #[structopt(
             long,
@@ -239,7 +243,7 @@ pub enum CallKind {
             long,
             help = "Enable extension of haplotypes that are computed with linear program."
         )]
-        extend_haplotypes: Option<bool>,
+        extend_haplotypes: bool,
         #[structopt(
             long,
             default_value = "1",
@@ -252,14 +256,20 @@ pub enum CallKind {
             help = "Number of variant distances to extend haplotype list coming from the linear program."
         )]
         num_extend_haplotypes: i64,
+        #[structopt(
+            long,
+            default_value = "5",
+            help = "Number to constrain the number of haplotypes that LP finds. Currently more than 6 is not runtime-friendly for the Bayesian model."
+        )]
+        num_constraint_haplotypes: i32,
     },
     Virus {
         #[structopt(
-            long = "candidates-folder",
+            long = "haplotype-variants",
             required = true,
-            help = "Folder that is used to create candidate variants."
+            help = "Path to candidate variants."
         )]
-        candidates_folder: PathBuf,
+        haplotype_variants: PathBuf,
         #[structopt(
             parse(from_os_str),
             long = "haplotype-calls",
@@ -278,32 +288,21 @@ pub enum CallKind {
         lp_cutoff: f64,
         #[structopt(
             long,
-            help = "Enable equivalence based constrain during model exploration."
-        )]
-        enable_equivalence_class_constraint: bool,
-        #[structopt(
-            long,
             help = "Enable extension of haplotypes that are computed with linear program."
         )]
-        extend_haplotypes: Option<bool>,
+        extend_haplotypes: bool,
         #[structopt(
             long,
-            default_value = "0.35",
-            help = "Percent threshold for evaluated variants."
-        )]
-        threshold_considered_variants: f64,
-        #[structopt(
-            long,
-            default_value = "2",
-            help = "Threshold for assigning equivalence classes."
-        )]
-        threshold_equivalence_class: usize,
-        #[structopt(
-            long,
-            default_value = "0",
+            default_value = "1",
             help = "Number of variant distances to extend haplotype list coming from the linear program."
         )]
-        num_extend_haplotypes: i64, //larger than 0 is not yet supported.
+        num_extend_haplotypes: i64,
+        #[structopt(
+            long,
+            default_value = "5",
+            help = "Number to constrain the number of haplotypes that LP finds."
+        )]
+        num_constraint_haplotypes: i32,
     },
 }
 
@@ -337,11 +336,11 @@ pub enum VirusKind {
             help = "Enable equivalence based constrain during model exploration."
         )]
         enable_equivalence_class_constraint: bool,
-        #[structopt(
-            default_value = "0.5",
-            help = "Percent threshold for evaluated variants."
-        )]
-        threshold_considered_variants: f64,
+        // #[structopt(
+        //     default_value = "0.5",
+        //     help = "Percent threshold for evaluated variants."
+        // )]
+        // threshold_considered_variants: f64,
     },
     Generic {
         #[structopt(
@@ -368,11 +367,11 @@ pub enum VirusKind {
             help = "Enable equivalence based constrain during model exploration."
         )]
         enable_equivalence_class_constraint: bool,
-        #[structopt(
-            default_value = "0.5",
-            help = "Percent threshold for evaluated variants."
-        )]
-        threshold_considered_variants: f64,
+        // #[structopt(
+        //     default_value = "0.5",
+        //     help = "Percent threshold for evaluated variants."
+        // )]
+        // threshold_considered_variants: f64,
     },
 }
 
@@ -384,16 +383,15 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 haplotype_variants,
                 variant_calls,
                 xml,
-                // max_haplotypes,
-                // min_norm_counts,
                 output,
                 prior,
-                common_variants,
+                // common_variants,
                 lp_cutoff,
                 enable_equivalence_class_constraint,
                 extend_haplotypes,
                 threshold_equivalence_class,
                 num_extend_haplotypes,
+                num_constraint_haplotypes,
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
@@ -403,40 +401,37 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     // .min_norm_counts(min_norm_counts)
                     .outcsv(output)
                     .prior(prior)
-                    .common_variants(common_variants)
+                    // .common_variants(common_variants)
                     .lp_cutoff(lp_cutoff)
                     .enable_equivalence_class_constraint(enable_equivalence_class_constraint)
                     .extend_haplotypes(extend_haplotypes)
                     .threshold_equivalence_class(threshold_equivalence_class)
                     .num_extend_haplotypes(num_extend_haplotypes)
+                    .num_constraint_haplotypes(num_constraint_haplotypes)
                     .build()
                     .unwrap();
                 caller.call()?;
                 Ok(())
             }
             CallKind::Virus {
-                candidates_folder,
+                haplotype_variants,
                 variant_calls,
                 output,
                 prior,
                 lp_cutoff,
-                enable_equivalence_class_constraint,
                 extend_haplotypes,
-                threshold_equivalence_class,
-                threshold_considered_variants,
                 num_extend_haplotypes,
+                num_constraint_haplotypes,
             } => {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
-                    .candidates_folder(candidates_folder)
+                    .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
                     .variant_calls(bcf::Reader::from_path(variant_calls)?)
                     .outcsv(output)
                     .prior(prior)
                     .lp_cutoff(lp_cutoff)
-                    .enable_equivalence_class_constraint(enable_equivalence_class_constraint)
                     .extend_haplotypes(extend_haplotypes)
-                    .threshold_equivalence_class(threshold_equivalence_class)
-                    .threshold_considered_variants(threshold_considered_variants)
                     .num_extend_haplotypes(num_extend_haplotypes)
+                    .num_constraint_haplotypes(num_constraint_haplotypes)
                     .build()
                     .unwrap();
                 caller.call()?;

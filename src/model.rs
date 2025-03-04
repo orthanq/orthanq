@@ -1,6 +1,5 @@
 use crate::calling::haplotypes::haplotypes::{
     AlleleFreqDist, CandidateMatrix, Haplotype, HaplotypeGraph, PriorTypes, VariantCalls,
-    VariantStatus,
 };
 
 use bio::stats::probs::adaptive_integration;
@@ -20,7 +19,6 @@ pub struct HaplotypeFractions(#[deref] pub Vec<AlleleFreq>);
 pub(crate) struct Marginal {
     n_haplotypes: usize,
     haplotypes: Vec<Haplotype>,
-    upper_bond: NotNan<f64>,
     prior_info: PriorTypes,
     haplotype_graph: Option<HaplotypeGraph>,
     enable_equivalence_class_constraint: bool,
@@ -41,7 +39,8 @@ impl Marginal {
             let event = HaplotypeFractions(fractions.to_vec());
             joint_prob(&event, data)
         } else {
-            let fraction_upper_bound = self.upper_bond - fractions.iter().sum::<NotNan<f64>>();
+            let fraction_upper_bound =
+                NotNan::new(1.00).unwrap() - fractions.iter().sum::<NotNan<f64>>();
             let mut density = |fraction| {
                 if self.enable_equivalence_class_constraint
                     && fraction > NotNan::new(0.0).unwrap()
@@ -174,38 +173,44 @@ impl Likelihood {
         data: &Data,
         _cache: &mut Cache,
     ) -> LogProb {
-        let candidate_matrix_values: Vec<(Vec<VariantStatus>, BitVec)> =
+        let candidate_matrix_values: Vec<(BitVec, BitVec)> =
             data.candidate_matrix.values().cloned().collect();
-        let variant_calls: Vec<AlleleFreqDist> = data
+        let variant_calls: Vec<(AlleleFreqDist, i32)> = data
             .variant_calls
             .iter()
-            .map(|(_, (_, afd))| afd.clone())
+            .map(|(_, (_, afd, coverage))| (afd.clone(), *coverage))
             .collect();
         let mut final_prob = LogProb::ln_one();
         candidate_matrix_values
             .iter()
             .zip(variant_calls.iter())
-            .for_each(|((genotypes, covered), afd)| {
-                let mut denom = NotNan::new(1.0).unwrap();
-                let mut vaf_sum = NotNan::new(0.0).unwrap();
-                event.iter().enumerate().for_each(|(i, fraction)| {
-                    if genotypes[i] == VariantStatus::Present && covered[i as u64] {
-                        vaf_sum += *fraction;
-                    } else if genotypes[i] == VariantStatus::Unknown || covered[i as u64] {
-                        ()
-                    } else if genotypes[i] == VariantStatus::NotPresent && !covered[i as u64] {
-                        denom -= *fraction;
+            .for_each(|((genotypes, covered), (afd, cov))| {
+                if *cov != 0 {
+                    let mut denom = NotNan::new(1.0).unwrap();
+                    let mut vaf_sum = NotNan::new(0.0).unwrap();
+                    event.iter().enumerate().for_each(|(i, fraction)| {
+                        if genotypes[i as u64] && covered[i as u64] {
+                            vaf_sum += *fraction;
+                        }
+                        // else if genotypes[i] == VariantStatus::Unknown || covered[i as u64] {
+                        //     ()
+                        // }
+                        else if !genotypes[i as u64] && !covered[i as u64] {
+                            denom -= *fraction;
+                        }
+                    });
+                    if denom > NotNan::new(0.0).unwrap() {
+                        vaf_sum /= denom;
                     }
-                });
-                if denom > NotNan::new(0.0).unwrap() {
-                    vaf_sum /= denom;
-                }
-                //to overcome a bug that results in larger than 1.0 VAF. After around 10 - 15th decimal place, the value becomes larger.
-                //In any case, for a direct query to the AFD VAFs (they contain 2 decimal places).
-                vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
-                    / NotNan::new(100.0).unwrap();
-                if !afd.is_empty() {
-                    final_prob += afd.vaf_query(&vaf_sum).unwrap();
+                    //to overcome a bug that results in larger than 1.0 VAF. After around 10 - 15th decimal place, the value becomes larger.
+                    //In any case, for a direct query to the AFD VAFs (they contain 2 decimal places).
+                    vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
+                        / NotNan::new(100.0).unwrap();
+                    if !afd.is_empty() {
+                        final_prob += afd.vaf_query(&vaf_sum).unwrap();
+                    } else {
+                        final_prob += LogProb::ln_one();
+                    }
                 } else {
                     final_prob += LogProb::ln_one();
                 }
