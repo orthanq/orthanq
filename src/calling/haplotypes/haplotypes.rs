@@ -1164,7 +1164,7 @@ pub fn get_event_posteriors(
         ),
         &data,
     );
-    
+
     //remove zero densities from the table
     let mut event_posteriors = Vec::new();
     computed_model

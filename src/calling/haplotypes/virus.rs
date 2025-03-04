@@ -1,23 +1,18 @@
 use crate::calling::haplotypes::haplotypes;
-use crate::calling::haplotypes::haplotypes::{get_event_posteriors};
+use crate::calling::haplotypes::haplotypes::get_event_posteriors;
 // use crate::calling::haplotypes::haplotypes::HaplotypeGraphVirus;
 // use crate::calling::haplotypes::haplotypes::SimilarL;
 use crate::calling::haplotypes::haplotypes::{
     CandidateMatrix, Haplotype, HaplotypeVariants, VariantCalls,
 };
 
-
-
 use anyhow::Result;
 
 use derive_builder::Builder;
 
-
 use ordered_float::NotNan;
 
 use rust_htslib::bcf::{self};
-
-
 
 use std::collections::BTreeSet;
 use std::fs;

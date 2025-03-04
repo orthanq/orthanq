@@ -1,11 +1,11 @@
 use crate::calling::haplotypes::haplotypes;
-use crate::calling::haplotypes::haplotypes::{get_event_posteriors};
+use crate::calling::haplotypes::haplotypes::get_event_posteriors;
 use crate::calling::haplotypes::haplotypes::{
     CandidateMatrix, Haplotype, HaplotypeVariants, VariantCalls,
 };
-use crate::model::{HaplotypeFractions};
+use crate::model::HaplotypeFractions;
 use anyhow::Result;
-use bio::stats::{probs::LogProb};
+use bio::stats::probs::LogProb;
 
 use core::cmp::Ordering;
 
