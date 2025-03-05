@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.9.1](https://www.github.com/orthanq/orthanq/compare/v1.9.0...v1.9.1) (2025-03-05)
+
+
+### Bug Fixes
+
+* fix threads usage and refactor ([#45](https://www.github.com/orthanq/orthanq/issues/45)) ([8aa406a](https://www.github.com/orthanq/orthanq/commit/8aa406af55f8384da9535d85d978e101f51e7626))
+
 ## [1.9.0](https://www.github.com/orthanq/orthanq/compare/v1.8.0...v1.9.0) (2025-03-04)
 
 
