@@ -628,7 +628,7 @@ chr6\t31353872\t31367067";
         }
 
         let mut called_file = std::fs::File::create(&varlociraptor_call_dir)?;
-        called_file.write_all(&output.stdout)?; //write with bam writer
+        called_file.write_all(&var_output.stdout)?; //write with bam writer
         called_file.flush()?;
         // close the file handle of the named temporary files
         temp_dir.close()?;
