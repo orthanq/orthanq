@@ -185,10 +185,7 @@ impl Caller {
             };
 
             if !sort.success() {
-                panic!(
-                    "samtools sort failed with exit code: {:?}",
-                    sort.code(),
-                );
+                panic!("samtools sort failed with exit code: {:?}", sort.code(),);
             }
 
             println!("The sorting was exited with: {}", sort);
@@ -285,7 +282,7 @@ chr6\t31353872\t31367067";
                 extract.code(),
             );
         }
-        
+
         println!("The extraction was exited with: {}", extract);
 
         //delete sorted bam file
