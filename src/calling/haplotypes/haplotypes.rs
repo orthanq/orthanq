@@ -48,27 +48,26 @@ impl AlleleFreqDist {
     pub fn vaf_query(&self, vaf: &AlleleFreq) -> Option<LogProb> {
         if self.contains_key(&vaf) {
             return Some(*self.get(&vaf).unwrap());
-        }
-        else {
+        } else {
             let (x_0, y_0) = self.range(..vaf).next_back().unwrap();
             let (x_1, y_1) = self.range(vaf..).next().unwrap();
-    
+
             // If y_0 == y_1, what to do?
             // if y_0 == y_1 {
             //     return Some(*y_0);
             // }
             //calculate the proportion (vaf - x_0) / (x_1 - x_0) in linear space
             let fraction = (*vaf - *x_0) / (*x_1 - *x_0);
-    
+
             //ensure we interpolate in the right direction
             let (smaller, larger) = if y_0 < y_1 { (y_0, y_1) } else { (y_1, y_0) };
-    
+
             //take log difference (always positive) and subtract from each other
             let log_diff = larger.ln_sub_exp(*smaller).exp();
-    
+
             //interpolated probability in linear space again
             let interpolated_prob = NotNan::new(smaller.exp()).unwrap() + fraction * log_diff;
-    
+
             //convert back to LogProb
             Some(LogProb::from(Prob(NotNan::into_inner(interpolated_prob))))
         }
