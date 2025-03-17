@@ -415,7 +415,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 bwa_index,
                 output,
                 threads,
-                output_bam
+                output_bam,
             } => {
                 preprocess::hla::CallerBuilder::default()
                     .genome(genome)
@@ -438,7 +438,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 reads,
                 output,
                 threads,
-                output_bam
+                output_bam,
             } => {
                 preprocess::virus::CallerBuilder::default()
                     .candidates(candidates)

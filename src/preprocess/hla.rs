@@ -20,7 +20,7 @@ pub struct Caller {
     vg_index: PathBuf,
     output: PathBuf,
     threads: String,
-    output_bam: bool
+    output_bam: bool,
 }
 
 impl Caller {
@@ -480,7 +480,9 @@ chr6\t31353872\t31367067";
         println!("The indexing was exited with: {}", samtools_index);
 
         //finally, extract only strandard chromosomes
-        let mut final_bam = temp_dir.path().join(format!("{}_processed.bam", sample_name));
+        let mut final_bam = temp_dir
+            .path()
+            .join(format!("{}_processed.bam", sample_name));
         if self.output_bam {
             final_bam = parent.join(format!("{}_processed.bam", sample_name));
         }

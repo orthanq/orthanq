@@ -19,7 +19,7 @@ pub struct Caller {
     reads: Vec<PathBuf>,
     output: PathBuf,
     threads: String,
-    output_bam: bool
+    output_bam: bool,
 }
 
 impl Caller {
@@ -171,14 +171,15 @@ impl Caller {
         vg_bam.flush()?;
 
         //sort the resulting vg aligned file
-        let mut file_vg_aligned_sorted = temp_dir.path().join(format!("{}_sorted.bam", sample_name));
+        let mut file_vg_aligned_sorted =
+            temp_dir.path().join(format!("{}_sorted.bam", sample_name));
         if self.output_bam {
             let mut parent = outdir.clone();
             parent.pop();
             file_vg_aligned_sorted = parent.join(format!("{}_sorted.bam", sample_name));
         }
         println!(
-            "file_vg_aligned_sorteds: {}",
+            "file_vg_aligned_sorted: {}",
             file_vg_aligned_sorted.display()
         );
 
