@@ -88,6 +88,11 @@ pub enum PreprocessKind {
             help = "Threads to use for tools used in preprocessing."
         )]
         threads: String,
+        #[structopt(
+            long,
+            help = "Output BAM file used for variant calling (debugging purposes)."
+        )]
+        output_bam: bool,
     },
     Virus {
         #[structopt(
@@ -119,6 +124,11 @@ pub enum PreprocessKind {
             help = "Threads to use for tools used in preprocessing."
         )]
         threads: String,
+        #[structopt(
+            long,
+            help = "Output BAM file used for variant calling (debugging purposes)."
+        )]
+        output_bam: bool,
     },
 }
 
@@ -405,6 +415,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 bwa_index,
                 output,
                 threads,
+                output_bam
             } => {
                 preprocess::hla::CallerBuilder::default()
                     .genome(genome)
@@ -415,6 +426,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .haplotype_variants(haplotype_variants)
                     .output(output)
                     .threads(threads)
+                    .output_bam(output_bam)
                     .build()
                     .unwrap()
                     .call()?;
@@ -426,6 +438,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 reads,
                 output,
                 threads,
+                output_bam
             } => {
                 preprocess::virus::CallerBuilder::default()
                     .candidates(candidates)
@@ -433,6 +446,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .reads(reads)
                     .output(output)
                     .threads(threads)
+                    .output_bam(output_bam)
                     .build()
                     .unwrap()
                     .call()?;
