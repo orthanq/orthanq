@@ -1,6 +1,6 @@
 [package]
 name = "orthanq"
-version = "1.9.1"
+version = "1.9.2"
 edition = "2018"
 description = "A tool to quantify haplotypes in an uncertainty-aware manner"
 license = "MIT"

@@ -1,5 +1,13 @@
 # Changelog
 
+### [1.9.2](https://www.github.com/orthanq/orthanq/compare/v1.9.1...v1.9.2) (2025-03-17)
+
+
+### Bug Fixes
+
+* fix subtraction in log space ([#47](https://www.github.com/orthanq/orthanq/issues/47)) ([9a85787](https://www.github.com/orthanq/orthanq/commit/9a85787ea81761b5280ee803a409fb94d78b284d))
+* handle each process separately if they are not successful ([#48](https://www.github.com/orthanq/orthanq/issues/48)) ([787ad94](https://www.github.com/orthanq/orthanq/commit/787ad94b0bea835aea7f3306900e8f3228fb5d73))
+
 ### [1.9.1](https://www.github.com/orthanq/orthanq/compare/v1.9.0...v1.9.1) (2025-03-05)
 
 
