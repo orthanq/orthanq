@@ -65,6 +65,14 @@ impl Caller {
                     .status()
                     .expect("failed to execute indexing process")
             };
+
+            if !index.success() {
+                panic!(
+                    "bwa index command failed with exit code: {:?}",
+                    index.code(),
+                );
+            }
+
             println!("The index was created successfully: {}", index);
             println!(
                 "using input bwa index at: {}",
@@ -110,6 +118,14 @@ impl Caller {
                     .status()
                     .expect("failed to execute the sorting process")
             };
+
+            if !sort.success() {
+                panic!(
+                    "samtools sort of given bam failed with exit code: {:?}",
+                    sort.code(),
+                );
+            }
+
             println!("The sorting was exited with: {}", sort);
             println!("{}", file_aligned_sorted.display());
         } else {
@@ -143,6 +159,14 @@ impl Caller {
                     .status()
                     .expect("failed to execute the alignment process")
             };
+
+            if !align.success() {
+                panic!(
+                    "bwa mem alignment failed with exit code: {:?}",
+                    align.code(),
+                );
+            }
+
             println!("The alignment was exited with: {}", align);
             println!("{}", file_aligned.display());
 
@@ -159,6 +183,11 @@ impl Caller {
                     .status()
                     .expect("failed to execute the sorting process")
             };
+
+            if !sort.success() {
+                panic!("samtools sort failed with exit code: {:?}", sort.code(),);
+            }
+
             println!("The sorting was exited with: {}", sort);
             println!("{}", file_aligned_sorted.display());
         }
@@ -246,6 +275,14 @@ chr6\t31353872\t31367067";
                 .status()
                 .expect("failed to execute the extracting process")
         };
+
+        if !extract.success() {
+            panic!(
+                "extraction of HLA regions from BAM file (samtools view) failed with exit code: {:?}",
+                extract.code(),
+            );
+        }
+
         println!("The extraction was exited with: {}", extract);
 
         //delete sorted bam file
@@ -269,6 +306,14 @@ chr6\t31353872\t31367067";
                 .status()
                 .expect("failed to execute the extracting process")
         };
+
+        if !bam_to_fq.success() {
+            panic!(
+                "conversion of bam to fastq (samtools fastq) failed with exit code: {:?}",
+                bam_to_fq.code(),
+            );
+        }
+
         println!("Conversion from BAM to fq was exited with: {}", bam_to_fq);
 
         //Step-3: map extracted reads to the pangenome with vg giraffe
@@ -323,6 +368,14 @@ chr6\t31353872\t31367067";
             .wait_with_output()
             .expect("Failed to read stdout");
 
+        if !output.status.success() {
+            panic!(
+                "vg giraffe failed with exit code: {:?}, Error: {}",
+                output.status.code(),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
         let mut vg_bam = std::fs::File::create(file_aligned_pangenome.clone())?;
         vg_bam.write_all(&output.stdout)?; //write with bam writer
         vg_bam.flush()?;
@@ -344,6 +397,14 @@ chr6\t31353872\t31367067";
                 .status()
                 .expect("failed to execute the sorting process")
         };
+
+        if !vg_sort.success() {
+            panic!(
+                "samtools sort of vg_aligned bam failed with exit code: {:?}",
+                vg_sort.code(),
+            );
+        }
+
         println!("The sorting was exited with: {}", vg_sort);
         println!("{}", file_vg_aligned_sorted.display());
 
@@ -408,6 +469,13 @@ chr6\t31353872\t31367067";
                 .unwrap()
         };
 
+        if !samtools_index.success() {
+            panic!(
+                "Indexing of reheadered bam file failed with exit code: {:?}",
+                samtools_index.code(),
+            );
+        }
+
         println!("The indexing was exited with: {}", samtools_index);
 
         //finally, extract only strandard chromosomes
@@ -444,6 +512,13 @@ chr6\t31353872\t31367067";
                 .expect("failed to execute the sorting process")
         };
 
+        if !samtools_extract.success() {
+            panic!(
+                "Extraction of standard chromosomes (samtools view) failed with exit code: {:?}",
+                samtools_extract.code(),
+            );
+        }
+
         //write the final bam to file
         println!(
             "The extractiong of standard chromosomes was exited with: {}",
@@ -477,6 +552,14 @@ chr6\t31353872\t31367067";
                 .status()
                 .expect("failed to execute the varlociraptor preprocessing")
         };
+
+        if !varlociraptor_prep.success() {
+            panic!(
+                "Preprocessing of bam file with varlociraptor failed with exit code: {:?}",
+                varlociraptor_prep.code(),
+            );
+        }
+
         println!(
             "The varlociraptor preprocessing was exited with: {}",
             varlociraptor_prep
@@ -532,11 +615,20 @@ chr6\t31353872\t31367067";
             varlociraptor_call
         );
 
-        let output = varlociraptor_call
+        let var_output = varlociraptor_call
             .wait_with_output()
             .expect("Varlociraptor: Failed to read stdout");
+
+        if !var_output.status.success() {
+            panic!(
+                "calling of observation file with varlociraptor failed with exit code: {:?}, Error: {}",
+                var_output.status.code(),
+                String::from_utf8_lossy(&var_output.stderr)
+            );
+        }
+
         let mut called_file = std::fs::File::create(&varlociraptor_call_dir)?;
-        called_file.write_all(&output.stdout)?; //write with bam writer
+        called_file.write_all(&var_output.stdout)?; //write with bam writer
         called_file.flush()?;
         // close the file handle of the named temporary files
         temp_dir.close()?;
