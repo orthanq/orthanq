@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.9.3](https://www.github.com/orthanq/orthanq/compare/v1.9.2...v1.9.3) (2025-03-17)
+
+
+### Bug Fixes
+
+* preprocessing: implement parameter for outputting final bam file to parent folder of the output ([#51](https://www.github.com/orthanq/orthanq/issues/51)) ([30b1be9](https://www.github.com/orthanq/orthanq/commit/30b1be9af64822aaa59ee8896c0bd8556dfb02a8))
+
 ### [1.9.2](https://www.github.com/orthanq/orthanq/compare/v1.9.1...v1.9.2) (2025-03-17)
 
 
