@@ -42,7 +42,7 @@ impl Caller {
         //Step 1: Prepare data and compute the model
         //initially prepare haplotype_variants and variant_calls
         let variant_calls = VariantCalls::new(&mut self.variant_calls)?;
-        dbg!(&variant_calls);
+
         //write blank plots and tsv table if no variants are available.
         if variant_calls.len() == 0 {
             //write blank plots, required for the workflow!
