@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://www.github.com/orthanq/orthanq/compare/v1.9.3...v1.10.0) (2025-03-24)
+
+
+### Features
+
+* display nucleotide changes in plots ([#53](https://www.github.com/orthanq/orthanq/issues/53)) ([3f870fc](https://www.github.com/orthanq/orthanq/commit/3f870fc5832bd8d0964ba77d7668d2b18b6be420))
+
 ### [1.9.3](https://www.github.com/orthanq/orthanq/compare/v1.9.2...v1.9.3) (2025-03-17)
 
 
