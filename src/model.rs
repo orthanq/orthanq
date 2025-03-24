@@ -178,7 +178,7 @@ impl Likelihood {
         let variant_calls: Vec<(AlleleFreqDist, i32)> = data
             .variant_calls
             .iter()
-            .map(|(_, (_, afd, coverage))| (afd.clone(), *coverage))
+            .map(|(_, (_, _, afd, coverage))| (afd.clone(), *coverage))
             .collect();
         let mut final_prob = LogProb::ln_one();
         candidate_matrix_values

@@ -27,7 +27,7 @@
           ],
           "mark": {"type": "bar", "tooltip": true},
           "encoding": {
-            "x": {"field": "variant", "type": "ordinal", "axis": {"title": null, "labelFontSize": 12}},
+            "x": {"field": "variant_change", "type": "ordinal", "axis": {"title": null, "labelFontSize": 12}},
             "y": {"aggregate": "sum", "type": "quantitative", "field": "fraction", "axis": {"titleFontSize": 16}},
             "color": {
               "field": "haplotype",
@@ -41,7 +41,7 @@
           "data": {"name": "variants"},
           "mark": {"type": "point", "tooltip": true},
           "encoding": {
-            "x": {"field": "variant", "type": "ordinal", "axis": {"labels": true, "title": null, "labelFontSize": 12}},
+            "x": {"field": "variant_change", "type": "ordinal", "axis": {"labels": true, "title": null, "labelFontSize": 12}},
             "y": {
               "field": "vaf",
               "type": "quantitative",
@@ -58,7 +58,7 @@
       "mark": {"type":"rect", "tooltip": true},
       "encoding": {
         "y": {"field": "haplotype", "type": "ordinal", "axis": {"titleFontSize": 16, "labelFontSize": 12}},
-        "x": {"field": "variant", "type": "ordinal", "title": null, "axis": {"titleFontSize": 16, "labels": true, "labelFontSize": 12}},
+        "x": {"field": "variant_change", "type": "ordinal", "title": null, "axis": {"titleFontSize": 16, "labels": true, "labelFontSize": 12}},
         "color": {
           "condition": {
             "test": "datum.haplotype !== 'B'",
@@ -74,7 +74,7 @@
       "mark": {"type": "rect", "tooltip": true},
       "encoding": {
         "y": {"field": "haplotype", "type": "ordinal", "axis": {"titleFontSize": 16, "labelFontSize": 12}},
-        "x": {"field": "variant", "type": "ordinal", "title": null, "axis": {"titleFontSize": 16, "labels": true, "labelFontSize": 12}},
+        "x": {"field": "variant_change", "type": "ordinal", "title": null, "axis": {"titleFontSize": 16, "labels": true, "labelFontSize": 12}},
         "color": {
           "field": "haplotype",
           "scale": {"scheme": "category20"},
@@ -87,7 +87,7 @@
       "mark": {"type": "circle", "tooltip": true},
       "encoding": {
         "x": {
-          "field": "variant",
+          "field": "variant_change",
           "type": "ordinal",
           "title": "Variant",
           "axis": {"labelFontSize": 12, "titleFontSize": 16}
