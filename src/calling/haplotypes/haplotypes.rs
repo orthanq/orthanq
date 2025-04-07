@@ -191,7 +191,8 @@ impl VariantCalls {
                 }
             }
             //exxtract reference (REF), alternative (ALT), and position (POS)
-            let chr_name = std::str::from_utf8(header.rid2name(record.rid().unwrap()).unwrap()).unwrap();
+            let chr_name =
+                std::str::from_utf8(header.rid2name(record.rid().unwrap()).unwrap()).unwrap();
             let pos = record.pos() + 1; // 1-based indexing
             let ref_base = std::str::from_utf8(record.alleles()[0]).unwrap();
             let alt_base = std::str::from_utf8(record.alleles()[1]).unwrap(); // Only first ALT allele
