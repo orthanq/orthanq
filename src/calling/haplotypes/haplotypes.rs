@@ -165,6 +165,7 @@ pub struct VariantCalls(#[deref] BTreeMap<VariantID, (String, f32, AlleleFreqDis
 impl VariantCalls {
     pub fn new(variant_calls: &mut bcf::Reader) -> Result<Self> {
         let mut calls = BTreeMap::new();
+        let header = variant_calls.header().clone();
         for record_result in variant_calls.records() {
             let mut record = record_result?;
             record.unpack();
@@ -190,12 +191,13 @@ impl VariantCalls {
                 }
             }
             //exxtract reference (REF), alternative (ALT), and position (POS)
+            let chr_name = std::str::from_utf8(header.rid2name(record.rid().unwrap()).unwrap()).unwrap();
             let pos = record.pos() + 1; // 1-based indexing
             let ref_base = std::str::from_utf8(record.alleles()[0]).unwrap();
             let alt_base = std::str::from_utf8(record.alleles()[1]).unwrap(); // Only first ALT allele
 
             //construct the variant change string (e.g., "C1973T")
-            let variant_change = format!("{}{}{}", ref_base, pos, alt_base);
+            let variant_change = format!("{}:{}{}{}", chr_name, ref_base, pos, alt_base);
 
             calls.insert(
                 VariantID(variant_id),
