@@ -350,9 +350,6 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
     let mut alleles_indices: Vec<i32> = Vec::new();
     let mut groups_indices: Vec<i32> = Vec::new();
     let mut counter = 0;
-    // let mut txt = Vec::new();
-    // let mut start_end = Vec::new();
-    // let mut feature_names = Vec::new();
     loop {
         match reader.read_event_into(&mut buf) {
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
@@ -386,16 +383,6 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                     alleles_indices.push(counter.clone());
                     counter += 1;
                 }
-                // b"feature" => {
-                //     feature_names.push(
-                //         e.attributes()
-                //             .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                //             .collect::<Vec<_>>()[2]
-                //             .as_ref()
-                //             .unwrap()
-                //             .to_string(),
-                //     ); //index 0 holds the allele id
-                // }
                 _ => (),
             },
             Ok(Event::Empty(e)) => match e.name().as_ref() {
@@ -422,37 +409,13 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                             .to_string(), //index 0 holds the status info
                     );
                 }
-                // b"SequenceCoordinates" => {
-                //     let start = start_end.push((e.attributes()
-                //             .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                //             .collect::<Vec<_>>()[0]
-                //             .as_ref()
-                //             .unwrap()
-                //             .to_string(),
-                //             e.attributes()
-                //             .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                //             .collect::<Vec<_>>()[1]
-                //             .as_ref()
-                //             .unwrap()
-                //             .to_string()
-                //     ));
-                // }
                 _ => (),
             },
-            // Ok(Event::Text(e)) => {
-            //     let text_name = e.unescape().unwrap().into_owned();
-            //     txt.push(text_name);
-            // }
             _ => (),
         }
         // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
         buf.clear();
     }
-    // let only_seq = txt.iter().filter(|&t|t.len()>1000).map(|t|t.clone()).collect::<Vec<String>>();
-    // dbg!(&txt);
-    // dbg!(&start_end.len());
-    // dbg!(&feature_names.len());
-    // dbg!(&only_seq.len());
 
     assert_eq!(alleles.len(), confirmed.len());
     //create a map for allele ids and allele names
@@ -472,10 +435,6 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
         .collect::<HashMap<String, String>>();
     //include only alleles that have >0.01 AF in at least one population
     let mut unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
-    dbg!(&unconfirmed_alleles.len());
-    dbg!(&confirmed_alleles.len());
-    dbg!(&unconfirmed_alleles);
-    dbg!(&confirmed_alleles);
     let mut confirmed_alleles_clone = confirmed_alleles.clone();
     let mut allele_freq_rdr = CsvReader::from_path(af_path)?;
     let mut to_be_included = Vec::new();
