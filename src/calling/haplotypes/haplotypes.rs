@@ -565,7 +565,10 @@ pub fn plot_prediction(
 
     if &solution == &"lp" {
         //write tsv table for datavzrd view    
-        let mut wtr_lp = csv::Writer::from_path(parent.join("lp_solution.tsv".to_string()))?;
+        let mut wtr_lp = csv::WriterBuilder::new()
+            .delimiter(b'\t')
+            .quote_style(csv::QuoteStyle::Never) // 👈 no automatic quotes
+            .from_path(parent.join("lp_solution.tsv"))?;
         let mut headers: Vec<_> = vec!["sum_of_fractions".to_string(), "variant".to_string()];
         let haplotype_names: Vec<String> = haplotypes.iter().map(|h| h.to_string()).collect();
         headers.extend(haplotype_names);
@@ -605,21 +608,22 @@ pub fn plot_prediction(
                             variant_change: var_change.to_string(),
                             vaf: af.clone(),
                         });
-
+                        
                         //fill in the dict required for the table
-                        let sum_of_fractions_str = format!(
-                            "haplotype:{}, vaf:{:.3}, fraction:{}",
-                            haplotype.to_string(),
-                            af,
-                            variable
-                        );
-                        sum_of_fractions_vec.push(sum_of_fractions_str);
+                        let sum_of_fractions_map = json!({
+                            "haplotype": haplotype.to_string(),
+                            "vaf": af,
+                            "fraction": variable
+                        });
+
+                        sum_of_fractions_vec.push(sum_of_fractions_map);
                     }
 
                 }
                 //push other members and write to table if at least one haplotype contains the variant.
                 if !sum_of_fractions_vec.is_empty() {
-                    record.push(sum_of_fractions_vec.join(","));
+                    let json_array_string = serde_json::to_string(&sum_of_fractions_vec)?;
+                    record.push(json_array_string);
                     record.push(var_change.to_string());
                     record.extend(haplotype_has_variant);
                     wtr_lp.write_record(&record)?;
