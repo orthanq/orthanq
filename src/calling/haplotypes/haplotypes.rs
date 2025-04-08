@@ -618,7 +618,7 @@ pub fn plot_prediction(
 
                 }
                 //push other members and write to table if at least one haplotype contains the variant.
-                if !sum_of_fractions.is_empty() {
+                if !sum_of_fractions_vec.is_empty() {
                     record.push(sum_of_fractions_vec.join(","));
                     record.push(var_change.to_string());
                     record.extend(haplotype_has_variant);
