@@ -547,6 +547,10 @@ pub fn plot_prediction(
     variant_calls: &VariantCalls,
     best_variables: &Vec<f64>,
 ) -> Result<()> {
+    let mut parent = outdir.clone();
+    parent.pop();
+    fs::create_dir_all(&parent)?;
+
     let mut file_name = "".to_string();
     let mut json = include_str!("../../../templates/final_prediction.json");
     if &solution == &"lp" {
@@ -560,6 +564,13 @@ pub fn plot_prediction(
     let mut plot_data_dataset_afd = Vec::new();
 
     if &solution == &"lp" {
+        //write tsv table for datavzrd view    
+        let mut wtr_lp = csv::Writer::from_path(parent.join("lp_solution.tsv".to_string()))?;
+        let mut headers: Vec<_> = vec!["sum_of_fractions".to_string(), "variant".to_string()];
+        let haplotype_names: Vec<String> = haplotypes.iter().map(|h| h.to_string()).collect();
+        headers.extend(haplotype_names);
+        wtr_lp.write_record(&headers)?;
+
         for ((genotype_matrix, coverage_matrix), (variant_id, (var_change, af, _, _dp))) in
             candidate_matrix_values.iter().zip(variant_calls.iter())
         {
@@ -570,10 +581,18 @@ pub fn plot_prediction(
                 }
             }
             if counter == best_variables.len() {
+                //initialize the dict for storing sum_of_fractions (required for the table)
+                let mut record = Vec::new();
+                let mut haplotype_has_variant = Vec::new();
+                let mut sum_of_fractions_vec = Vec::new();
                 for (i, (variable, haplotype)) in
                     best_variables.iter().zip(haplotypes.iter()).enumerate()
                 {
-                    if genotype_matrix[i as u64] {
+                    //record presence/absence for the variant
+                    let has_variant = genotype_matrix[i as u64];
+                    haplotype_has_variant.push(has_variant.to_string());
+
+                    if has_variant {
                         plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
                             haplotype: haplotype.to_string(),
                             fraction: NotNan::new(*variable).unwrap(),
@@ -586,11 +605,29 @@ pub fn plot_prediction(
                             variant_change: var_change.to_string(),
                             vaf: af.clone(),
                         });
+
+                        //fill in the dict required for the table
+                        let sum_of_fractions_str = format!(
+                            "haplotype:{}, vaf:{:.3}, fraction:{}",
+                            haplotype.to_string(),
+                            af,
+                            variable
+                        );
+                        sum_of_fractions_vec.push(sum_of_fractions_str);
                     }
+
+                }
+                //push other members and write to table if at least one haplotype contains the variant.
+                if !sum_of_fractions.is_empty() {
+                    record.push(sum_of_fractions_vec.join(","));
+                    record.push(var_change.to_string());
+                    record.extend(haplotype_has_variant);
+                    wtr_lp.write_record(&record)?;
                 }
             }
         }
         file_name.push_str("lp_solution.json");
+        wtr_lp.flush()?;
     } else if &solution == &"final" {
         candidate_matrix_values
             .iter()
@@ -696,9 +733,6 @@ pub fn plot_prediction(
     blueprint["datasets"]["covered_variants"] = plot_data_covered_variants;
     blueprint["datasets"]["allele_frequency_distribution"] = plot_data_dataset_afd;
 
-    let mut parent = outdir.clone();
-    parent.pop();
-    fs::create_dir_all(&parent)?;
     let file = fs::File::create(parent.join(file_name)).unwrap();
     serde_json::to_writer(file, &blueprint)?;
     Ok(())
