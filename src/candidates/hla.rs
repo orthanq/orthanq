@@ -399,14 +399,17 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                 _ => (),
             },
             Ok(Event::Empty(e)) => match e.name().as_ref() {
-                b"releaseversions" => confirmed.push(
-                    e.attributes()
-                        .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                        .collect::<Vec<_>>()[4]
-                        .as_ref()
-                        .unwrap()
-                        .to_string(), //index 4 holds the Confirmed info
-                ),
+                b"releaseversions" => {
+                    for attr in e.attributes().flatten() {
+                        if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
+                            if key == "confirmed" {
+                                if let Ok(value) = std::str::from_utf8(&attr.value) {
+                                    confirmed.push(value.to_string());
+                                }
+                            }
+                        }
+                    }
+                },
                 b"hla_g_group" => {
                     groups_indices.push(counter);
                     hla_g_groups.insert(
@@ -469,8 +472,10 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
         .collect::<HashMap<String, String>>();
     //include only alleles that have >0.01 AF in at least one population
     let mut unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
-    // dbg!(&unconfirmed_alleles.len());
-    // dbg!(&confirmed_alleles.len());
+    dbg!(&unconfirmed_alleles.len());
+    dbg!(&confirmed_alleles.len());
+    dbg!(&unconfirmed_alleles);
+    dbg!(&confirmed_alleles);
     let mut confirmed_alleles_clone = confirmed_alleles.clone();
     let mut allele_freq_rdr = CsvReader::from_path(af_path)?;
     let mut to_be_included = Vec::new();
