@@ -396,7 +396,7 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                             }
                         }
                     }
-                },
+                }
                 b"hla_g_group" => {
                     groups_indices.push(counter);
                     hla_g_groups.insert(
