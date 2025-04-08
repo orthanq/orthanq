@@ -565,9 +565,11 @@ pub fn plot_prediction(
 
     if &solution == &"lp" {
         //write tsv table for datavzrd view    
+        let mut variant_records = Vec::new();
+
         let mut wtr_lp = csv::WriterBuilder::new()
             .delimiter(b'\t')
-            .quote_style(csv::QuoteStyle::Never) // 👈 no automatic quotes
+            .quote_style(csv::QuoteStyle::Never)
             .from_path(parent.join("lp_solution.tsv"))?;
         let mut headers: Vec<_> = vec!["sum_of_fractions".to_string(), "variant".to_string()];
         let haplotype_names: Vec<String> = haplotypes.iter().map(|h| h.to_string()).collect();
@@ -585,9 +587,10 @@ pub fn plot_prediction(
             }
             if counter == best_variables.len() {
                 //initialize the dict for storing sum_of_fractions (required for the table)
-                let mut record = Vec::new();
                 let mut haplotype_has_variant = Vec::new();
                 let mut sum_of_fractions_vec = Vec::new();
+                let mut sum_of_fractions = 0.0;
+
                 for (i, (variable, haplotype)) in
                     best_variables.iter().zip(haplotypes.iter()).enumerate()
                 {
@@ -615,7 +618,7 @@ pub fn plot_prediction(
                             "vaf": af,
                             "fraction": variable
                         });
-
+                        sum_of_fractions += variable;
                         sum_of_fractions_vec.push(sum_of_fractions_map);
                     }
 
@@ -623,13 +626,22 @@ pub fn plot_prediction(
                 //push other members and write to table if at least one haplotype contains the variant.
                 if !sum_of_fractions_vec.is_empty() {
                     let json_array_string = serde_json::to_string(&sum_of_fractions_vec)?;
-                    record.push(json_array_string);
-                    record.push(var_change.to_string());
-                    record.extend(haplotype_has_variant);
-                    wtr_lp.write_record(&record)?;
+                    let mut final_record = Vec::new();
+                    final_record.push(json_array_string);
+                    final_record.push(var_change.to_string());
+                    final_record.extend(haplotype_has_variant);
+                    variant_records.push((sum_of_fractions, final_record));
                 }
             }
         }
+        //sort by sum_of_fractions descending
+        variant_records.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        //then write each row to tsv
+        for (_sum, record) in variant_records {
+            wtr_lp.write_record(&record)?;
+        }
+
         file_name.push_str("lp_solution.json");
         wtr_lp.flush()?;
     } else if &solution == &"final" {
