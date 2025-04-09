@@ -46,12 +46,11 @@ pub struct AlleleFreqDist(#[deref] BTreeMap<AlleleFreq, LogProb>);
 
 impl AlleleFreqDist {
     pub fn vaf_query(&self, vaf: &AlleleFreq) -> Option<LogProb> {
-        if self.contains_key(&vaf) {
-            return Some(*self.get(&vaf).unwrap());
+        if self.contains_key(vaf) {
+            return Some(*self.get(vaf).unwrap());
         } else {
-            let (x_0, y_0) = self.range(..vaf).next_back().unwrap();
-            let (x_1, y_1) = self.range(vaf..).next().unwrap();
-
+            let (x_0, y_0) = self.range::<NotNan<f64>, _>(..vaf).next_back().unwrap();
+            let (x_1, y_1) = self.range::<NotNan<f64>, _>(vaf..).next().unwrap();
             // If y_0 == y_1, what to do?
             // if y_0 == y_1 {
             //     return Some(*y_0);
@@ -66,10 +65,10 @@ impl AlleleFreqDist {
             let log_diff = larger.ln_sub_exp(*smaller).exp();
 
             //interpolated probability in linear space again
-            let interpolated_prob = NotNan::new(smaller.exp()).unwrap() + fraction * log_diff;
+            let interpolated_prob = smaller.exp() + fraction * log_diff;
 
             //convert back to LogProb
-            Some(LogProb::from(Prob(NotNan::into_inner(interpolated_prob))))
+            Some(LogProb::from(Prob(interpolated_prob)))
         }
     }
 }
