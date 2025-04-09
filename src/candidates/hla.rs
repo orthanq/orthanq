@@ -356,7 +356,6 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
             Ok(Event::Eof) => break,
             Ok(Event::Start(e)) => match e.name().as_ref() {
                 b"allele" => {
-
                     let mut id_value: Option<String> = None;
                     let mut name_value: Option<String> = None;
 
@@ -371,11 +370,11 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                             }
                         }
                     }
-                    
+
                     match (id_value, name_value) {
                         (Some(id), Some(name)) => {
                             alleles.push(id);
-                
+
                             // Clean up the allele name by removing the "HLA-" prefix if present
                             let cleaned_name = if name.contains('-') {
                                 name.split('-').nth(1).unwrap_or(&name).to_string()
@@ -383,7 +382,7 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                                 name
                             };
                             allele_names.push(cleaned_name);
-                
+
                             alleles_indices.push(counter.clone());
                             counter += 1;
                         }
@@ -436,7 +435,10 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                     if let Some(status) = status_value {
                         hla_g_groups.insert(counter, status);
                     } else {
-                        eprintln!("Warning: No 'status' attribute found for hla_g_group at index {}", counter);
+                        eprintln!(
+                            "Warning: No 'status' attribute found for hla_g_group at index {}",
+                            counter
+                        );
                     }
                 }
                 _ => (),
@@ -515,8 +517,10 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
     //todo: confirmed_alleles
     let confirmed_alleles = confirmed_alleles.keys().cloned().collect::<Vec<String>>();
     unconfirmed_alleles.extend(below_criterium);
-    // dbg!(&unconfirmed_alleles.len());
-    // dbg!(&confirmed_alleles.len());
+    dbg!(&unconfirmed_alleles.len());
+    dbg!(&confirmed_alleles.len());
+    dbg!(&unconfirmed_alleles);
+    dbg!(&confirmed_alleles);
     Ok((confirmed_alleles, unconfirmed_alleles))
 }
 
