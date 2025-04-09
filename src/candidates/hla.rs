@@ -350,106 +350,104 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
     let mut alleles_indices: Vec<i32> = Vec::new();
     let mut groups_indices: Vec<i32> = Vec::new();
     let mut counter = 0;
-    // let mut txt = Vec::new();
-    // let mut start_end = Vec::new();
-    // let mut feature_names = Vec::new();
     loop {
         match reader.read_event_into(&mut buf) {
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
             Ok(Event::Eof) => break,
             Ok(Event::Start(e)) => match e.name().as_ref() {
                 b"allele" => {
-                    alleles.push(
-                        e.attributes()
-                            .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                            .collect::<Vec<_>>()[0]
-                            .as_ref()
-                            .unwrap()
-                            .to_string(),
-                    ); //index 0 holds the allele id
+                    let mut id_value: Option<String> = None;
+                    let mut name_value: Option<String> = None;
 
-                    //omit HLA- prefix from allele names in case they contain it.
-                    let allele_name = e
-                        .attributes()
-                        .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                        .collect::<Vec<_>>()[1]
-                        .as_ref()
-                        .unwrap()
-                        .to_string(); //index 1 holds the allele name
-                    if allele_name.contains('-') {
-                        allele_names
-                            .push(allele_name.split('-').collect::<Vec<&str>>()[1].to_string());
-                    } else {
-                        allele_names.push(allele_name);
+                    for attr in e.attributes().flatten() {
+                        if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
+                            if let Ok(val) = std::str::from_utf8(&attr.value) {
+                                match key {
+                                    "id" => id_value = Some(val.to_string()),
+                                    "name" => name_value = Some(val.to_string()),
+                                    _ => {}
+                                }
+                            }
+                        }
                     }
 
-                    alleles_indices.push(counter.clone());
-                    counter += 1;
+                    match (id_value, name_value) {
+                        (Some(id), Some(name)) => {
+                            alleles.push(id);
+
+                            // Clean up the allele name by removing the "HLA-" prefix if present
+                            let cleaned_name = if name.contains('-') {
+                                name.split('-').nth(1).unwrap_or(&name).to_string()
+                            } else {
+                                name
+                            };
+                            allele_names.push(cleaned_name);
+
+                            alleles_indices.push(counter.clone());
+                            counter += 1;
+                        }
+                        (id_opt, name_opt) => {
+                            eprintln!(
+                                "Warning: missing attribute{}{} in <allele> element",
+                                if id_opt.is_none() { " 'id'" } else { "" },
+                                if name_opt.is_none() { " 'name'" } else { "" }
+                            );
+                        }
+                    }
                 }
-                // b"feature" => {
-                //     feature_names.push(
-                //         e.attributes()
-                //             .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                //             .collect::<Vec<_>>()[2]
-                //             .as_ref()
-                //             .unwrap()
-                //             .to_string(),
-                //     ); //index 0 holds the allele id
-                // }
                 _ => (),
             },
             Ok(Event::Empty(e)) => match e.name().as_ref() {
-                b"releaseversions" => confirmed.push(
-                    e.attributes()
-                        .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                        .collect::<Vec<_>>()[4]
-                        .as_ref()
-                        .unwrap()
-                        .to_string(), //index 4 holds the Confirmed info
-                ),
+                b"releaseversions" => {
+                    let mut confirmed_found = false;
+
+                    for attr in e.attributes().flatten() {
+                        if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
+                            if key == "confirmed" {
+                                if let Ok(value) = std::str::from_utf8(&attr.value) {
+                                    confirmed.push(value.to_string());
+                                    confirmed_found = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if !confirmed_found {
+                        eprintln!(
+                            "Warning: 'confirmed' attribute not found in <releaseversions> element"
+                        );
+                    }
+                }
                 b"hla_g_group" => {
                     groups_indices.push(counter);
-                    hla_g_groups.insert(
-                        counter,
-                        e.attributes()
-                            .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                            .collect::<Vec<_>>()[0]
-                            .as_ref()
-                            .unwrap()
-                            .to_string(), //index 0 holds the status info
-                    );
+                    let mut status_value: Option<String> = None;
+
+                    for attr in e.attributes().flatten() {
+                        if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
+                            if key == "status" {
+                                if let Ok(val) = std::str::from_utf8(&attr.value) {
+                                    status_value = Some(val.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(status) = status_value {
+                        hla_g_groups.insert(counter, status);
+                    } else {
+                        eprintln!(
+                            "Warning: No 'status' attribute found for hla_g_group at index {}",
+                            counter
+                        );
+                    }
                 }
-                // b"SequenceCoordinates" => {
-                //     let start = start_end.push((e.attributes()
-                //             .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                //             .collect::<Vec<_>>()[0]
-                //             .as_ref()
-                //             .unwrap()
-                //             .to_string(),
-                //             e.attributes()
-                //             .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                //             .collect::<Vec<_>>()[1]
-                //             .as_ref()
-                //             .unwrap()
-                //             .to_string()
-                //     ));
-                // }
                 _ => (),
             },
-            // Ok(Event::Text(e)) => {
-            //     let text_name = e.unescape().unwrap().into_owned();
-            //     txt.push(text_name);
-            // }
             _ => (),
         }
         // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
         buf.clear();
     }
-    // let only_seq = txt.iter().filter(|&t|t.len()>1000).map(|t|t.clone()).collect::<Vec<String>>();
-    // dbg!(&txt);
-    // dbg!(&start_end.len());
-    // dbg!(&feature_names.len());
-    // dbg!(&only_seq.len());
 
     assert_eq!(alleles.len(), confirmed.len());
     //create a map for allele ids and allele names
@@ -469,8 +467,6 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
         .collect::<HashMap<String, String>>();
     //include only alleles that have >0.01 AF in at least one population
     let mut unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
-    // dbg!(&unconfirmed_alleles.len());
-    // dbg!(&confirmed_alleles.len());
     let mut confirmed_alleles_clone = confirmed_alleles.clone();
     let mut allele_freq_rdr = CsvReader::from_path(af_path)?;
     let mut to_be_included = Vec::new();
@@ -521,8 +517,10 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
     //todo: confirmed_alleles
     let confirmed_alleles = confirmed_alleles.keys().cloned().collect::<Vec<String>>();
     unconfirmed_alleles.extend(below_criterium);
-    // dbg!(&unconfirmed_alleles.len());
-    // dbg!(&confirmed_alleles.len());
+    dbg!(&unconfirmed_alleles.len());
+    dbg!(&confirmed_alleles.len());
+    dbg!(&unconfirmed_alleles);
+    dbg!(&confirmed_alleles);
     Ok((confirmed_alleles, unconfirmed_alleles))
 }
 
