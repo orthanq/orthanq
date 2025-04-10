@@ -1,4 +1,5 @@
 name: Orthanq LP Solutions
+default-view: solutions
 datasets:
   solutions:
     path: ""
