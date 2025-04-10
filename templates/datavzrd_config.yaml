@@ -1,0 +1,76 @@
+name: Orthanq LP Solutions
+datasets:
+  solutions:
+    path: ""
+    separator: "\t"
+webview-controls: true
+views:
+  solutions:
+    dataset: solutions
+    desc: |
+        LP Solutions from Orthanq
+    page-size: 25
+    render-table:
+      columns:
+        sum_of_fractions:
+          custom-plot:
+            data: function(value, row) { return JSON.parse(value); }
+            spec: |
+                {
+                  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+                  "description": "Single stacked bar of haplotype fractions with vaf overlay.",
+                  "data": {
+                    "values": []
+                  },
+                  "layer": [
+                    {
+                      "mark": {
+                        "type": "bar",
+                        "tooltip": true
+                      },
+                      "encoding": {
+                        "x": {
+                          "field": "fraction",
+                          "type": "quantitative",
+                          "stack": "zero",
+                          "scale": {"domain": [0,1]},
+                          "axis": { "title": null, "labels": false, "ticks": false }
+                        },
+                        "color": {
+                          "legend": null,
+                          "field": "haplotype",
+                          "type": "nominal",
+                          "scale": {
+                            "scheme": "category20"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "mark": {
+                        "type": "point",
+                        "shape": "diamond",
+                        "color": "black",
+                        "fill": "black",
+                        "size": 50,
+                        "tooltip": true
+                      },
+                      "encoding": {
+                        "x": {
+                          "field": "vaf",
+                          "type": "quantitative"
+                        }
+                      }
+                    }
+                  ],
+                  "height": 20
+                }
+        regex('A.+'):
+          spell:
+            url: v1.2.2/logic/boolean
+            with:
+              true_value: "true"
+              false_value: "false"
+        variant:
+          spell:
+            url: v1.3.0/med/genomic-coordinates

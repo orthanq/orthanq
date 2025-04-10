@@ -4,6 +4,8 @@ use anyhow::Result;
 use bio::stats::bayesian::model::Model;
 use bio::stats::{probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
+use datavzrd::render_report;
+use serde_yaml::Value;
 
 use derefable::Derefable;
 
@@ -565,11 +567,12 @@ pub fn plot_prediction(
     if &solution == &"lp" {
         //write tsv table for datavzrd view    
         let mut variant_records = Vec::new();
-
+        let lp_solution_path = parent.join("lp_solution.tsv");
         let mut wtr_lp = csv::WriterBuilder::new()
             .delimiter(b'\t')
             .quote_style(csv::QuoteStyle::Never)
-            .from_path(parent.join("lp_solution.tsv"))?;
+            .from_path(&lp_solution_path)?;
+        dbg!(&"lp_solution_path: {:?}", &lp_solution_path);
         let mut headers: Vec<_> = vec!["sum_of_fractions".to_string(), "variant".to_string()];
         let haplotype_names: Vec<String> = haplotypes.iter().map(|h| h.to_string()).collect();
         headers.extend(haplotype_names);
@@ -640,6 +643,36 @@ pub fn plot_prediction(
         for (_sum, record) in variant_records {
             wtr_lp.write_record(&record)?;
         }
+        // render datavzrd report
+        let contents = include_str!("../../../templates/datavzrd_config.yaml");
+
+        //parse YAML into a serde_yaml::Value
+        let mut config_yaml: Value = serde_yaml::from_str(&contents)?;
+
+        //navigate through the yaml and change path
+        let lp_solution_path_str = lp_solution_path.into_os_string().into_string().unwrap();
+        dbg!(&lp_solution_path_str);
+        if let Some(datasets) = config_yaml.get_mut("datasets") {
+            if let Some(solutions) = datasets.get_mut("solutions") {
+                if let Some(path_field) = solutions.get_mut("path") {
+                    *path_field = Value::String(lp_solution_path_str);
+                } else {
+                    eprintln!("Warning: 'path' field not found under 'datasets.solutions'");
+                }
+            } else {
+                eprintln!("Warning: 'solutions' not found under 'datasets'");
+            }
+        } else {
+            eprintln!("Warning: 'datasets' not found in config");
+        }
+        //write updated config back to a new file (or overwrite the original)
+        let filled_config_yaml = parent.join("datavzrd_config_filled.yaml");
+        let yaml_output = PathBuf::from(&filled_config_yaml);
+        fs::write(&yaml_output, serde_yaml::to_string(&config_yaml)?)?;
+
+        //then create datavzrd report
+        let datavzrd_output = parent.join("datavzrd_report");
+        render_report(&filled_config_yaml, &datavzrd_output, "", false, true)?;
 
         file_name.push_str("lp_solution.json");
         wtr_lp.flush()?;
