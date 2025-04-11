@@ -584,7 +584,7 @@ pub fn plot_prediction(
             .map(|(h, _)| haplotypes.iter().position(|x| x == *h).unwrap())
             .collect();
 
-        let mut headers: Vec<_> = vec!["sum_of_fractions".to_string(), "variant".to_string()];
+        let mut headers: Vec<_> = vec!["sum_of_fractions".to_string(), "variant".to_string(), "vaf".to_string(), "prediction_error".to_string()];
         //insert sorted haplotype names to header
         headers.extend(sorted_haplotypes.clone());        
         wtr_lp.write_record(&headers)?;
@@ -640,6 +640,21 @@ pub fn plot_prediction(
                     let mut final_record = Vec::new();
                     final_record.push(json_array_string);
                     final_record.push(var_change.to_string());
+
+                    //push vaf
+                    final_record.push(af.to_string());
+
+                    //sum all fractions
+                    let total_fraction: f64 = sum_of_fractions_vec.iter()
+                    .filter_map(|entry| entry.get("fraction"))
+                    .filter_map(|val| val.as_f64())
+                    .sum();
+
+                    //find prediction error and push
+                    let difference = (af - total_fraction as f32).abs();
+                    final_record.push(difference.to_string());                
+
+                    //push haplotype presence information
                     let sorted_variant_flags: Vec<String> = sorted_indices.iter()
                     .map(|&i| haplotype_has_variant[i].clone())
                     .collect();
