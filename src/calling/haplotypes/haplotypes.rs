@@ -573,9 +573,20 @@ pub fn plot_prediction(
             .quote_style(csv::QuoteStyle::Never)
             .from_path(&lp_solution_path)?;
         dbg!(&"lp_solution_path: {:?}", &lp_solution_path);
+
+        //sort haplotypes according to best_variables descending
+        let mut haplotype_with_weights: Vec<(&Haplotype, &f64)> = haplotypes.iter().zip(best_variables.iter()).collect();
+        haplotype_with_weights.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        //get sorted haplotype names and their original indices
+        let sorted_haplotypes: Vec<String> = haplotype_with_weights.iter().map(|(h, _)| (*h).to_string()).collect();
+        let sorted_indices: Vec<usize> = haplotype_with_weights.iter()
+            .map(|(h, _)| haplotypes.iter().position(|x| x == *h).unwrap())
+            .collect();
+
         let mut headers: Vec<_> = vec!["sum_of_fractions".to_string(), "variant".to_string()];
-        let haplotype_names: Vec<String> = haplotypes.iter().map(|h| h.to_string()).collect();
-        headers.extend(haplotype_names);
+        //insert sorted haplotype names to header
+        headers.extend(sorted_haplotypes.clone());        
         wtr_lp.write_record(&headers)?;
 
         for ((genotype_matrix, coverage_matrix), (variant_id, (var_change, af, _, _dp))) in
@@ -591,7 +602,6 @@ pub fn plot_prediction(
                 //initialize the dict for storing sum_of_fractions (required for the table)
                 let mut haplotype_has_variant = Vec::new();
                 let mut sum_of_fractions_vec = Vec::new();
-                let mut sum_of_fractions = 0.0;
 
                 for (i, (variable, haplotype)) in
                     best_variables.iter().zip(haplotypes.iter()).enumerate()
@@ -620,7 +630,6 @@ pub fn plot_prediction(
                             "vaf": af,
                             "fraction": variable
                         });
-                        sum_of_fractions += variable;
                         sum_of_fractions_vec.push(sum_of_fractions_map);
                     }
 
@@ -631,16 +640,17 @@ pub fn plot_prediction(
                     let mut final_record = Vec::new();
                     final_record.push(json_array_string);
                     final_record.push(var_change.to_string());
-                    final_record.extend(haplotype_has_variant);
-                    variant_records.push((sum_of_fractions, final_record));
+                    let sorted_variant_flags: Vec<String> = sorted_indices.iter()
+                    .map(|&i| haplotype_has_variant[i].clone())
+                    .collect();
+                    final_record.extend(sorted_variant_flags);                
+                    variant_records.push(final_record);
                 }
             }
         }
-        //sort by sum_of_fractions descending
-        variant_records.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
         //then write each row to tsv
-        for (_sum, record) in variant_records {
+        for record in variant_records {
             wtr_lp.write_record(&record)?;
         }
         // render datavzrd report
