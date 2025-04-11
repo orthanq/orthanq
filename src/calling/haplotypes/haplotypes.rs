@@ -565,7 +565,7 @@ pub fn plot_prediction(
     let mut plot_data_dataset_afd = Vec::new();
 
     if &solution == &"lp" {
-        //write tsv table for datavzrd view    
+        //write tsv table for datavzrd view
         let mut variant_records = Vec::new();
         let lp_solution_path = parent.join("lp_solution.tsv");
         let mut wtr_lp = csv::WriterBuilder::new()
@@ -575,18 +575,29 @@ pub fn plot_prediction(
         dbg!(&"lp_solution_path: {:?}", &lp_solution_path);
 
         //sort haplotypes according to best_variables descending
-        let mut haplotype_with_weights: Vec<(&Haplotype, &f64)> = haplotypes.iter().zip(best_variables.iter()).collect();
-        haplotype_with_weights.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let mut haplotype_with_weights: Vec<(&Haplotype, &f64)> =
+            haplotypes.iter().zip(best_variables.iter()).collect();
+        haplotype_with_weights
+            .sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         //get sorted haplotype names and their original indices
-        let sorted_haplotypes: Vec<String> = haplotype_with_weights.iter().map(|(h, _)| (*h).to_string()).collect();
-        let sorted_indices: Vec<usize> = haplotype_with_weights.iter()
+        let sorted_haplotypes: Vec<String> = haplotype_with_weights
+            .iter()
+            .map(|(h, _)| (*h).to_string())
+            .collect();
+        let sorted_indices: Vec<usize> = haplotype_with_weights
+            .iter()
             .map(|(h, _)| haplotypes.iter().position(|x| x == *h).unwrap())
             .collect();
 
-        let mut headers: Vec<_> = vec!["sum_of_fractions".to_string(), "variant".to_string(), "vaf".to_string(), "prediction_error".to_string()];
+        let mut headers: Vec<_> = vec![
+            "sum_of_fractions".to_string(),
+            "variant".to_string(),
+            "vaf".to_string(),
+            "prediction_error".to_string(),
+        ];
         //insert sorted haplotype names to header
-        headers.extend(sorted_haplotypes.clone());        
+        headers.extend(sorted_haplotypes.clone());
         wtr_lp.write_record(&headers)?;
 
         for ((genotype_matrix, coverage_matrix), (variant_id, (var_change, af, _, _dp))) in
@@ -623,7 +634,7 @@ pub fn plot_prediction(
                             variant_change: var_change.to_string(),
                             vaf: af.clone(),
                         });
-                        
+
                         //fill in the dict required for the table
                         let sum_of_fractions_map = json!({
                             "haplotype": haplotype.to_string(),
@@ -632,7 +643,6 @@ pub fn plot_prediction(
                         });
                         sum_of_fractions_vec.push(sum_of_fractions_map);
                     }
-
                 }
                 //push other members and write to table if at least one haplotype contains the variant.
                 if !sum_of_fractions_vec.is_empty() {
@@ -645,20 +655,22 @@ pub fn plot_prediction(
                     final_record.push(af.to_string());
 
                     //sum all fractions
-                    let total_fraction: f64 = sum_of_fractions_vec.iter()
-                    .filter_map(|entry| entry.get("fraction"))
-                    .filter_map(|val| val.as_f64())
-                    .sum();
+                    let total_fraction: f64 = sum_of_fractions_vec
+                        .iter()
+                        .filter_map(|entry| entry.get("fraction"))
+                        .filter_map(|val| val.as_f64())
+                        .sum();
 
                     //find prediction error and push
                     let difference = (af - total_fraction as f32).abs();
-                    final_record.push(difference.to_string());                
+                    final_record.push(difference.to_string());
 
                     //push haplotype presence information
-                    let sorted_variant_flags: Vec<String> = sorted_indices.iter()
-                    .map(|&i| haplotype_has_variant[i].clone())
-                    .collect();
-                    final_record.extend(sorted_variant_flags);                
+                    let sorted_variant_flags: Vec<String> = sorted_indices
+                        .iter()
+                        .map(|&i| haplotype_has_variant[i].clone())
+                        .collect();
+                    final_record.extend(sorted_variant_flags);
                     variant_records.push(final_record);
                 }
             }
