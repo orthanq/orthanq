@@ -619,8 +619,9 @@ pub fn plot_prediction(
                 {
                     //record presence/absence for the variant
                     let has_variant = genotype_matrix[i as u64];
-                    haplotype_has_variant.push(has_variant.to_string());
-
+                    // haplotype_has_variant.push(has_variant.to_string());
+                    haplotype_has_variant.push(if has_variant { "1" } else { "0" }.to_string());
+                    
                     if has_variant {
                         plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
                             haplotype: haplotype.to_string(),

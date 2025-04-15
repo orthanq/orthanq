@@ -10,7 +10,7 @@ views:
     dataset: solutions
     desc: |
         LP Solutions from Orthanq
-    page-size: 25
+    page-size: 10
     render-table:
       columns:
         sum_of_fractions:
@@ -70,8 +70,8 @@ views:
           spell:
             url: v1.2.2/logic/boolean
             with:
-              true_value: "true"
-              false_value: "false"
+              true_value: "1"
+              false_value: "0"
         variant:
           spell:
             url: v1.3.0/med/genomic-coordinates
