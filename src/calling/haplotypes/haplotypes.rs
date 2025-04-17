@@ -588,7 +588,7 @@ pub fn plot_prediction(
                 }
             }
         }
-        dbg!(&contributing_haplotypes.len());
+        // dbg!(&contributing_haplotypes.len());
 
         // print haplotypes that will not be displayed
         // for haplotype in haplotypes.iter() {
@@ -736,7 +736,6 @@ pub fn plot_prediction(
 
         //navigate through the yaml and change path
         let lp_solution_path_str = lp_solution_path.into_os_string().into_string().unwrap();
-        dbg!(&lp_solution_path_str);
         if let Some(datasets) = config_yaml.get_mut("datasets") {
             if let Some(solutions) = datasets.get_mut("solutions") {
                 if let Some(path_field) = solutions.get_mut("path") {
