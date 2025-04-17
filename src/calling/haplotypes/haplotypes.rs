@@ -582,7 +582,6 @@ pub fn plot_prediction(
                 for (i, haplotype) in haplotypes.iter().enumerate() {
                     let has_variant = genotype_matrix[i as u64];
                     if has_variant {
-
                         contributing_haplotypes.insert(haplotype.to_string()); // NEW
                     }
                 }
@@ -598,44 +597,50 @@ pub fn plot_prediction(
         // }
 
         //filter haplotypes and variables based on contributing haplotypes
-        let filtered: Vec<_> = haplotypes.iter()
+        let filtered: Vec<_> = haplotypes
+            .iter()
             .zip(best_variables.iter())
-            .filter(|(h, _)| contributing_haplotypes.contains(&h.to_string())) 
+            .filter(|(h, _)| contributing_haplotypes.contains(&h.to_string()))
             .collect();
 
-        let (filtered_haplotypes, filtered_best_variables): (Vec<_>, Vec<_>) = filtered.into_iter().unzip(); 
+        let (filtered_haplotypes, filtered_best_variables): (Vec<_>, Vec<_>) =
+            filtered.into_iter().unzip();
 
         //sort haplotypes descending by lp values
-        let mut haplotype_with_weights: Vec<(&Haplotype, &f64)> =
-        filtered_haplotypes
+        let mut haplotype_with_weights: Vec<(&Haplotype, &f64)> = filtered_haplotypes
             .iter()
             .zip(filtered_best_variables.iter())
             .map(|(&h, &v)| (h, v))
             .collect();
-        haplotype_with_weights.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+        haplotype_with_weights
+            .sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        let sorted_haplotypes: Vec<String> = haplotype_with_weights.iter().map(|(h, _)| (*h).to_string()).collect();
+        let sorted_haplotypes: Vec<String> = haplotype_with_weights
+            .iter()
+            .map(|(h, _)| (*h).to_string())
+            .collect();
         let sorted_indices: Vec<usize> = haplotype_with_weights
             .iter()
             .map(|(h, _)| filtered_haplotypes.iter().position(|x| *x == *h).unwrap())
             .collect();
 
-        let filtered_candidate_matrix_values: Vec<(bv::BitVec, bv::BitVec)> = candidate_matrix_values
-            .iter()
-            .map(|(genotype_matrix, coverage_matrix)| {
-                let mut filtered_genotype = bv::BitVec::new();
-                let mut filtered_coverage = bv::BitVec::new();
+        let filtered_candidate_matrix_values: Vec<(bv::BitVec, bv::BitVec)> =
+            candidate_matrix_values
+                .iter()
+                .map(|(genotype_matrix, coverage_matrix)| {
+                    let mut filtered_genotype = bv::BitVec::new();
+                    let mut filtered_coverage = bv::BitVec::new();
 
-                for (i, haplotype) in haplotypes.iter().enumerate() {
-                    if contributing_haplotypes.contains(&haplotype.to_string()) {
-                        filtered_genotype.push(genotype_matrix[i as u64]);
-                        filtered_coverage.push(coverage_matrix[i as u64]);
+                    for (i, haplotype) in haplotypes.iter().enumerate() {
+                        if contributing_haplotypes.contains(&haplotype.to_string()) {
+                            filtered_genotype.push(genotype_matrix[i as u64]);
+                            filtered_coverage.push(coverage_matrix[i as u64]);
+                        }
                     }
-                }
 
-                (filtered_genotype, filtered_coverage)
-            })
-            .collect();
+                    (filtered_genotype, filtered_coverage)
+                })
+                .collect();
 
         let mut headers: Vec<_> = vec![
             "sum_of_fractions".to_string(),
@@ -648,7 +653,9 @@ pub fn plot_prediction(
         wtr_lp.write_record(&headers)?;
 
         for ((genotype_matrix, coverage_matrix), (variant_id, (var_change, af, _, _dp))) in
-        filtered_candidate_matrix_values.iter().zip(variant_calls.iter())
+            filtered_candidate_matrix_values
+                .iter()
+                .zip(variant_calls.iter())
         {
             let mut counter = 0;
             for (i, _variable) in filtered_best_variables.iter().enumerate() {
@@ -661,14 +668,16 @@ pub fn plot_prediction(
                 let mut haplotype_has_variant = Vec::new();
                 let mut sum_of_fractions_vec = Vec::new();
 
-                for (i, (variable, haplotype)) in
-                filtered_best_variables.iter().zip(filtered_haplotypes.iter()).enumerate()
+                for (i, (variable, haplotype)) in filtered_best_variables
+                    .iter()
+                    .zip(filtered_haplotypes.iter())
+                    .enumerate()
                 {
                     //record presence/absence for the variant
                     let has_variant = genotype_matrix[i as u64];
                     // haplotype_has_variant.push(has_variant.to_string());
                     haplotype_has_variant.push(if has_variant { "1" } else { "0" }.to_string());
-                    
+
                     if has_variant {
                         plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
                             haplotype: haplotype.to_string(),
