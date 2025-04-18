@@ -157,20 +157,16 @@ impl Caller {
             let allele_to_g_groups = self.convert_to_g().unwrap();
             let mut final_haplotypes_converted: Vec<Haplotype> = Vec::new();
             all_haplotypes.iter().for_each(|haplotype| {
-                let mut haplotype_g_group = "".to_string();
                 allele_to_g_groups.iter().for_each(|(allele, g_group)| {
                     if allele == &haplotype.to_string() {
-                        haplotype_g_group = g_group.to_string();
+                        if g_group == "None" {
+                            final_haplotypes_converted.push(haplotype.clone());
+                        } else {
+                            final_haplotypes_converted
+                                .push(Haplotype(g_group.to_string() + &"G".to_string()));
+                        }
                     }
                 });
-                if haplotype_g_group == "" {
-                    final_haplotypes_converted.push(haplotype.clone());
-                } else if haplotype_g_group == "None" {
-                    final_haplotypes_converted.push(haplotype.clone());
-                } else {
-                    final_haplotypes_converted
-                        .push(Haplotype(haplotype_g_group.to_string() + &"G".to_string()));
-                }
             });
 
             haplotypes::write_results(
@@ -275,13 +271,13 @@ impl Caller {
         });
 
         //map alleles to g groups
-        let mut alelele_to_g: BTreeMap<String, String> = BTreeMap::new();
-        for (i, allele) in filtered_alleles.into_iter().enumerate() {
-            if let Some(g_group) = hla_g_groups.get(&(i as i32)) {
-                alelele_to_g.insert(allele, g_group.clone());
-            }
-        }
-        // dbg!(&alelele_to_g);
+        let alelele_to_g: BTreeMap<String, String> = hla_g_groups
+            .iter()
+            .zip(filtered_alleles.iter())
+            .map(|((_, g_group), allele)| (allele.clone(), g_group.clone()))
+            .collect();
+
+        // dbg!(&alelele_to_g)
         Ok(alelele_to_g)
     }
 }
