@@ -1,5 +1,14 @@
 # Changelog
 
+### [1.10.1](https://www.github.com/orthanq/orthanq/compare/v1.10.0...v1.10.1) (2025-04-18)
+
+
+### Bug Fixes
+
+* add chr name to plots ([#56](https://www.github.com/orthanq/orthanq/issues/56)) ([606f9fe](https://www.github.com/orthanq/orthanq/commit/606f9fe6f9ed135f84cc7d919571b42e4a75f641))
+* fix g group outputting ([#61](https://www.github.com/orthanq/orthanq/issues/61)) ([bb6038f](https://www.github.com/orthanq/orthanq/commit/bb6038f9ed53d71ac3e3247993c54ed25e437232))
+* fix retrieval of confirmed field from xml file ([#58](https://www.github.com/orthanq/orthanq/issues/58)) ([4c4ed31](https://www.github.com/orthanq/orthanq/commit/4c4ed316519be5fc88b96b29ffa5cd5d42a954bb))
+
 ## [1.10.0](https://www.github.com/orthanq/orthanq/compare/v1.9.3...v1.10.0) (2025-03-24)
 
 
