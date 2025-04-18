@@ -150,25 +150,28 @@ impl Caller {
                 "2_field",
             )?;
 
-            //second: convert to G groups and write another table
+            //write table for G groups of HLA alleles, for HLA alleles with None G group in the XML table, we write the haplotype name back.
+            //as a hint, successfuly converted G groups will have G in the end, while the ones with no G group will not have one.
             let mut converted_name = PathBuf::from(&self.outcsv.parent().unwrap());
             converted_name.push("G_groups.csv");
             let allele_to_g_groups = self.convert_to_g().unwrap();
             let mut final_haplotypes_converted: Vec<Haplotype> = Vec::new();
             all_haplotypes.iter().for_each(|haplotype| {
-                let mut conv_haplotype = Vec::new();
+                let mut haplotype_g_group = "".to_string();
                 allele_to_g_groups.iter().for_each(|(allele, g_group)| {
-                    if allele.starts_with(&haplotype.to_string()) {
-                        conv_haplotype.push(g_group.to_string());
+                    if allele == &haplotype.to_string() {
+                        haplotype_g_group=g_group.to_string();
                     }
                 });
-                if conv_haplotype.is_empty() {
-                    conv_haplotype.push(haplotype.to_string());
+                if haplotype_g_group == ""{
+                    final_haplotypes_converted.push(haplotype.clone());
+                } else if haplotype_g_group ==  "None"{
+                    final_haplotypes_converted.push(haplotype.clone());
+                } else {
+                    final_haplotypes_converted.push(Haplotype(haplotype_g_group.to_string()+ &"G".to_string()));
                 }
-                let conv_haplotype = Haplotype(conv_haplotype[0].clone());
-                final_haplotypes_converted.push(conv_haplotype);
             });
-            //todo: retest this part and convert to true
+
             haplotypes::write_results(
                 &converted_name,
                 &data,
@@ -185,11 +188,11 @@ impl Caller {
         let mut reader = xml_reader::from_file(&self.xml)?;
         reader.trim_text(true);
         let mut buf = Vec::new();
-        let mut alleles: Vec<String> = Vec::new();
+        let mut allele_names: Vec<String> = Vec::new();
         let mut confirmed: Vec<String> = Vec::new();
         let mut hla_g_groups: HashMap<i32, String> = HashMap::new(); //some hla alleles dont have g groups information in the xml file.
-        let mut names_indices: Vec<i32> = Vec::new();
         let mut groups_indices: Vec<i32> = Vec::new();
+        //we keep track of each allele-g group pair with a counter to be used as index
         let mut counter = 0;
         loop {
             match reader.read_event_into(&mut buf) {
@@ -197,75 +200,88 @@ impl Caller {
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(e)) => match e.name().as_ref() {
                     b"allele" => {
-                        let allele_name = e
-                            .attributes()
-                            .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                            .collect::<Vec<_>>()[1]
-                            .clone()
-                            .unwrap();
-                        let mut allele_name_push = "".to_string();
-                        //allele names starting with HLA contain '-' however, some aleles e.g. MICA do not contain it.
-                        if allele_name.contains(&"-") {
-                            allele_name_push =
-                                allele_name.split("-").collect::<Vec<&str>>()[1].to_string()
-                        } else {
-                            allele_name_push = allele_name.clone()
+                        let mut id_value: Option<String> = None;
+                        let mut name_value: Option<String> = None;
+    
+                        for attr in e.attributes().flatten() {
+                            if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
+                                if let Ok(val) = std::str::from_utf8(&attr.value) {
+                                    match key {
+                                        "id" => id_value = Some(val.to_string()),
+                                        "name" => name_value = Some(val.to_string()),
+                                        _ => {}
+                                    }
+                                }
+                            }
                         }
-                        alleles.push(allele_name_push); //allele_name is held in index 1, note: don't use expanded_name.
-                        names_indices.push(counter.clone());
-                        counter += 1;
+                        match (id_value, name_value) {
+                            (Some(id), Some(name)) => {    
+                                //clean up the allele name by removing the "HLA-" prefix if present
+                                let cleaned_name = if name.contains('-') {
+                                    name.split('-').nth(1).unwrap_or(&name).to_string()
+                                } else {
+                                    name
+                                };
+                                allele_names.push(cleaned_name);
+    
+                                counter += 1;
+                            }
+                            (id_opt, name_opt) => {
+                                eprintln!(
+                                    "Warning: missing attribute{}{} in <allele> element",
+                                    if id_opt.is_none() { " 'id'" } else { "" },
+                                    if name_opt.is_none() { " 'name'" } else { "" }
+                                );
+                            }
+                        }
                     }
                     _ => (),
                 },
                 Ok(Event::Empty(e)) => match e.name().as_ref() {
-                    b"releaseversions" => confirmed.push(
-                        e.attributes()
-                            .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                            .collect::<Vec<_>>()[4]
-                            .as_ref()
-                            .unwrap()
-                            .to_string(), //index 4 holds the Confirmed info
-                    ),
                     b"hla_g_group" => {
-                        groups_indices.push(counter.clone());
-                        hla_g_groups.insert(
-                            counter.clone(),
-                            e.attributes()
-                                .map(|a| String::from_utf8(a.unwrap().value.to_vec()))
-                                .collect::<Vec<_>>()[0]
-                                .as_ref()
-                                .unwrap()
-                                .to_string(), //index 0 holds the status info
-                        );
+                        let mut status_value: Option<String> = None;
+    
+                        for attr in e.attributes().flatten() {
+                            if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
+                                if key == "status" {
+                                    if let Ok(val) = std::str::from_utf8(&attr.value) {
+                                        status_value = Some(val.to_string());
+                                    }
+                                }
+                            }
+                        }
+    
+                        if let Some(status) = status_value {
+                            hla_g_groups.insert(counter, status);
+                        } else {
+                            eprintln!(
+                                "Warning: No 'status' attribute found for hla_g_group at index {}",
+                                counter
+                            );
+                        }
                     }
                     _ => (),
                 },
                 _ => (),
             }
-            // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
             buf.clear();
         }
-        assert_eq!(alleles.len(), confirmed.len());
-        let mut filtered_alleles = Vec::new();
-        let mut filtered_confirmed = Vec::new();
-        hla_g_groups.iter().for_each(|(index, _)| {
-            filtered_alleles.push(alleles[*index as usize - 1].clone());
-            filtered_confirmed.push(confirmed[*index as usize - 1].clone());
-        });
-        assert_eq!(filtered_alleles.len(), filtered_confirmed.len());
-        assert_eq!(filtered_alleles.len(), hla_g_groups.len());
 
-        let mut g_to_alleles: BTreeMap<String, String> = BTreeMap::new();
-        let g_names: Vec<String> = hla_g_groups.values().cloned().collect();
-        let _unconfirmed_alleles = filtered_alleles
-            .iter()
-            .zip(filtered_confirmed.iter())
-            .zip(g_names.iter())
-            .filter(|((_allele, c), _g_group)| c == &"Confirmed")
-            .for_each(|((allele, _c), g_group)| {
-                g_to_alleles.insert(allele.clone(), g_group.to_string());
-            });
-        Ok(g_to_alleles)
+        //filter alleles with provided g groups in the xml (may contain None)
+        let mut filtered_alleles = Vec::new();
+        hla_g_groups.iter().for_each(|(index, _)| {
+            filtered_alleles.push(allele_names[*index as usize - 1].clone());
+        });
+
+        //map alleles to g groups
+        let mut alelele_to_g: BTreeMap<String, String> = BTreeMap::new();
+        for (i, allele) in filtered_alleles.into_iter().enumerate() {
+            if let Some(g_group) = hla_g_groups.get(&(i as i32)) {
+                alelele_to_g.insert(allele, g_group.clone());
+            }
+        }
+        dbg!(&alelele_to_g);
+        Ok(alelele_to_g)
     }
 }
 
