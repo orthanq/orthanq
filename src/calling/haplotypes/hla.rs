@@ -264,21 +264,14 @@ impl Caller {
             buf.clear();
         }
 
-        //filter alleles with provided g groups in the xml (may contain None)
-        let mut filtered_alleles = Vec::new();
-        hla_g_groups.iter().for_each(|(index, _)| {
-            filtered_alleles.push(allele_names[*index as usize - 1].clone());
-        });
-
-        //map alleles to g groups
-        let alelele_to_g: BTreeMap<String, String> = hla_g_groups
-            .iter()
-            .zip(filtered_alleles.iter())
-            .map(|((_, g_group), allele)| (allele.clone(), g_group.clone()))
-            .collect();
-
-        // dbg!(&alelele_to_g)
-        Ok(alelele_to_g)
+        let mut allele_to_g: BTreeMap<String, String> = BTreeMap::new();
+        for (idx, g_group) in &hla_g_groups {
+            if let Some(allele) = allele_names.get((*idx as usize) - 1) {
+                allele_to_g.insert(allele.clone(), g_group.clone());
+            }
+        }
+        // dbg!(&allele_to_g)
+        Ok(allele_to_g)
     }
 }
 
