@@ -379,8 +379,6 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                                 name
                             };
                             allele_names.push(cleaned_name);
-
-
                         }
                         (id_opt, name_opt) => {
                             eprintln!(

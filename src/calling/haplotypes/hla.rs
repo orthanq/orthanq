@@ -160,15 +160,16 @@ impl Caller {
                 let mut haplotype_g_group = "".to_string();
                 allele_to_g_groups.iter().for_each(|(allele, g_group)| {
                     if allele == &haplotype.to_string() {
-                        haplotype_g_group=g_group.to_string();
+                        haplotype_g_group = g_group.to_string();
                     }
                 });
-                if haplotype_g_group == ""{
+                if haplotype_g_group == "" {
                     final_haplotypes_converted.push(haplotype.clone());
-                } else if haplotype_g_group ==  "None"{
+                } else if haplotype_g_group == "None" {
                     final_haplotypes_converted.push(haplotype.clone());
                 } else {
-                    final_haplotypes_converted.push(Haplotype(haplotype_g_group.to_string()+ &"G".to_string()));
+                    final_haplotypes_converted
+                        .push(Haplotype(haplotype_g_group.to_string() + &"G".to_string()));
                 }
             });
 
@@ -202,7 +203,7 @@ impl Caller {
                     b"allele" => {
                         let mut id_value: Option<String> = None;
                         let mut name_value: Option<String> = None;
-    
+
                         for attr in e.attributes().flatten() {
                             if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
                                 if let Ok(val) = std::str::from_utf8(&attr.value) {
@@ -215,7 +216,7 @@ impl Caller {
                             }
                         }
                         match (id_value, name_value) {
-                            (Some(id), Some(name)) => {    
+                            (Some(id), Some(name)) => {
                                 //clean up the allele name by removing the "HLA-" prefix if present
                                 let cleaned_name = if name.contains('-') {
                                     name.split('-').nth(1).unwrap_or(&name).to_string()
@@ -223,7 +224,7 @@ impl Caller {
                                     name
                                 };
                                 allele_names.push(cleaned_name);
-    
+
                                 counter += 1;
                             }
                             (id_opt, name_opt) => {
@@ -240,7 +241,7 @@ impl Caller {
                 Ok(Event::Empty(e)) => match e.name().as_ref() {
                     b"hla_g_group" => {
                         let mut status_value: Option<String> = None;
-    
+
                         for attr in e.attributes().flatten() {
                             if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
                                 if key == "status" {
@@ -250,7 +251,7 @@ impl Caller {
                                 }
                             }
                         }
-    
+
                         if let Some(status) = status_value {
                             hla_g_groups.insert(counter, status);
                         } else {
@@ -280,7 +281,7 @@ impl Caller {
                 alelele_to_g.insert(allele, g_group.clone());
             }
         }
-        dbg!(&alelele_to_g);
+        // dbg!(&alelele_to_g);
         Ok(alelele_to_g)
     }
 }
