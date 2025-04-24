@@ -638,9 +638,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.36"
+version = "4.5.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2df961d8c8a0d08aa9945718ccf584145eee3f3aa06cddbeac12933781102e04"
+checksum = "eccb054f56cbd38340b380d4a8e69ef1f02f1af43db2f0cc817a4774d80ae071"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -648,9 +648,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.36"
+version = "4.5.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "132dbda40fb6753878316a489d5a1242a8ef2f0d9e47ba01c951ea8aa7d013a5"
+checksum = "efd9466fac8543255d3b1fcad4762c5e116ffe808c8a3043d4263cd4fd4862a2"
 dependencies = [
  "anstream",
  "anstyle",
@@ -1105,12 +1105,13 @@ dependencies = [
 
 [[package]]
 name = "datavzrd"
-version = "2.53.0"
-source = "git+https://github.com/datavzrd/datavzrd?branch=lib#6a8b1d00a570aa60d956dea171f0ac1d9bbb9c9b"
+version = "2.54.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1089dc8119fb88e3bf16ee9195162a56ce3456e1acdc31715c2a86a49e5890e8"
 dependencies = [
  "anyhow",
  "chrono",
- "clap 4.5.36",
+ "clap 4.5.37",
  "derefable",
  "derive-new 0.7.0",
  "fancy-regex",
