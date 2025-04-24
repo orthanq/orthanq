@@ -70,18 +70,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes libgsl0-dev zlib1g-dev samtools libhdf5-dev coinor-cbc coinor-libcbc-dev fontconfig libfontconfig1-dev
+      #datavzrd requires yte and pnpm
+      - name: Install yte
+        run: pip install yte
 
+      - name: Install pnpm
+        run: npm install -g pnpm
+        
       - uses: Swatinem/rust-cache@v1.3.0
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-      - name: Install yte
-        run: pip install yte
-
-      - name: Install pnpm
-        run: npm install -g pnpm
 
 #      - name: Run cargo-tarpaulin
 #        uses: actions-rs/tarpaulin@v0.1
