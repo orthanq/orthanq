@@ -347,9 +347,6 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
     let mut allele_names: Vec<String> = Vec::new();
     let mut confirmed: Vec<String> = Vec::new();
     let mut hla_g_groups: HashMap<i32, String> = HashMap::new(); //some hla alleles dont have g groups information in the xml file.
-    let mut alleles_indices: Vec<i32> = Vec::new();
-    let mut groups_indices: Vec<i32> = Vec::new();
-    let mut counter = 0;
     loop {
         match reader.read_event_into(&mut buf) {
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
@@ -382,9 +379,6 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                                 name
                             };
                             allele_names.push(cleaned_name);
-
-                            alleles_indices.push(counter.clone());
-                            counter += 1;
                         }
                         (id_opt, name_opt) => {
                             eprintln!(
@@ -415,29 +409,6 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
                     if !confirmed_found {
                         eprintln!(
                             "Warning: 'confirmed' attribute not found in <releaseversions> element"
-                        );
-                    }
-                }
-                b"hla_g_group" => {
-                    groups_indices.push(counter);
-                    let mut status_value: Option<String> = None;
-
-                    for attr in e.attributes().flatten() {
-                        if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
-                            if key == "status" {
-                                if let Ok(val) = std::str::from_utf8(&attr.value) {
-                                    status_value = Some(val.to_string());
-                                }
-                            }
-                        }
-                    }
-
-                    if let Some(status) = status_value {
-                        hla_g_groups.insert(counter, status);
-                    } else {
-                        eprintln!(
-                            "Warning: No 'status' attribute found for hla_g_group at index {}",
-                            counter
                         );
                     }
                 }
