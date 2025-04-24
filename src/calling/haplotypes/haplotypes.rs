@@ -541,6 +541,7 @@ pub(crate) struct DatasetAfd {
 }
 
 pub fn plot_prediction(
+    output_lp_datavzrd: &bool,
     outdir: &PathBuf,
     solution: &str,
     candidate_matrix_values: &Vec<(BitVec, BitVec)>,
@@ -765,8 +766,10 @@ pub fn plot_prediction(
 
         //then create datavzrd report
         let datavzrd_output = parent.join("datavzrd_report");
-        render_report(&filled_config_yaml, &datavzrd_output, "", false, true)?;
+        if *output_lp_datavzrd {
+            render_report(&filled_config_yaml, &datavzrd_output, "", false, true)?;
 
+        }
         file_name.push_str("lp_solution.json");
         wtr_lp.flush()?;
     } else if &solution == &"final" {
@@ -880,6 +883,7 @@ pub fn plot_prediction(
 }
 
 pub fn linear_program(
+    output_lp_datavzrd: &bool,
     outdir: &PathBuf,
     candidate_matrix: &CandidateMatrix,
     haplotypes: &Vec<Haplotype>,
@@ -968,6 +972,7 @@ pub fn linear_program(
     let candidate_matrix_values: Vec<(BitVec, BitVec)> =
         candidate_matrix.values().cloned().collect();
     plot_prediction(
+        output_lp_datavzrd,
         outdir,
         &"lp",
         &candidate_matrix_values,
@@ -1274,6 +1279,7 @@ pub fn plot_densities(
 }
 
 pub fn get_event_posteriors(
+    output_lp_datavzrd: &bool,
     haplotype_variants: &HaplotypeVariants,
     variant_calls: VariantCalls,
     application: &str,
@@ -1318,6 +1324,7 @@ pub fn get_event_posteriors(
 
     //employ the linear program
     let lp_haplotypes = linear_program(
+        output_lp_datavzrd,
         &outfile,
         &repr_candidate_matrix,
         &representatives,
