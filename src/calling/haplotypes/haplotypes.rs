@@ -766,7 +766,9 @@ pub fn plot_prediction(
 
         //then create datavzrd report
         let datavzrd_output = parent.join("datavzrd_report");
+
         if *output_lp_datavzrd {
+            println!("Creating datavzrd report for LP solution.");
             render_report(&filled_config_yaml, &datavzrd_output, "", false, true)?;
         }
         file_name.push_str("lp_solution.json");
