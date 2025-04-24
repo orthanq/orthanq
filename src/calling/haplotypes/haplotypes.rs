@@ -176,7 +176,8 @@ impl VariantCalls {
             let prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
             let prob_present = record.info(b"PROB_PRESENT").float().unwrap().unwrap()[0];
             let prob_present_prob = Prob::from(PHREDProb(prob_present.into()));
-            let prob_variant = &prob_present_prob >= &Prob(0.95) || &prob_absent_prob >= &Prob(0.95);
+            let prob_variant =
+                &prob_present_prob >= &Prob(0.95) || &prob_absent_prob >= &Prob(0.95);
 
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
@@ -343,7 +344,7 @@ impl HaplotypeVariants {
             .cloned()
             .collect();
         let mut common_variants = Vec::new();
-        for ((_genotype_matrix, coverage_matrix), (variant, (_,_, _, _, _))) in
+        for ((_genotype_matrix, coverage_matrix), (variant, (_, _, _, _, _))) in
             candidate_matrix_values.iter().zip(variant_calls.iter())
         {
             let mut counter = 0;
@@ -1034,7 +1035,7 @@ pub fn write_results(
     let variant_calls: Vec<AlleleFreqDist> = data
         .variant_calls
         .iter()
-        .map(|(_, (_,_, _, afd, _))| afd.clone())
+        .map(|(_, (_, _, _, afd, _))| afd.clone())
         .collect();
     let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
     // let event_posteriors = computed_model.event_posteriors();
@@ -1310,7 +1311,7 @@ pub fn get_event_posteriors(
             .iter()
             .filter(|(_, v)| v.0)
             .map(|(k, v)| (k.clone(), v.clone()))
-            .collect()
+            .collect(),
     );
 
     let nonzero_dp_variants: Vec<VariantID> = probable_variant_calls.keys().cloned().collect();
@@ -1353,7 +1354,7 @@ pub fn get_event_posteriors(
         num_extend_haplotypes, //extension functionality for virus case is not recommended for now as it will lead to performance problems.
         num_constraint_haplotypes,
     )?;
-    
+
     //SECOND, model evaluation using ALL variants but only the LP- selected haplotypes
     //prepare inputs of model evaluation
     let hap_filt_haplotype_variants = haplotype_variants.filter_for_haplotypes(&lp_haplotypes)?;
