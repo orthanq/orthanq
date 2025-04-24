@@ -158,20 +158,38 @@ impl Caller {
             let mut converted_name = PathBuf::from(&self.outcsv.parent().unwrap());
             converted_name.push("G_groups.csv");
             let allele_to_g_groups = self.convert_to_g().unwrap();
+            dbg!(&allele_to_g_groups);
+            dbg!(&all_haplotypes);
             let mut final_haplotypes_converted: Vec<Haplotype> = Vec::new();
-            all_haplotypes.iter().for_each(|haplotype| {
-                allele_to_g_groups.iter().for_each(|(allele, g_group)| {
-                    if allele == &haplotype.to_string() {
+
+            //the haplotype can either be found with the same name in the xml file or it can start with it.
+            //this is because we only use 3-field resolution of the haplotypes. This means, some haplotypes can
+            // directly match, e.g. 24:436 while some e.g. A*24:03:01 have longer names in the xml.
+            for haplotype in &all_haplotypes {
+                let mut found_match = false;
+
+                for (allele, g_group) in &allele_to_g_groups {
+                    if allele == &haplotype.to_string()
+                        || allele.starts_with(&haplotype.to_string())
+                    {
                         if g_group == "None" {
+                            //in case the allele has "None" in the g group field in the xml.
                             final_haplotypes_converted.push(haplotype.clone());
                         } else {
-                            final_haplotypes_converted
-                                .push(Haplotype(g_group.to_string() + &"G".to_string()));
+                            final_haplotypes_converted.push(Haplotype(g_group.to_string()));
                         }
+                        found_match = true;
+                        break;
                     }
-                });
-            });
+                }
 
+                if !found_match {
+                    //in case the allele does not have a corresponding g group field in the xml.
+                    final_haplotypes_converted.push(Haplotype(haplotype.to_string()));
+                }
+            }
+
+            dbg!(&final_haplotypes_converted);
             haplotypes::write_results(
                 &converted_name,
                 &data,
