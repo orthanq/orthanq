@@ -39,7 +39,7 @@ pub struct Caller {
     threshold_equivalence_class: usize,
     num_extend_haplotypes: i64,
     num_constraint_haplotypes: i32,
-    output_lp_datavzrd: bool
+    output_lp_datavzrd: bool,
 }
 
 impl Caller {

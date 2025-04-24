@@ -35,7 +35,7 @@ pub struct Caller {
     extend_haplotypes: bool,
     num_extend_haplotypes: i64,
     num_constraint_haplotypes: i32,
-    output_lp_datavzrd: bool
+    output_lp_datavzrd: bool,
 }
 
 impl Caller {
@@ -53,7 +53,6 @@ impl Caller {
             let haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
             let (event_posteriors, all_haplotypes, data) = get_event_posteriors(
                 &self.output_lp_datavzrd,
-
                 &haplotype_variants,
                 variant_calls,
                 &"virus",

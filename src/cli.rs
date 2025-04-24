@@ -260,10 +260,7 @@ pub enum CallKind {
             help = "Number to constrain the number of haplotypes that LP finds. Currently more than 6 is not runtime-friendly for the Bayesian model."
         )]
         num_constraint_haplotypes: i32,
-        #[structopt(
-            long,
-            help = "Output Datavzrd report for LP solution."
-        )]
+        #[structopt(long, help = "Output Datavzrd report for LP solution.")]
         output_lp_datavzrd: bool,
     },
     Virus {
@@ -306,10 +303,7 @@ pub enum CallKind {
             help = "Number to constrain the number of haplotypes that LP finds."
         )]
         num_constraint_haplotypes: i32,
-        #[structopt(
-            long,
-            help = "Output Datavzrd report for LP solution."
-        )]
+        #[structopt(long, help = "Output Datavzrd report for LP solution.")]
         output_lp_datavzrd: bool,
     },
 }
@@ -331,7 +325,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 threshold_equivalence_class,
                 num_extend_haplotypes,
                 num_constraint_haplotypes,
-                output_lp_datavzrd
+                output_lp_datavzrd,
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
@@ -363,7 +357,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 extend_haplotypes,
                 num_extend_haplotypes,
                 num_constraint_haplotypes,
-                output_lp_datavzrd
+                output_lp_datavzrd,
             } => {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
