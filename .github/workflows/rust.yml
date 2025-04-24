@@ -40,15 +40,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes libgsl0-dev zlib1g-dev samtools libhdf5-dev fontconfig libfontconfig1-dev
-      
+      - name: Install yte
+        run: pip install yte
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+        
       - uses: Swatinem/rust-cache@v1.3.0
 
       - name: Lint with clippy
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-
-
   Testing:
     needs:
       - Formatting
@@ -67,7 +70,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes libgsl0-dev zlib1g-dev samtools libhdf5-dev coinor-cbc coinor-libcbc-dev fontconfig libfontconfig1-dev
+      #datavzrd requires yte and pnpm
+      - name: Install yte
+        run: pip install yte
 
+      - name: Install pnpm
+        run: npm install -g pnpm
+        
       - uses: Swatinem/rust-cache@v1.3.0
 
       - name: Run cargo test

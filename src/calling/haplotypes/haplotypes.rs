@@ -4,6 +4,8 @@ use anyhow::Result;
 use bio::stats::bayesian::model::Model;
 use bio::stats::{probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
+use datavzrd::render_report;
+use serde_yaml::Value;
 
 use derefable::Derefable;
 
@@ -539,6 +541,7 @@ pub(crate) struct DatasetAfd {
 }
 
 pub fn plot_prediction(
+    output_lp_datavzrd: &bool,
     outdir: &PathBuf,
     solution: &str,
     candidate_matrix_values: &Vec<(BitVec, BitVec)>,
@@ -546,6 +549,10 @@ pub fn plot_prediction(
     variant_calls: &VariantCalls,
     best_variables: &Vec<f64>,
 ) -> Result<()> {
+    let mut parent = outdir.clone();
+    parent.pop();
+    fs::create_dir_all(&parent)?;
+
     let mut file_name = "".to_string();
     let mut json = include_str!("../../../templates/final_prediction.json");
     if &solution == &"lp" {
@@ -559,23 +566,123 @@ pub fn plot_prediction(
     let mut plot_data_dataset_afd = Vec::new();
 
     if &solution == &"lp" {
-        for ((genotype_matrix, coverage_matrix), (variant_id, (var_change, af, _, _dp))) in
+        //write tsv table for datavzrd view
+        let mut variant_records = Vec::new();
+        let lp_solution_path = parent.join("lp_solution.tsv");
+        let mut wtr_lp = csv::WriterBuilder::new()
+            .delimiter(b'\t')
+            .quote_style(csv::QuoteStyle::Never)
+            .from_path(&lp_solution_path)?;
+
+        //filter haplotypes based on any variant they contain has nonzero AF
+        let mut contributing_haplotypes = std::collections::HashSet::new();
+        for ((genotype_matrix, coverage_matrix), (_, (var_change, af, _, _dp))) in
             candidate_matrix_values.iter().zip(variant_calls.iter())
         {
+            if *af > 0.0 {
+                for (i, haplotype) in haplotypes.iter().enumerate() {
+                    let has_variant = genotype_matrix[i as u64];
+                    if has_variant {
+                        contributing_haplotypes.insert(haplotype.to_string()); // NEW
+                    }
+                }
+            }
+        }
+        // dbg!(&contributing_haplotypes.len());
+
+        // print haplotypes that will not be displayed
+        // for haplotype in haplotypes.iter() {
+        //     if !contributing_haplotypes.contains(&haplotype.to_string()) {
+        //         dbg!("haplotype not in contributing_haplotypes: {}", &haplotype);
+        //     }
+        // }
+
+        //filter haplotypes and variables based on contributing haplotypes
+        let filtered: Vec<_> = haplotypes
+            .iter()
+            .zip(best_variables.iter())
+            .filter(|(h, _)| contributing_haplotypes.contains(&h.to_string()))
+            .collect();
+
+        let (filtered_haplotypes, filtered_best_variables): (Vec<_>, Vec<_>) =
+            filtered.into_iter().unzip();
+
+        //sort haplotypes descending by lp values
+        let mut haplotype_with_weights: Vec<(&Haplotype, &f64)> = filtered_haplotypes
+            .iter()
+            .zip(filtered_best_variables.iter())
+            .map(|(&h, &v)| (h, v))
+            .collect();
+        haplotype_with_weights
+            .sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let sorted_haplotypes: Vec<String> = haplotype_with_weights
+            .iter()
+            .map(|(h, _)| (*h).to_string())
+            .collect();
+        let sorted_indices: Vec<usize> = haplotype_with_weights
+            .iter()
+            .map(|(h, _)| filtered_haplotypes.iter().position(|x| *x == *h).unwrap())
+            .collect();
+
+        let filtered_candidate_matrix_values: Vec<(bv::BitVec, bv::BitVec)> =
+            candidate_matrix_values
+                .iter()
+                .map(|(genotype_matrix, coverage_matrix)| {
+                    let mut filtered_genotype = bv::BitVec::new();
+                    let mut filtered_coverage = bv::BitVec::new();
+
+                    for (i, haplotype) in haplotypes.iter().enumerate() {
+                        if contributing_haplotypes.contains(&haplotype.to_string()) {
+                            filtered_genotype.push(genotype_matrix[i as u64]);
+                            filtered_coverage.push(coverage_matrix[i as u64]);
+                        }
+                    }
+
+                    (filtered_genotype, filtered_coverage)
+                })
+                .collect();
+
+        let mut headers: Vec<_> = vec![
+            "sum_of_fractions".to_string(),
+            "variant".to_string(),
+            "vaf".to_string(),
+            "prediction_error".to_string(),
+        ];
+        //insert sorted haplotype names to header
+        headers.extend(sorted_haplotypes.clone());
+        wtr_lp.write_record(&headers)?;
+
+        for ((genotype_matrix, coverage_matrix), (variant_id, (var_change, af, _, _dp))) in
+            filtered_candidate_matrix_values
+                .iter()
+                .zip(variant_calls.iter())
+        {
             let mut counter = 0;
-            for (i, _variable) in best_variables.iter().enumerate() {
+            for (i, _variable) in filtered_best_variables.iter().enumerate() {
                 if coverage_matrix[i as u64] {
                     counter += 1;
                 }
             }
-            if counter == best_variables.len() {
-                for (i, (variable, haplotype)) in
-                    best_variables.iter().zip(haplotypes.iter()).enumerate()
+            if counter == filtered_best_variables.len() {
+                //initialize the dict for storing sum_of_fractions (required for the table)
+                let mut haplotype_has_variant = Vec::new();
+                let mut sum_of_fractions_vec = Vec::new();
+
+                for (i, (variable, haplotype)) in filtered_best_variables
+                    .iter()
+                    .zip(filtered_haplotypes.iter())
+                    .enumerate()
                 {
-                    if genotype_matrix[i as u64] {
+                    //record presence/absence for the variant
+                    let has_variant = genotype_matrix[i as u64];
+                    // haplotype_has_variant.push(has_variant.to_string());
+                    haplotype_has_variant.push(if has_variant { "1" } else { "0" }.to_string());
+
+                    if has_variant {
                         plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
                             haplotype: haplotype.to_string(),
-                            fraction: NotNan::new(*variable).unwrap(),
+                            fraction: NotNan::new(**variable).unwrap(),
                         });
                         plot_data_haplotype_variants.push(DatasetHaplotypeVariants {
                             variant_change: var_change.to_string(),
@@ -585,11 +692,87 @@ pub fn plot_prediction(
                             variant_change: var_change.to_string(),
                             vaf: af.clone(),
                         });
+
+                        //fill in the dict required for the table
+                        let sum_of_fractions_map = json!({
+                            "haplotype": haplotype.to_string(),
+                            "vaf": af,
+                            "fraction": variable
+                        });
+                        sum_of_fractions_vec.push(sum_of_fractions_map);
                     }
+                }
+                //push other members and write to table if at least one haplotype contains the variant.
+                if !sum_of_fractions_vec.is_empty() {
+                    let json_array_string = serde_json::to_string(&sum_of_fractions_vec)?;
+                    let mut final_record = Vec::new();
+                    final_record.push(json_array_string);
+                    final_record.push(var_change.to_string());
+
+                    //push vaf
+                    final_record.push(af.to_string());
+
+                    //sum all fractions
+                    let total_fraction: f64 = sum_of_fractions_vec
+                        .iter()
+                        .filter_map(|entry| entry.get("fraction"))
+                        .filter_map(|val| val.as_f64())
+                        .sum();
+
+                    //find prediction error and push
+                    let difference = (af - total_fraction as f32).abs();
+                    final_record.push(difference.to_string());
+
+                    //push haplotype presence information
+                    let sorted_variant_flags: Vec<String> = sorted_indices
+                        .iter()
+                        .map(|&i| haplotype_has_variant[i].clone())
+                        .collect();
+                    final_record.extend(sorted_variant_flags);
+                    variant_records.push(final_record);
                 }
             }
         }
+
+        //then write each row to tsv
+        for record in variant_records {
+            wtr_lp.write_record(&record)?;
+        }
+        // render datavzrd report
+        let contents = include_str!("../../../templates/datavzrd_config.yaml");
+
+        //parse YAML into a serde_yaml::Value
+        let mut config_yaml: Value = serde_yaml::from_str(&contents)?;
+
+        //navigate through the yaml and change path
+        let lp_solution_path_str = lp_solution_path.into_os_string().into_string().unwrap();
+        if let Some(datasets) = config_yaml.get_mut("datasets") {
+            if let Some(solutions) = datasets.get_mut("solutions") {
+                if let Some(path_field) = solutions.get_mut("path") {
+                    *path_field = Value::String(lp_solution_path_str);
+                } else {
+                    eprintln!("Warning: 'path' field not found under 'datasets.solutions'");
+                }
+            } else {
+                eprintln!("Warning: 'solutions' not found under 'datasets'");
+            }
+        } else {
+            eprintln!("Warning: 'datasets' not found in config");
+        }
+        //write updated config back to a new file (or overwrite the original)
+        let filled_config_yaml = parent.join("datavzrd_config_filled.yaml");
+        let yaml_output = PathBuf::from(&filled_config_yaml);
+        fs::write(&yaml_output, serde_yaml::to_string(&config_yaml)?)?;
+
+        //then create datavzrd report
+        let datavzrd_output = parent.join("datavzrd_report");
+
+        if *output_lp_datavzrd {
+            println!("Creating datavzrd report for LP solution.");
+            render_report(&filled_config_yaml, &datavzrd_output, "", false, true)?;
+        }
         file_name.push_str("lp_solution.json");
+        wtr_lp.flush()?;
     } else if &solution == &"final" {
         candidate_matrix_values
             .iter()
@@ -695,15 +878,13 @@ pub fn plot_prediction(
     blueprint["datasets"]["covered_variants"] = plot_data_covered_variants;
     blueprint["datasets"]["allele_frequency_distribution"] = plot_data_dataset_afd;
 
-    let mut parent = outdir.clone();
-    parent.pop();
-    fs::create_dir_all(&parent)?;
     let file = fs::File::create(parent.join(file_name)).unwrap();
     serde_json::to_writer(file, &blueprint)?;
     Ok(())
 }
 
 pub fn linear_program(
+    output_lp_datavzrd: &bool,
     outdir: &PathBuf,
     candidate_matrix: &CandidateMatrix,
     haplotypes: &Vec<Haplotype>,
@@ -792,6 +973,7 @@ pub fn linear_program(
     let candidate_matrix_values: Vec<(BitVec, BitVec)> =
         candidate_matrix.values().cloned().collect();
     plot_prediction(
+        output_lp_datavzrd,
         outdir,
         &"lp",
         &candidate_matrix_values,
@@ -1098,6 +1280,7 @@ pub fn plot_densities(
 }
 
 pub fn get_event_posteriors(
+    output_lp_datavzrd: &bool,
     haplotype_variants: &HaplotypeVariants,
     variant_calls: VariantCalls,
     application: &str,
@@ -1142,6 +1325,7 @@ pub fn get_event_posteriors(
 
     //employ the linear program
     let lp_haplotypes = linear_program(
+        output_lp_datavzrd,
         &outfile,
         &repr_candidate_matrix,
         &representatives,

@@ -39,6 +39,7 @@ pub struct Caller {
     threshold_equivalence_class: usize,
     num_extend_haplotypes: i64,
     num_constraint_haplotypes: i32,
+    output_lp_datavzrd: bool,
 }
 
 impl Caller {
@@ -73,6 +74,7 @@ impl Caller {
         } else {
             let haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
             let (event_posteriors, all_haplotypes, data) = get_event_posteriors(
+                &self.output_lp_datavzrd,
                 &haplotype_variants,
                 variant_calls,
                 &"hla",
@@ -104,6 +106,7 @@ impl Caller {
                 .collect::<Vec<f64>>();
 
             haplotypes::plot_prediction(
+                &self.output_lp_datavzrd,
                 &self.outcsv,
                 &"final",
                 &candidate_matrix,
