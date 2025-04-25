@@ -84,7 +84,7 @@
     },
     {
       "data": {"name": "allele_frequency_distribution"},
-      "mark": {"type": "circle", "tooltip": true},
+      "mark": {"type": "tick", "tooltip": true},
       "encoding": {
         "x": {
           "field": "variant_change",
@@ -97,19 +97,9 @@
           "type": "quantitative",
           "title": "Allele frequency",
           "axis": {"labelFontSize": 12, "titleFontSize": 16}
-        },
-        "color": {
-          "field": "probability",
-          "type": "quantitative",
-          "legend": {"title": null}
-        },
-        "size": {
-          "field": "probability",
-          "type": "quantitative",
-          "legend": {"title": null}
         }
       }
-    }
+    }    
   ],
   "resolve": {
   "scale": {
