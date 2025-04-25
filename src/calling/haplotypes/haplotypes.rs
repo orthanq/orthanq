@@ -161,7 +161,7 @@ impl FromStr for PriorTypes {
 }
 
 #[derive(Derefable, DerefMut, Debug, Clone)]
-pub struct VariantCalls(#[deref] BTreeMap<VariantID, (String, f32, AlleleFreqDist, i32)>); //The place of f32 is maximum a posteriori estimate of AF.
+pub struct VariantCalls(#[deref] BTreeMap<VariantID, (bool, String, f32, AlleleFreqDist, i32)>); //The place of f32 is maximum a posteriori estimate of AF.
 
 impl VariantCalls {
     pub fn new(variant_calls: &mut bcf::Reader) -> Result<Self> {
@@ -170,8 +170,15 @@ impl VariantCalls {
         for record_result in variant_calls.records() {
             let mut record = record_result?;
             record.unpack();
+
+            //parse prob_absent and prob_present and find variants that are likely to be present or absent
             let prob_absent = record.info(b"PROB_ABSENT").float().unwrap().unwrap()[0];
-            let _prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
+            let prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
+            let prob_present = record.info(b"PROB_PRESENT").float().unwrap().unwrap()[0];
+            let prob_present_prob = Prob::from(PHREDProb(prob_present.into()));
+            let prob_variant =
+                &prob_present_prob >= &Prob(0.95) || &prob_absent_prob >= &Prob(0.95);
+
             let afd_utf = record.format(b"AFD").string()?;
             let afd = std::str::from_utf8(afd_utf[0]).unwrap();
             let read_depth = record.format(b"DP").integer().unwrap();
@@ -204,6 +211,7 @@ impl VariantCalls {
             calls.insert(
                 VariantID(variant_id),
                 (
+                    prob_variant,
                     variant_change,
                     af,
                     AlleleFreqDist(vaf_density),
@@ -228,7 +236,7 @@ impl VariantCalls {
         let filtered_map: BTreeMap<_, _> = self
             .0
             .iter()
-            .filter(|(_, &(_, _, _, dp))| dp != 0) // Keep only entries where dp != 0
+            .filter(|(_, &(_, _, _, _, dp))| dp != 0) // Keep only entries where dp != 0
             .map(|(k, v)| (k.clone(), v.clone())) // Clone key-value pairs to create a new map
             .collect();
 
@@ -336,7 +344,7 @@ impl HaplotypeVariants {
             .cloned()
             .collect();
         let mut common_variants = Vec::new();
-        for ((_genotype_matrix, coverage_matrix), (variant, (_, _, _, _))) in
+        for ((_genotype_matrix, coverage_matrix), (variant, (_, _, _, _, _))) in
             candidate_matrix_values.iter().zip(variant_calls.iter())
         {
             let mut counter = 0;
@@ -576,7 +584,7 @@ pub fn plot_prediction(
 
         //filter haplotypes based on any variant they contain has nonzero AF
         let mut contributing_haplotypes = std::collections::HashSet::new();
-        for ((genotype_matrix, coverage_matrix), (_, (var_change, af, _, _dp))) in
+        for ((genotype_matrix, coverage_matrix), (_, (_, var_change, af, _, _dp))) in
             candidate_matrix_values.iter().zip(variant_calls.iter())
         {
             if *af > 0.0 {
@@ -653,7 +661,7 @@ pub fn plot_prediction(
         headers.extend(sorted_haplotypes.clone());
         wtr_lp.write_record(&headers)?;
 
-        for ((genotype_matrix, coverage_matrix), (variant_id, (var_change, af, _, _dp))) in
+        for ((genotype_matrix, coverage_matrix), (variant_id, (_, var_change, af, _, _dp))) in
             filtered_candidate_matrix_values
                 .iter()
                 .zip(variant_calls.iter())
@@ -778,7 +786,7 @@ pub fn plot_prediction(
             .iter()
             .zip(variant_calls.iter())
             .for_each(
-                |((genotypes, covered), (variant_id, (var_change, af, afd, dp)))| {
+                |((genotypes, covered), (variant_id, (_, var_change, af, afd, dp)))| {
                     let mut b_check = false;
                     let mut b_fraction = 0.0;
                     best_variables
@@ -1027,7 +1035,7 @@ pub fn write_results(
     let variant_calls: Vec<AlleleFreqDist> = data
         .variant_calls
         .iter()
-        .map(|(_, (_, _, afd, _))| afd.clone())
+        .map(|(_, (_, _, _, afd, _))| afd.clone())
         .collect();
     let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
     // let event_posteriors = computed_model.event_posteriors();
@@ -1188,7 +1196,7 @@ pub fn collect_constraints_and_variants(
         haplotypes.iter().map(|h| (h.clone(), vec![])).collect();
     //variant-wise iteration
     let mut expr = Expression::from_other_affine(0.); // A constant expression
-    for ((genotype_matrix, coverage_matrix), (variant, (_, af, _, _))) in
+    for ((genotype_matrix, coverage_matrix), (variant, (_, _, af, _, _))) in
         candidate_matrix_values.iter().zip(variant_calls.iter())
     {
         let mut fraction_cont = Expression::from_other_affine(0.);
@@ -1296,7 +1304,17 @@ pub fn get_event_posteriors(
     //FIRST, perform linear program using only nonzero DP variants
     //filter variant calls and haplotype variants
     let filtered_calls = variant_calls.without_zero_dp();
-    let nonzero_dp_variants: Vec<VariantID> = filtered_calls.keys().cloned().collect();
+
+    //filter for prob_variant true variants to be used for the linear program
+    let probable_variant_calls = VariantCalls(
+        filtered_calls
+            .iter()
+            .filter(|(_, v)| v.0)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+    );
+
+    let nonzero_dp_variants: Vec<VariantID> = probable_variant_calls.keys().cloned().collect();
     let var_filt_haplotype_variants: HaplotypeVariants =
         haplotype_variants.filter_for_variants(&nonzero_dp_variants)?;
 
@@ -1312,12 +1330,13 @@ pub fn get_event_posteriors(
     let candidate_matrix = CandidateMatrix::new(&var_filt_haplotype_variants).unwrap();
 
     //generate one map with representative haplotypes as key (required for lp) and one map with all haplotypes as key (required for extension of resulting table)
+    //???? should finding representative haplotypes be done with probable variant calls?
     let (identical_haplotypes_map_rep, identical_haplotypes_map) =
         candidate_matrix.find_identical_haplotypes(haplotypes);
     // Print the result
-    // for (representative, group) in &identical_haplotypes_map {
-    //     println!("Representative: {:?}, Group: {:?}", representative, group);
-    // }
+    for (representative, group) in &identical_haplotypes_map {
+        println!("Representative: {:?}, Group: {:?}", representative, group);
+    }
     let representatives = identical_haplotypes_map_rep.keys().cloned().collect();
     let repr_haplotype_variants =
         var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
@@ -1329,7 +1348,7 @@ pub fn get_event_posteriors(
         &outfile,
         &repr_candidate_matrix,
         &representatives,
-        &filtered_calls,
+        &probable_variant_calls,
         lp_cutoff,
         extend_haplotypes,
         num_extend_haplotypes, //extension functionality for virus case is not recommended for now as it will lead to performance problems.
