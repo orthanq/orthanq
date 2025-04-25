@@ -826,7 +826,7 @@ pub fn plot_prediction(
                                     plot_data_dataset_afd.push(DatasetAfd {
                                         variant_change: var_change.to_string(),
                                         allele_freq: *allele_freq,
-                                        probability: f64::from(*prob),
+                                        probability: f64::from(prob.exp()),
                                     })
                                 }
                                 b_check = true;
@@ -853,7 +853,7 @@ pub fn plot_prediction(
                                         plot_data_dataset_afd.push(DatasetAfd {
                                             variant_change: var_change.to_string(),
                                             allele_freq: *allele_freq,
-                                            probability: f64::from(*prob),
+                                            probability: f64::from(prob.exp()),
                                         })
                                     }
                                 }
