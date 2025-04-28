@@ -163,14 +163,14 @@ impl FromStr for PriorTypes {
 #[derive(Clone, Debug)]
 pub struct VariantCall {
     pub probable: bool,
-    pub change:   String,
-    pub af:       f32,
-    pub afd:      AlleleFreqDist,
-    pub dp:       i32,
+    pub change: String,
+    pub af: f32,
+    pub afd: AlleleFreqDist,
+    pub dp: i32,
 }
 
 #[derive(Derefable, DerefMut, Debug, Clone)]
-pub struct VariantCalls(#[deref]BTreeMap<VariantID, VariantCall>);
+pub struct VariantCalls(#[deref] BTreeMap<VariantID, VariantCall>);
 impl VariantCalls {
     pub fn new(variant_calls: &mut bcf::Reader) -> Result<Self> {
         let mut calls = BTreeMap::new();
@@ -191,7 +191,7 @@ impl VariantCalls {
             let afd_str = std::str::from_utf8(afd_utf[0])?;
             let read_depth = record.format(b"DP").integer().unwrap();
             let read_depth_int = read_depth[0].get(0).unwrap();
- //include all variants without making a difference for their depth of coverage.
+            //include all variants without making a difference for their depth of coverage.
             // if read_depth[0] != &[0]
             // // && (&prob_absent_prob <= &Prob(0.05) || &prob_absent_prob >= &Prob(0.95))
             // {
@@ -209,10 +209,10 @@ impl VariantCalls {
             }
             //exxtract reference (REF), alternative (ALT), and position (POS)
             let chr_name = std::str::from_utf8(header.rid2name(record.rid().unwrap()).unwrap())?;
-            let pos = record.pos() + 1;// 1-based indexing
+            let pos = record.pos() + 1; // 1-based indexing
             let ref_base = std::str::from_utf8(record.alleles()[0])?;
             let alt_base = std::str::from_utf8(record.alleles()[1])?; // Only first ALT allele
-            //construct the variant change string (e.g., "C1973T")
+                                                                      //construct the variant change string (e.g., "C1973T")
             let variant_change = format!("{}:{}{}{}", chr_name, ref_base, pos, alt_base);
 
             let variant_call = VariantCall {
@@ -235,9 +235,9 @@ impl VariantCalls {
             .filter(|(v, _)| !variants.contains(v))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
-    
+
         Ok(VariantCalls(filtered))
-    }    
+    }
 
     pub fn without_zero_dp(&self) -> VariantCalls {
         let filtered = self
@@ -779,34 +779,58 @@ pub fn plot_prediction(
         candidate_matrix_values
             .iter()
             .zip(variant_calls.iter())
-            .for_each(
-                |((genotypes, covered), (variant_id, call))| {
-                    let mut b_check = false;
-                    let mut b_fraction = 0.0;
-                    best_variables
-                        .iter()
-                        .zip(haplotypes.iter())
-                        .enumerate()
-                        .for_each(|(i, (fraction, haplotype))| {
-                            //create an exception for B to add it both to haplotype variants and fractions
-                            if haplotype == &Haplotype("B".to_string()) {
-                                b_fraction = *fraction;
+            .for_each(|((genotypes, covered), (variant_id, call))| {
+                let mut b_check = false;
+                let mut b_fraction = 0.0;
+                best_variables
+                    .iter()
+                    .zip(haplotypes.iter())
+                    .enumerate()
+                    .for_each(|(i, (fraction, haplotype))| {
+                        //create an exception for B to add it both to haplotype variants and fractions
+                        if haplotype == &Haplotype("B".to_string()) {
+                            b_fraction = *fraction;
+                        }
+                        if genotypes[i as u64] && covered[i as u64] {
+                            if call.dp != 0 {
+                                plot_data_variants.push(DatasetVariants {
+                                    variant_change: call.change.to_string(),
+                                    vaf: call.af,
+                                });
                             }
-                            if genotypes[i as u64] && covered[i as u64] {
+                            plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
+                                haplotype: haplotype.to_string(),
+                                fraction: NotNan::new(*fraction).unwrap(),
+                            });
+                            plot_data_haplotype_variants.push(DatasetHaplotypeVariants {
+                                variant_change: call.change.to_string(),
+                                haplotype: haplotype.to_string(),
+                            });
+                            for (j, haplotype) in haplotypes.iter().enumerate() {
+                                if covered[j as u64] {
+                                    plot_data_covered_variants.push(DatasetHaplotypeVariants {
+                                        variant_change: call.change.to_string(),
+                                        haplotype: haplotype.to_string(),
+                                    });
+                                }
+                            }
+                            //also add the heatmap for afd below the covered panels
+                            for (allele_freq, prob) in call.afd.iter() {
+                                plot_data_dataset_afd.push(DatasetAfd {
+                                    variant_change: call.change.to_string(),
+                                    allele_freq: *allele_freq,
+                                    probability: f64::from(prob.exp()),
+                                })
+                            }
+                            b_check = true;
+                        } else {
+                            if call.af > 0.0 {
                                 if call.dp != 0 {
                                     plot_data_variants.push(DatasetVariants {
                                         variant_change: call.change.to_string(),
                                         vaf: call.af,
                                     });
                                 }
-                                plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
-                                    haplotype: haplotype.to_string(),
-                                    fraction: NotNan::new(*fraction).unwrap(),
-                                });
-                                plot_data_haplotype_variants.push(DatasetHaplotypeVariants {
-                                    variant_change: call.change.to_string(),
-                                    haplotype: haplotype.to_string(),
-                                });
                                 for (j, haplotype) in haplotypes.iter().enumerate() {
                                     if covered[j as u64] {
                                         plot_data_covered_variants.push(DatasetHaplotypeVariants {
@@ -823,49 +847,21 @@ pub fn plot_prediction(
                                         probability: f64::from(prob.exp()),
                                     })
                                 }
-                                b_check = true;
-                            } else {
-                                if call.af > 0.0 {
-                                    if call.dp != 0 {
-                                        plot_data_variants.push(DatasetVariants {
-                                            variant_change: call.change.to_string(),
-                                            vaf: call.af,
-                                        });
-                                    }
-                                    for (j, haplotype) in haplotypes.iter().enumerate() {
-                                        if covered[j as u64] {
-                                            plot_data_covered_variants.push(
-                                                DatasetHaplotypeVariants {
-                                                    variant_change: call.change.to_string(),
-                                                    haplotype: haplotype.to_string(),
-                                                },
-                                            );
-                                        }
-                                    }
-                                    //also add the heatmap for afd below the covered panels
-                                    for (allele_freq, prob) in call.afd.iter() {
-                                        plot_data_dataset_afd.push(DatasetAfd {
-                                            variant_change: call.change.to_string(),
-                                            allele_freq: *allele_freq,
-                                            probability: f64::from(prob.exp()),
-                                        })
-                                    }
-                                }
                             }
-                        });
-                    if b_check && haplotypes.contains(&Haplotype("B".to_string())) {
-                        //todo: refactor this as this is not ideal to check for every sample and every variant.
-                        plot_data_haplotype_variants.push(DatasetHaplotypeVariants {
-                            variant_change: call.change.to_string(),
-                            haplotype: "B".to_string(),
-                        });
-                        plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
-                            haplotype: "B".to_string(),
-                            fraction: NotNan::new(b_fraction).unwrap(),
-                        });
-                    }
-                },
-            );
+                        }
+                    });
+                if b_check && haplotypes.contains(&Haplotype("B".to_string())) {
+                    //todo: refactor this as this is not ideal to check for every sample and every variant.
+                    plot_data_haplotype_variants.push(DatasetHaplotypeVariants {
+                        variant_change: call.change.to_string(),
+                        haplotype: "B".to_string(),
+                    });
+                    plot_data_haplotype_fractions.push(DatasetHaplotypeFractions {
+                        haplotype: "B".to_string(),
+                        fraction: NotNan::new(b_fraction).unwrap(),
+                    });
+                }
+            });
         file_name.push_str("final_solution.json");
     }
     let plot_data_variants = json!(plot_data_variants);
@@ -1283,10 +1279,10 @@ pub fn plot_densities(
 }
 
 //find all variants where ALL haplotypes have coverage=true
-fn universally_covered_variants(
-    hap_var: &HaplotypeVariants,
-) -> BTreeSet<VariantID> {
-    hap_var.0.iter()
+fn universally_covered_variants(hap_var: &HaplotypeVariants) -> BTreeSet<VariantID> {
+    hap_var
+        .0
+        .iter()
         .filter_map(|(var_id, hap_map)| {
             if hap_map.values().all(|&(_genotype, coverage)| coverage) {
                 Some(var_id.clone())
@@ -1303,16 +1299,18 @@ fn haplotype_positive_variants(
     haplotype: &Haplotype,
     universally_covered: &BTreeSet<VariantID>,
 ) -> BTreeSet<VariantID> {
-    universally_covered.iter()
+    universally_covered
+        .iter()
         .filter_map(|var_id| {
-            hap_var.0.get(var_id)
+            hap_var
+                .0
+                .get(var_id)
                 .and_then(|hap_map| hap_map.get(haplotype))
                 .filter(|&&(genotype, _coverage)| genotype) // only genotype=true
                 .map(|_| var_id.clone())
         })
         .collect()
 }
-
 
 fn find_similar_haplotypes(
     hap_var: &HaplotypeVariants,
@@ -1322,7 +1320,9 @@ fn find_similar_haplotypes(
 
     // Build the "positive variant" sets for all haplotypes
     let mut haplotype_variant_sets = BTreeMap::new();
-    let all_haplotypes: BTreeSet<_> = hap_var.0.values()
+    let all_haplotypes: BTreeSet<_> = hap_var
+        .0
+        .values()
         .flat_map(|hap_map| hap_map.keys())
         .cloned()
         .collect();
@@ -1336,7 +1336,8 @@ fn find_similar_haplotypes(
 
     for query_hap in queried_haplotypes {
         if let Some(query_set) = haplotype_variant_sets.get(query_hap) {
-            let similar_haps = haplotype_variant_sets.iter()
+            let similar_haps = haplotype_variant_sets
+                .iter()
                 .filter_map(|(hap, variant_set)| {
                     if hap != query_hap && variant_set == query_set {
                         Some(hap.clone())
@@ -1374,12 +1375,13 @@ pub fn get_event_posteriors(
     let nonzero_dp_probable_variant_calls = VariantCalls(
         nonzero_dp_calls
             .iter()
-            .filter(|(_, v)| v.probable==true)
+            .filter(|(_, v)| v.probable == true)
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect(),
     );
 
-    let nonzero_dp_probable_variants: Vec<VariantID> = nonzero_dp_probable_variant_calls.keys().cloned().collect();
+    let nonzero_dp_probable_variants: Vec<VariantID> =
+        nonzero_dp_probable_variant_calls.keys().cloned().collect();
     let nonzero_dp_probable_haplotype_variants: HaplotypeVariants =
         haplotype_variants.filter_for_variants(&nonzero_dp_probable_variants)?;
 
@@ -1422,15 +1424,16 @@ pub fn get_event_posteriors(
 
     //first, find all variants where ALL haplotypes have coverage=true
     //then, for a haplotype, get its genotype map restricted to those variants
-    let similar_lp_haplotypes=find_similar_haplotypes(&nonzero_dp_probable_haplotype_variants, &lp_haplotypes);
+    let similar_lp_haplotypes =
+        find_similar_haplotypes(&nonzero_dp_probable_haplotype_variants, &lp_haplotypes);
     dbg!(&similar_lp_haplotypes);
 
     //collect all haplotypes (some haplotypes with the same genotype matrix set migt have been chosen twice in the lp solution)
     let mut lp_haplotypes_extended_set = BTreeSet::new();
     for (key, values) in &similar_lp_haplotypes {
-        lp_haplotypes_extended_set.insert(key.clone()); 
+        lp_haplotypes_extended_set.insert(key.clone());
         for value in values {
-            lp_haplotypes_extended_set.insert(value.clone()); 
+            lp_haplotypes_extended_set.insert(value.clone());
         }
     }
     let lp_haplotypes_extended_vec: Vec<_> = lp_haplotypes_extended_set.into_iter().collect();
@@ -1438,7 +1441,8 @@ pub fn get_event_posteriors(
 
     //SECOND, model evaluation using ALL variants but only the LP- selected haplotypes
     //prepare inputs of model evaluation
-    let hap_filt_haplotype_variants = haplotype_variants.filter_for_haplotypes(&lp_haplotypes_extended_vec)?;
+    let hap_filt_haplotype_variants =
+        haplotype_variants.filter_for_haplotypes(&lp_haplotypes_extended_vec)?;
     let model_candidate_matrix = CandidateMatrix::new(&hap_filt_haplotype_variants)?;
 
     //compute model
