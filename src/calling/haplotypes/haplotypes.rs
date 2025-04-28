@@ -229,16 +229,6 @@ impl VariantCalls {
         Ok(VariantCalls(calls))
     }
 
-    pub fn filter_variant_calls(&self, variants: &Vec<VariantID>) -> Result<Self> {
-        let filtered = self
-            .iter()
-            .filter(|(v, _)| !variants.contains(v))
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-
-        Ok(VariantCalls(filtered))
-    }
-
     pub fn without_zero_dp(&self) -> VariantCalls {
         let filtered = self
             .iter()
