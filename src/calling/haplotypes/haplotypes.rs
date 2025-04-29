@@ -13,19 +13,16 @@ use derive_deref::DerefMut;
 
 use ordered_float::NotNan;
 
+use good_lp::IntoAffineExpression;
+use good_lp::*;
+use good_lp::{constraint, variable, variables, Expression, ResolutionError, SolverModel};
 use rust_htslib::bcf::{
     self,
     record::GenotypeAllele::{Phased, Unphased},
     Read,
 };
 use std::cmp;
-use good_lp::{
-    variable, variables, constraint, SolverModel, Expression,
-    ResolutionError,
-};
 use std::error::Error;
-use good_lp::IntoAffineExpression;
-use good_lp::*;
 
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
@@ -905,7 +902,7 @@ pub fn linear_program(
     extend_haplotypes: bool,
     num_variant_distance: i64,
     num_constraint_haplotypes: i32,
-) -> Result<Vec<Haplotype>, anyhow::Error>{
+) -> Result<Vec<Haplotype>, anyhow::Error> {
     //first init the problem
     let mut problem = ProblemVariables::new();
     //introduce variables
@@ -974,25 +971,29 @@ pub fn linear_program(
         for (c, t_var) in constraints.iter().zip(t_vars.iter()) {
             model = model.with(constraint!(t_var >= c.clone()));
             model = model.with(constraint!(t_var >= -c.clone()));
-        } 
+        }
 
         match model.clone().solve() {
             Ok(sol) => {
                 solution = Some(sol);
-                dbg!(format!("LP solution found for constraint number: {}!", constraint_value));
+                dbg!(format!(
+                    "LP solution found for constraint number: {}!",
+                    constraint_value
+                ));
                 break;
             }
-            Err(ResolutionError::Infeasible) => 
-            {
-                dbg!(format!("LP solution infeasible for constraint number: {}!", constraint_value));
-                continue
+            Err(ResolutionError::Infeasible) => {
+                dbg!(format!(
+                    "LP solution infeasible for constraint number: {}!",
+                    constraint_value
+                ));
+                continue;
             }
             Err(e) => panic!("Unexpected LP error: {e}"),
         }
     }
 
     if let Some(sol) = solution {
-
         let mut best_variables = Vec::new();
         //finally, print the variables and the sum
         let mut lp_haplotypes = BTreeMap::new();
@@ -1004,7 +1005,7 @@ pub fn linear_program(
                 lp_haplotypes.insert(haplotype.clone(), sol.value(*var).clone());
             }
         }
-    
+
         dbg!(format!("sum = {}", sol.eval(sum_tvars)));
         //plot the best result
         let candidate_matrix_values: Vec<(BitVec, BitVec)> =
@@ -1018,12 +1019,13 @@ pub fn linear_program(
             &variant_calls,
             &best_variables,
         )?;
-    
+
         let lp_haplotypes_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
         //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list.
         //then sort by hamming distance, take the closest x additional alleles according to 'num_variant_distance'.
         //this is done using haplotype_dict, hence ONLY the nonzero DP variants that are covered by all haplotypes (C:1) are included in this extension.
-        let mut extended_haplotypes_bset: BTreeSet<_> = lp_haplotypes_keys.iter().cloned().collect();
+        let mut extended_haplotypes_bset: BTreeSet<_> =
+            lp_haplotypes_keys.iter().cloned().collect();
         if extend_haplotypes {
             lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
                 let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
@@ -1056,7 +1058,6 @@ pub fn linear_program(
         println!("No feasible LP solution found. Wrote empty output.");
         return Ok(vec![]);
     }
-    
 }
 
 pub fn write_results(
