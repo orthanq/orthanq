@@ -1,6 +1,5 @@
 use crate::calling::haplotypes::haplotypes;
 use crate::calling::haplotypes::haplotypes::get_event_posteriors;
-use crate::calling::haplotypes::haplotypes::output_empty_output;
 use crate::calling::haplotypes::haplotypes::{
     CandidateMatrix, Haplotype, HaplotypeVariants, VariantCalls,
 };
@@ -51,7 +50,26 @@ impl Caller {
 
         //write blank plots and tsv table if no variants are available.
         if variant_calls.len() == 0 {
-            output_empty_output(&self.outcsv).unwrap();
+            let mut parent = self.outcsv.clone();
+            parent.pop();
+            fs::create_dir_all(&parent)?;
+
+            //write blank plots, required for the workflow!
+            for file_name in vec![
+                "lp_solution.json".to_string(),
+                "final_solution.json".to_string(),
+                "2_field_solutions.json".to_string(),
+                "3_field_solutions.json".to_string(),
+            ] {
+                let json = include_str!("../../../templates/final_prediction.json");
+                let blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
+                let file = fs::File::create(parent.join(file_name)).unwrap();
+                serde_json::to_writer(file, &blueprint)?;
+            }
+            //write blank tsv
+            let mut wtr = csv::Writer::from_path(&self.outcsv)?;
+            let headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
+            wtr.write_record(&headers)?;
             Ok(())
         } else {
             let haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
@@ -140,8 +158,8 @@ impl Caller {
             let mut converted_name = PathBuf::from(&self.outcsv.parent().unwrap());
             converted_name.push("G_groups.csv");
             let allele_to_g_groups = self.convert_to_g().unwrap();
-            // dbg!(&allele_to_g_groups);
-            // dbg!(&all_haplotypes);
+            dbg!(&allele_to_g_groups);
+            dbg!(&all_haplotypes);
             let mut final_haplotypes_converted: Vec<Haplotype> = Vec::new();
 
             //the haplotype can either be found with the same name in the xml file or it can start with it.
@@ -171,7 +189,7 @@ impl Caller {
                 }
             }
 
-            // dbg!(&final_haplotypes_converted);
+            dbg!(&final_haplotypes_converted);
             haplotypes::write_results(
                 &converted_name,
                 &data,
