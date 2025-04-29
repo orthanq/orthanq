@@ -18,10 +18,14 @@ use rust_htslib::bcf::{
     record::GenotypeAllele::{Phased, Unphased},
     Read,
 };
-
+use std::cmp;
+use good_lp::{
+    variable, variables, constraint, SolverModel, Expression,
+    ResolutionError,
+};
+use std::error::Error;
 use good_lp::IntoAffineExpression;
 use good_lp::*;
-use good_lp::{variable, Expression};
 
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
@@ -901,7 +905,7 @@ pub fn linear_program(
     extend_haplotypes: bool,
     num_variant_distance: i64,
     num_constraint_haplotypes: i32,
-) -> Result<Vec<Haplotype>> {
+) -> Result<Vec<Haplotype>, anyhow::Error>{
     //first init the problem
     let mut problem = ProblemVariables::new();
     //introduce variables
@@ -954,73 +958,105 @@ pub fn linear_program(
     for bin_var in binary_vars.iter() {
         binary_sum += Expression::from_other_affine(bin_var);
     }
-    model = model.with(constraint!(binary_sum == num_constraint_haplotypes));
 
-    //add the constraints to the model
-    for (c, t_var) in constraints.iter().zip(t_vars.iter()) {
-        model = model.with(constraint!(t_var >= c.clone()));
-        model = model.with(constraint!(t_var >= -c.clone()));
-    }
+    //handle the case where in low coverage samples solution gets "Infeasible" because the number of haplotypes are less than num_constraint_haplotypes which is 5 at the moment.
+    //in that case, try the length of the haplotypes as the constraint and decrement this number gradually until 1. In case of zero, output empty output.
 
-    //solve the problem with the default solver, i.e. coin_cbc
-    let solution = model.solve().unwrap();
+    let mut solution = None;
+    let max_haplotypes = cmp::min(num_constraint_haplotypes, haplotypes.len() as i32);
+    for constraint_value in (1..=max_haplotypes).rev() {
+        dbg!("constraint number is : {}", constraint_value);
 
-    let mut best_variables = Vec::new();
-    //finally, print the variables and the sum
-    let mut lp_haplotypes = BTreeMap::new();
-    for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
-        println!("v{}, {}={}", i, haplotype.to_string(), solution.value(*var));
-        best_variables.push(solution.value(var.clone()).clone());
-        if solution.value(*var) > lp_cutoff {
-            //the speed of fraction exploration is managable in case of diploid priors
-            lp_haplotypes.insert(haplotype.clone(), solution.value(*var).clone());
+        // constraint: sum of binary selection variables == constraint_value
+        model = model.with(constraint!(binary_sum.clone() == constraint_value));
+
+        //add the constraints to the model
+        for (c, t_var) in constraints.iter().zip(t_vars.iter()) {
+            model = model.with(constraint!(t_var >= c.clone()));
+            model = model.with(constraint!(t_var >= -c.clone()));
+        } 
+
+        match model.clone().solve() {
+            Ok(sol) => {
+                solution = Some(sol);
+                dbg!(format!("LP solution found for constraint number: {}!", constraint_value));
+                break;
+            }
+            Err(ResolutionError::Infeasible) => 
+            {
+                dbg!(format!("LP solution infeasible for constraint number: {}!", constraint_value));
+                continue
+            }
+            Err(e) => panic!("Unexpected LP error: {e}"),
         }
     }
-    // println!("sum = {}", solution.eval(sum_tvars));
-    //plot the best result
-    let candidate_matrix_values: Vec<(BitVec, BitVec)> =
-        candidate_matrix.values().cloned().collect();
-    plot_prediction(
-        output_lp_datavzrd,
-        outdir,
-        &"lp",
-        &candidate_matrix_values,
-        &haplotypes,
-        &variant_calls,
-        &best_variables,
-    )?;
-    let lp_haplotypes_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
-    //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list.
-    //then sort by hamming distance, take the closest x additional alleles according to 'num_variant_distance'.
-    //this is done using haplotype_dict, hence ONLY the nonzero DP variants that are covered by all haplotypes (C:1) are included in this extension.
-    let mut extended_haplotypes_bset: BTreeSet<_> = lp_haplotypes_keys.iter().cloned().collect();
-    if extend_haplotypes {
-        lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
-            let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
-            let variant_set: BTreeSet<_> = variants.iter().collect();
-            haplotype_dict
-                .iter()
-                .for_each(|(haplotype, haplotype_variants)| {
-                    let haplotype_set: BTreeSet<_> = haplotype_variants.iter().collect();
-                    let difference: Vec<_> =
-                        variant_set.symmetric_difference(&haplotype_set).collect();
-                    //0 distance is excluded because lp gets only the representative, nonidentical haplotypes as input.
-                    if (difference.len() as i64 <= num_variant_distance
-                        && difference.len() as i64 != 0)
-                        && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
-                            <= num_variant_distance)
-                    //the last check is necessary to make sure the difference on haplotypes is also correlated with the lengths of vectors of variants.
-                    {
-                        extended_haplotypes_bset.insert(haplotype.clone());
-                    }
-                });
-        });
-        let extended_haplotypes = extended_haplotypes_bset.into_iter().collect();
-        dbg!(&extended_haplotypes);
-        Ok(extended_haplotypes)
+
+    if let Some(sol) = solution {
+
+        let mut best_variables = Vec::new();
+        //finally, print the variables and the sum
+        let mut lp_haplotypes = BTreeMap::new();
+        for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
+            dbg!(format!("v{}, {:?}={}", i, haplotype, sol.value(*var)));
+            best_variables.push(sol.value(var.clone()).clone());
+            if sol.value(*var) > lp_cutoff {
+                //the speed of fraction exploration is managable in case of diploid priors
+                lp_haplotypes.insert(haplotype.clone(), sol.value(*var).clone());
+            }
+        }
+    
+        dbg!(format!("sum = {}", sol.eval(sum_tvars)));
+        //plot the best result
+        let candidate_matrix_values: Vec<(BitVec, BitVec)> =
+            candidate_matrix.values().cloned().collect();
+        plot_prediction(
+            output_lp_datavzrd,
+            outdir,
+            &"lp",
+            &candidate_matrix_values,
+            &haplotypes,
+            &variant_calls,
+            &best_variables,
+        )?;
+    
+        let lp_haplotypes_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
+        //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list.
+        //then sort by hamming distance, take the closest x additional alleles according to 'num_variant_distance'.
+        //this is done using haplotype_dict, hence ONLY the nonzero DP variants that are covered by all haplotypes (C:1) are included in this extension.
+        let mut extended_haplotypes_bset: BTreeSet<_> = lp_haplotypes_keys.iter().cloned().collect();
+        if extend_haplotypes {
+            lp_haplotypes.iter().for_each(|(f_haplotype, _)| {
+                let variants = haplotype_dict.get(&f_haplotype).unwrap().clone();
+                let variant_set: BTreeSet<_> = variants.iter().collect();
+                haplotype_dict
+                    .iter()
+                    .for_each(|(haplotype, haplotype_variants)| {
+                        let haplotype_set: BTreeSet<_> = haplotype_variants.iter().collect();
+                        let difference: Vec<_> =
+                            variant_set.symmetric_difference(&haplotype_set).collect();
+                        //0 distance is excluded because lp gets only the representative, nonidentical haplotypes as input.
+                        if (difference.len() as i64 <= num_variant_distance
+                            && difference.len() as i64 != 0)
+                            && ((variants.len() as i64 - haplotype_variants.len() as i64).abs()
+                                <= num_variant_distance)
+                        //the last check is necessary to make sure the difference on haplotypes is also correlated with the lengths of vectors of variants.
+                        {
+                            extended_haplotypes_bset.insert(haplotype.clone());
+                        }
+                    });
+            });
+            let extended_haplotypes = extended_haplotypes_bset.into_iter().collect();
+            dbg!(&extended_haplotypes);
+            Ok(extended_haplotypes)
+        } else {
+            Ok(lp_haplotypes_keys)
+        }
     } else {
-        Ok(lp_haplotypes_keys)
+        output_empty_output(&outdir).unwrap();
+        println!("No feasible LP solution found. Wrote empty output.");
+        return Ok(vec![]);
     }
+    
 }
 
 pub fn write_results(
@@ -1334,14 +1370,14 @@ pub fn get_event_posteriors(
     let (identical_haplotypes_map_rep, identical_haplotypes_map) =
         candidate_matrix.find_identical_haplotypes(haplotypes);
     // Print the result
-    for (representative, group) in &identical_haplotypes_map {
-        println!("Representative: {:?}, Group: {:?}", representative, group);
-    }
-    let representatives = identical_haplotypes_map_rep.keys().cloned().collect();
+    // for (representative, group) in &identical_haplotypes_map {
+    //     println!("Representative: {:?}, Group: {:?}", representative, group);
+    // }
+    let representatives: Vec<Haplotype> = identical_haplotypes_map_rep.keys().cloned().collect();
     let repr_haplotype_variants =
         var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
     let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
-
+    dbg!(&representatives);
     //employ the linear program
     let lp_haplotypes = linear_program(
         output_lp_datavzrd,
@@ -1544,4 +1580,30 @@ pub fn extend_resulting_table(
         }
     }
     Ok((new_event_posteriors, all_haplotypes))
+}
+
+pub fn output_empty_output(outcsv: &PathBuf) -> Result<(), Box<dyn Error>> {
+    let mut parent = outcsv.clone();
+    parent.pop();
+    fs::create_dir_all(&parent)?;
+
+    // Write blank plots
+    for file_name in [
+        "lp_solution.json",
+        "final_solution.json",
+        "2_field_solutions.json",
+        "3_field_solutions.json",
+    ] {
+        let json = include_str!("../../../templates/final_prediction.json");
+        let blueprint: Value = serde_json::from_str(json)?;
+        let file = fs::File::create(parent.join(file_name))?;
+        serde_json::to_writer(file, &blueprint)?;
+    }
+
+    // Write blank TSV
+    let mut wtr = csv::Writer::from_path(outcsv)?;
+    let headers = ["density", "odds"];
+    wtr.write_record(&headers)?;
+
+    Ok(())
 }
