@@ -1680,10 +1680,18 @@ pub fn output_empty_output(outcsv: &PathBuf) -> Result<(), Box<dyn Error>> {
         serde_json::to_writer(file, &blueprint)?;
     }
 
-    // Write blank TSV
+    // Write blank CSV for final solution, 2-field.csv and G_groups.csv
     let mut wtr = csv::Writer::from_path(outcsv)?;
     let headers = ["density", "odds"];
     wtr.write_record(&headers)?;
+
+    // Write blank CSV for 2-field.csv and G_groups.csv
+    for file_name in ["2-field.csv", "G_groups.csv"] {
+        let file_name = parent.join(file_name);
+        let mut wtr = csv::Writer::from_path(file_name)?;
+        let headers = ["density", "odds"];
+        wtr.write_record(&headers)?;
+    }
 
     Ok(())
 }
