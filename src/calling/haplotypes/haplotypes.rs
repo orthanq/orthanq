@@ -1350,7 +1350,11 @@ pub fn get_event_posteriors(
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect(),
     );
-
+    if probable_variant_calls.len() == 0 {
+        output_empty_output(&outfile).unwrap();
+        println!("No calls to use for LP, exiting with empty output!");
+        std::process::exit(0);
+    }
     let nonzero_dp_variants: Vec<VariantID> = probable_variant_calls.keys().cloned().collect();
     let var_filt_haplotype_variants: HaplotypeVariants =
         haplotype_variants.filter_for_variants(&nonzero_dp_variants)?;
