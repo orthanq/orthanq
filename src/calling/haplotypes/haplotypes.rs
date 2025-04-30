@@ -286,7 +286,15 @@ impl HaplotypeVariants {
         }
         Ok(HaplotypeVariants(variant_records))
     }
-
+    pub fn list_haplotypes(&self) -> BTreeSet<Haplotype> {
+        let mut haplotypes = BTreeSet::new();
+        for hap_map in self.0.values() {
+            for hap in hap_map.keys() {
+                haplotypes.insert(hap.clone());
+            }
+        }
+        haplotypes
+    }
     pub fn filter_for_variants(&self, variant_ids: &Vec<VariantID>) -> Result<HaplotypeVariants> {
         let mut filtered_haplotype_variants: BTreeMap<
             VariantID,
@@ -1468,7 +1476,16 @@ pub fn get_event_posteriors(
         }
     }
     let lp_haplotypes_extended_vec: Vec<_> = lp_haplotypes_extended_set.into_iter().collect();
-    dbg!(&lp_haplotypes_extended_vec);
+
+    //output empty output in case the list of original haplotypes and extended haplotype list are the same, otherwise the process gets killed my high memory usage
+    if haplotype_variants.list_haplotypes().len() == lp_haplotypes_extended_vec.len() {
+        output_empty_output(&outfile).unwrap();
+        println!(
+            "Cannot process this many haplotypes: {}, exiting now!",
+            lp_haplotypes_extended_vec.len()
+        );
+        std::process::exit(0);
+    }
 
     //SECOND, model evaluation using ALL variants but only the LP- selected haplotypes
     //prepare inputs of model evaluation
