@@ -1405,6 +1405,12 @@ pub fn get_event_posteriors(
             .collect(),
     );
 
+    if nonzero_dp_probable_variant_calls.len() == 0 {
+        output_empty_output(&outfile).unwrap();
+        println!("No calls to use for LP, exiting with empty output!");
+        std::process::exit(0);
+    }
+
     let nonzero_dp_probable_variants: Vec<VariantID> =
         nonzero_dp_probable_variant_calls.keys().cloned().collect();
     let nonzero_dp_probable_haplotype_variants: HaplotypeVariants =
