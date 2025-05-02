@@ -1662,7 +1662,7 @@ pub fn reduce_to_representative_haplotypes(
         if let Some(rep) = hap_to_rep.get(&hap) {
             unique_reps.insert(rep.clone());
         } else {
-            unique_reps.insert(hap); // not in map → treat as own representative
+            unique_reps.insert(hap); // not in map → treat as own representative, not very likely, but should not risk losing any haplotypes.
         }
     }
 
