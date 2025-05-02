@@ -1435,15 +1435,15 @@ pub fn get_event_posteriors(
         .collect();
     let candidate_matrix = CandidateMatrix::new(&nonzero_dp_probable_haplotype_variants).unwrap();
 
-    //generate one map with representative haplotypes as key (required for lp) and one map with all haplotypes as key (required for extension of resulting table)
-    //???? should finding representative haplotypes be done with probable variant calls?
-    let (identical_haplotypes_map_rep, identical_haplotypes_map) =
+    //generate one map with representative haplotypes as key (required for lp) 
+    //note: this map is necessary for LP
+    let (lp_identical_haplotypes_map_rep, _) =
         candidate_matrix.find_identical_haplotypes(haplotypes);
     // Print the result
-    // for (representative, group) in &identical_haplotypes_map {
+    // for (representative, group) in &lp_identical_haplotypes_map {
     //     println!("Representative: {:?}, Group: {:?}", representative, group);
     // }
-    let representatives: Vec<Haplotype> = identical_haplotypes_map_rep.keys().cloned().collect();
+    let representatives: Vec<Haplotype> = lp_identical_haplotypes_map_rep.keys().cloned().collect();
     let repr_haplotype_variants =
         nonzero_dp_probable_haplotype_variants.filter_for_haplotypes(&representatives)?;
     let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
@@ -1477,12 +1477,36 @@ pub fn get_event_posteriors(
     }
     let lp_haplotypes_extended_vec: Vec<_> = lp_haplotypes_extended_set.into_iter().collect();
 
+    //generate a second map for representative haplotypes (required for reducing the extended list of lp haplotypes)
+    //finding representative haplotypes has to be done with variant calls that are used for the model
+    let nonzero_dp_variants: Vec<VariantID> = nonzero_dp_calls.keys().cloned().collect();
+    let nonzero_dp_haplotype_variants: HaplotypeVariants =
+        haplotype_variants.filter_for_variants(&nonzero_dp_variants)?;
+    let nonzero_dp_candidate_matrix = CandidateMatrix::new(&nonzero_dp_haplotype_variants).unwrap();
+    let nonzero_dp_haplotypes: Vec<Haplotype> = nonzero_dp_haplotype_variants
+        .iter()
+        .next()
+        .unwrap()
+        .1
+        .keys()
+        .cloned()
+        .collect();
+    let (model_identical_haplotypes_map_rep, model_identical_haplotypes_map) = 
+    nonzero_dp_candidate_matrix.find_identical_haplotypes(nonzero_dp_haplotypes);
+
+    //then reduce the extended lp haplotype list if the vector contains identical haplotyes. this is necessary for 
+    //the extend_resulting_table because it has to only contain representative haplotypes for the model
+    let reduced_vec = reduce_to_representative_haplotypes(lp_haplotypes_extended_vec, &model_identical_haplotypes_map_rep);
+
     //output empty output in case the list of original haplotypes and extended haplotype list are the same, otherwise the process gets killed my high memory usage
-    if haplotype_variants.list_haplotypes().len() == lp_haplotypes_extended_vec.len() {
+    dbg!(&haplotype_variants.list_haplotypes().len() );
+    dbg!(&reduced_vec.len());
+    dbg!(&reduced_vec);
+    if haplotype_variants.list_haplotypes().len() == reduced_vec.len() {
         output_empty_output(&outfile).unwrap();
         println!(
             "Cannot process this many haplotypes: {}, exiting now!",
-            lp_haplotypes_extended_vec.len()
+            reduced_vec.len()
         );
         std::process::exit(0);
     }
@@ -1490,7 +1514,7 @@ pub fn get_event_posteriors(
     //SECOND, model evaluation using ALL variants but only the LP- selected haplotypes
     //prepare inputs of model evaluation
     let hap_filt_haplotype_variants =
-        haplotype_variants.filter_for_haplotypes(&lp_haplotypes_extended_vec)?;
+        haplotype_variants.filter_for_haplotypes(&reduced_vec)?;
     let model_candidate_matrix = CandidateMatrix::new(&hap_filt_haplotype_variants)?;
 
     //compute model
@@ -1505,6 +1529,7 @@ pub fn get_event_posteriors(
     let mut eq_graph: Option<_> = Some(HaplotypeGraph::new(Graph::default(), HashMap::new()));
     let mut application_name = "none";
 
+    //note: graph creation was not tested after the latest improvements.
     if &application == &"hla" {
         //equivalence graph based optimization is at the developmental phase.
         eq_graph = Some(
@@ -1523,8 +1548,8 @@ pub fn get_event_posteriors(
     }
     let computed_model = model.compute_from_marginal(
         &Marginal::new(
-            lp_haplotypes_extended_vec.len(),
-            lp_haplotypes_extended_vec.clone(),
+            reduced_vec.len(),
+            reduced_vec.clone(),
             prior.clone(),
             eq_graph,
             enable_equivalence_class_constraint,
@@ -1545,10 +1570,10 @@ pub fn get_event_posteriors(
 
     // Third, extend the table with identical haplotypes
     let (new_event_posteriors, all_haplotypes) = extend_resulting_table(
-        &lp_haplotypes_extended_vec,
+        &reduced_vec,
         &event_posteriors,
         &prior,
-        &identical_haplotypes_map,
+        &model_identical_haplotypes_map,
     )?;
     Ok((new_event_posteriors, all_haplotypes, data))
 }
@@ -1615,6 +1640,31 @@ fn generate_combinations(
     }
 
     result
+}
+pub fn reduce_to_representative_haplotypes(
+    lp_haplotypes_extended_vec: Vec<Haplotype>,
+    model_identical_haplotypes_map_rep: &BTreeMap<Haplotype, Vec<Haplotype>>,
+) -> Vec<Haplotype> {
+    // Step 1: Build reverse map from haplotype -> representative
+    let mut hap_to_rep: BTreeMap<Haplotype, Haplotype> = BTreeMap::new();
+    for (rep, group) in model_identical_haplotypes_map_rep {
+        hap_to_rep.insert(rep.clone(), rep.clone()); // include the representative itself
+        for hap in group {
+            hap_to_rep.insert(hap.clone(), rep.clone());
+        }
+    }
+
+    // Step 2: Deduplicate based on representative
+    let mut unique_reps = BTreeSet::new();
+    for hap in lp_haplotypes_extended_vec {
+        if let Some(rep) = hap_to_rep.get(&hap) {
+            unique_reps.insert(rep.clone());
+        } else {
+            unique_reps.insert(hap); // not in map → treat as own representative
+        }
+    }
+
+    unique_reps.into_iter().collect()
 }
 
 pub fn extend_resulting_table(
