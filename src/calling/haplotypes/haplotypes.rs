@@ -1435,7 +1435,7 @@ pub fn get_event_posteriors(
         .collect();
     let candidate_matrix = CandidateMatrix::new(&nonzero_dp_probable_haplotype_variants).unwrap();
 
-    //generate one map with representative haplotypes as key (required for lp) 
+    //generate one map with representative haplotypes as key (required for lp)
     //note: this map is necessary for LP
     let (lp_identical_haplotypes_map_rep, _) =
         candidate_matrix.find_identical_haplotypes(haplotypes);
@@ -1491,15 +1491,18 @@ pub fn get_event_posteriors(
         .keys()
         .cloned()
         .collect();
-    let (model_identical_haplotypes_map_rep, model_identical_haplotypes_map) = 
-    nonzero_dp_candidate_matrix.find_identical_haplotypes(nonzero_dp_haplotypes);
+    let (model_identical_haplotypes_map_rep, model_identical_haplotypes_map) =
+        nonzero_dp_candidate_matrix.find_identical_haplotypes(nonzero_dp_haplotypes);
 
-    //then reduce the extended lp haplotype list if the vector contains identical haplotyes. this is necessary for 
+    //then reduce the extended lp haplotype list if the vector contains identical haplotyes. this is necessary for
     //the extend_resulting_table because it has to only contain representative haplotypes for the model
-    let reduced_vec = reduce_to_representative_haplotypes(lp_haplotypes_extended_vec, &model_identical_haplotypes_map_rep);
+    let reduced_vec = reduce_to_representative_haplotypes(
+        lp_haplotypes_extended_vec,
+        &model_identical_haplotypes_map_rep,
+    );
 
     //output empty output in case the list of original haplotypes and extended haplotype list are the same, otherwise the process gets killed my high memory usage
-    dbg!(&haplotype_variants.list_haplotypes().len() );
+    dbg!(&haplotype_variants.list_haplotypes().len());
     dbg!(&reduced_vec.len());
     dbg!(&reduced_vec);
     if haplotype_variants.list_haplotypes().len() == reduced_vec.len() {
@@ -1513,8 +1516,7 @@ pub fn get_event_posteriors(
 
     //SECOND, model evaluation using ALL variants but only the LP- selected haplotypes
     //prepare inputs of model evaluation
-    let hap_filt_haplotype_variants =
-        haplotype_variants.filter_for_haplotypes(&reduced_vec)?;
+    let hap_filt_haplotype_variants = haplotype_variants.filter_for_haplotypes(&reduced_vec)?;
     let model_candidate_matrix = CandidateMatrix::new(&hap_filt_haplotype_variants)?;
 
     //compute model
