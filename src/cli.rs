@@ -226,9 +226,10 @@ pub enum CallKind {
         //     help = "If true, only common variants of considered haplotypes will be used in the model. Unusable at the moment."
         // )]
         // common_variants: bool,
-        //lp_cutoff by default should be greater than 0.01 (fractions with 0.00999.. might select for haplotypes with equal variant set)
+        //Very importantly: lp_cutoff by default MUST be greater than 0.0 (higher cutoffs might lead to losing some haplotypes
+        //that only very slightly differ by vaf at e.g. 0.01 fraction.
         #[structopt(
-            default_value = "0.01",
+            default_value = "0.0",
             long,
             help = "Cutoff for linear program solutions."
         )]
