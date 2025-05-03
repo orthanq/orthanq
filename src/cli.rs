@@ -243,7 +243,7 @@ pub enum CallKind {
             long,
             help = "Enable extension of haplotypes that are computed with linear program."
         )]
-        extend_haplotypes: bool,
+        extend_haplotypes: Option<bool>,
         #[structopt(
             long,
             default_value = "1",
