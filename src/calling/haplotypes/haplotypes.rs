@@ -1008,9 +1008,9 @@ pub fn linear_program(
         )?;
 
         let lp_haplotypes_keys: Vec<_> = lp_haplotypes.keys().cloned().collect();
-        //extend haplotypes found by linear program, add haplotypes that have the same variants to the final list.
-        //then sort by hamming distance, take the closest x additional alleles according to 'num_variant_distance'.
-        //this is done using haplotype_dict, hence ONLY the nonzero DP variants that are covered by all haplotypes (C:1) are included in this extension.
+        //extend haplotypes found by linear program.
+        //sort by hamming distance, take the closest x additional alleles according to 'num_variant_distance'.
+        //this is done using haplotype_dict, hence ONLY the nonzero DP and probable variants that are covered by all haplotypes (C:1) are included in this extension.
         let mut extended_haplotypes_bset: BTreeSet<_> =
             lp_haplotypes_keys.iter().cloned().collect();
         if extend_haplotypes {
