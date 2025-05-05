@@ -163,7 +163,7 @@ impl FromStr for PriorTypes {
 
 #[derive(Clone, Debug)]
 pub struct VariantCall {
-    pub probable: bool,
+    pub max_prob: NotNan<f64>,
     pub change: String,
     pub af: f32,
     pub afd: AlleleFreqDist,
@@ -180,13 +180,25 @@ impl VariantCalls {
         for record_result in variant_calls.records() {
             let mut record = record_result?;
             record.unpack();
+            let variant_id: i32 = String::from_utf8(record.id())?.parse()?;
+            // dbg!(&variant_id);
+            //by default, make prob_absent and prob_present 0.0 to handle the case with NaN prob values
+            let mut prob_absent= NotNan::new(0.0).unwrap();
+            let mut prob_present= NotNan::new(0.0).unwrap();
 
-            let prob_absent = record.info(b"PROB_ABSENT").float()?.unwrap()[0];
-            let prob_present = record.info(b"PROB_PRESENT").float()?.unwrap()[0];
+            let mut parsed_prob_absent = record.info(b"PROB_ABSENT").float()?.unwrap()[0];
+            let mut parsed_prob_present = record.info(b"PROB_PRESENT").float()?.unwrap()[0];
 
-            let prob_absent_prob = Prob::from(PHREDProb(prob_absent.into()));
-            let prob_present_prob = Prob::from(PHREDProb(prob_present.into()));
-            let prob_variant = prob_present_prob >= Prob(0.95) || prob_absent_prob >= Prob(0.95);
+            if !parsed_prob_absent.is_nan() {
+                prob_absent = NotNan::new(*Prob::from(PHREDProb(parsed_prob_absent.into()))).unwrap();            }
+            if !parsed_prob_present.is_nan() {
+                prob_present = NotNan::new(*Prob::from(PHREDProb(parsed_prob_present.into()))).unwrap();
+            }
+            // dbg!(&prob_absent, &prob_present);
+
+            //get max of prob_absent and prob_present to use for weighting in linear program
+            let max_prob = cmp::max(prob_absent, prob_present);
+            // dbg!(&max_prob);
 
             let afd_utf = record.format(b"AFD").string()?;
             let afd_str = std::str::from_utf8(afd_utf[0])?;
@@ -217,7 +229,7 @@ impl VariantCalls {
             let variant_change = format!("{}:{}{}{}", chr_name, ref_base, pos, alt_base);
 
             let variant_call = VariantCall {
-                probable: prob_variant,
+                max_prob: max_prob,
                 change: variant_change,
                 af,
                 afd: AlleleFreqDist(vaf_density),
@@ -1227,6 +1239,7 @@ pub fn collect_constraints_and_variants(
         let _prime_fraction_cont = Expression::from_other_affine(0.);
         let _vaf = Expression::from_other_affine(0.);
         let mut counter = 0;
+        // dbg!(&variant);
         for (i, _variable) in variables.iter().enumerate() {
             if coverage_matrix[i as u64] {
                 counter += 1;
@@ -1241,7 +1254,8 @@ pub fn collect_constraints_and_variants(
                     haplotype_dict.insert(haplotype.clone(), existing);
                 }
             }
-            let expr_to_add = fraction_cont - call.af.clone().into_expression();
+            let expr_to_add = *call.max_prob*(fraction_cont - call.af.clone().into_expression());
+            // dbg!(&expr_to_add);
             constraints.push(expr_to_add.clone());
             expr += expr_to_add;
         }
@@ -1402,30 +1416,19 @@ pub fn get_event_posteriors(
 ) -> Result<(Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>, Data)> {
     //FIRST, perform linear program using only nonzero DP variants
     //filter variant calls and haplotype variants
-    let nonzero_dp_calls = variant_calls.without_zero_dp();
+    let filtered_calls = variant_calls.without_zero_dp();
 
-    //filter for prob_variant true variants to be used for the linear program
-    let nonzero_dp_probable_variant_calls = VariantCalls(
-        nonzero_dp_calls
-            .iter()
-            .filter(|(_, v)| v.probable == true)
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect(),
-    );
-
-    if nonzero_dp_probable_variant_calls.len() == 0 {
+    if filtered_calls.len() == 0 {
         output_empty_output(&outfile).unwrap();
         println!("No calls to use for LP, exiting with empty output!");
         std::process::exit(0);
     }
-
-    let nonzero_dp_probable_variants: Vec<VariantID> =
-        nonzero_dp_probable_variant_calls.keys().cloned().collect();
-    let nonzero_dp_probable_haplotype_variants: HaplotypeVariants =
-        haplotype_variants.filter_for_variants(&nonzero_dp_probable_variants)?;
+    let nonzero_dp_variants: Vec<VariantID> = filtered_calls.keys().cloned().collect();
+    let var_filt_haplotype_variants: HaplotypeVariants =
+        haplotype_variants.filter_for_variants(&nonzero_dp_variants)?;
 
     //find identical haplotypes using variants and prepare LP inputs
-    let haplotypes: Vec<Haplotype> = nonzero_dp_probable_haplotype_variants
+    let haplotypes: Vec<Haplotype> = var_filt_haplotype_variants
         .iter()
         .next()
         .unwrap()
@@ -1433,19 +1436,19 @@ pub fn get_event_posteriors(
         .keys()
         .cloned()
         .collect();
-    let candidate_matrix = CandidateMatrix::new(&nonzero_dp_probable_haplotype_variants).unwrap();
+    let candidate_matrix = CandidateMatrix::new(&var_filt_haplotype_variants).unwrap();
 
-    //generate one map with representative haplotypes as key (required for lp)
-    //note: this map is necessary for LP
-    let (lp_identical_haplotypes_map_rep, _) =
+    //generate one map with representative haplotypes as key (required for lp) and one map with all haplotypes as key (required for extension of resulting table)
+    let (identical_haplotypes_map_rep, identical_haplotypes_map) =
         candidate_matrix.find_identical_haplotypes(haplotypes);
+        
     // Print the result
-    // for (representative, group) in &lp_identical_haplotypes_map {
+    // for (representative, group) in &identical_haplotypes_map {
     //     println!("Representative: {:?}, Group: {:?}", representative, group);
     // }
-    let representatives: Vec<Haplotype> = lp_identical_haplotypes_map_rep.keys().cloned().collect();
+    let representatives: Vec<Haplotype> = identical_haplotypes_map_rep.keys().cloned().collect();
     let repr_haplotype_variants =
-        nonzero_dp_probable_haplotype_variants.filter_for_haplotypes(&representatives)?;
+        var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
     let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
     dbg!(&representatives);
     //employ the linear program
@@ -1454,17 +1457,19 @@ pub fn get_event_posteriors(
         &outfile,
         &repr_candidate_matrix,
         &representatives,
-        &nonzero_dp_probable_variant_calls,
+        &filtered_calls,
         lp_cutoff,
         extend_haplotypes,
         num_extend_haplotypes, //extension functionality for virus case is not recommended for now as it will lead to performance problems.
         num_constraint_haplotypes,
     )?;
 
+    //add haplotypes that are the same considering all covered variants used in the LP.
     //first, find all variants where ALL haplotypes have coverage=true
     //then, for a haplotype, get its genotype map restricted to those variants
+    dbg!(&lp_haplotypes);
     let similar_lp_haplotypes =
-        find_similar_haplotypes(&nonzero_dp_probable_haplotype_variants, &lp_haplotypes);
+        find_similar_haplotypes(&repr_haplotype_variants, &lp_haplotypes);
     dbg!(&similar_lp_haplotypes);
 
     //collect all haplotypes (some haplotypes with the same genotype matrix set migt have been chosen twice in the lp solution)
@@ -1477,28 +1482,11 @@ pub fn get_event_posteriors(
     }
     let lp_haplotypes_extended_vec: Vec<_> = lp_haplotypes_extended_set.into_iter().collect();
 
-    //generate a second map for representative haplotypes (required for reducing the extended list of lp haplotypes)
-    //finding representative haplotypes has to be done with variant calls that are used for the model
-    let nonzero_dp_variants: Vec<VariantID> = nonzero_dp_calls.keys().cloned().collect();
-    let nonzero_dp_haplotype_variants: HaplotypeVariants =
-        haplotype_variants.filter_for_variants(&nonzero_dp_variants)?;
-    let nonzero_dp_candidate_matrix = CandidateMatrix::new(&nonzero_dp_haplotype_variants).unwrap();
-    let nonzero_dp_haplotypes: Vec<Haplotype> = nonzero_dp_haplotype_variants
-        .iter()
-        .next()
-        .unwrap()
-        .1
-        .keys()
-        .cloned()
-        .collect();
-    let (model_identical_haplotypes_map_rep, model_identical_haplotypes_map) =
-        nonzero_dp_candidate_matrix.find_identical_haplotypes(nonzero_dp_haplotypes);
-
     //then reduce the extended lp haplotype list if the vector contains identical haplotyes. this is necessary for
     //the extend_resulting_table because it has to only contain representative haplotypes for the model
     let reduced_vec = reduce_to_representative_haplotypes(
         lp_haplotypes_extended_vec,
-        &model_identical_haplotypes_map_rep,
+        &identical_haplotypes_map_rep,
     );
 
     //output empty output in case the list of original haplotypes and extended haplotype list are the same, otherwise the process gets killed my high memory usage
@@ -1575,8 +1563,9 @@ pub fn get_event_posteriors(
         &reduced_vec,
         &event_posteriors,
         &prior,
-        &model_identical_haplotypes_map,
+        &identical_haplotypes_map,
     )?;
+    dbg!(&all_haplotypes);
     Ok((new_event_posteriors, all_haplotypes, data))
 }
 
