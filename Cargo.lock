@@ -1105,9 +1105,9 @@ dependencies = [
 
 [[package]]
 name = "datavzrd"
-version = "2.54.0"
+version = "2.55.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1089dc8119fb88e3bf16ee9195162a56ce3456e1acdc31715c2a86a49e5890e8"
+checksum = "c21ab0ea8d1dbd6900b09efc5dd56b472803a6291e898db1f18faf02ac76347f"
 dependencies = [
  "anyhow",
  "chrono",
