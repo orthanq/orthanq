@@ -43,7 +43,7 @@ tempfile = "3"
 futures = "0.3" # for our async / await blocks
 seq_io = "0.3.2"
 petgraph = "0.6.4"
-datavzrd = "2.55.0"
+datavzrd = "2.56.0"
 serde_yaml = "0.9"
 
 [profile.release]
