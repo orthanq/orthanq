@@ -14,6 +14,7 @@ views:
     render-table:
       columns:
         sum_of_fractions:
+          display-mode: pinned
           custom-plot:
             data: function(value, row) { return JSON.parse(value); }
             spec: |
@@ -66,6 +67,10 @@ views:
                   ],
                   "height": 20
                 }
+        vaf:
+          display-mode: pinned        
+        prediction_error:
+          display-mode: pinned
         regex('A.+'):
           spell:
             url: v1.2.2/logic/boolean
@@ -73,5 +78,6 @@ views:
               true_value: "1"
               false_value: "0"
         variant:
+          display-mode: pinned
           spell:
             url: v1.3.0/med/genomic-coordinates
