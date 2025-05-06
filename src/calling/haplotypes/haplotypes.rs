@@ -183,16 +183,19 @@ impl VariantCalls {
             let variant_id: i32 = String::from_utf8(record.id())?.parse()?;
             // dbg!(&variant_id);
             //by default, make prob_absent and prob_present 0.0 to handle the case with NaN prob values
-            let mut prob_absent= NotNan::new(0.0).unwrap();
-            let mut prob_present= NotNan::new(0.0).unwrap();
+            let mut prob_absent = NotNan::new(0.0).unwrap();
+            let mut prob_present = NotNan::new(0.0).unwrap();
 
             let mut parsed_prob_absent = record.info(b"PROB_ABSENT").float()?.unwrap()[0];
             let mut parsed_prob_present = record.info(b"PROB_PRESENT").float()?.unwrap()[0];
 
             if !parsed_prob_absent.is_nan() {
-                prob_absent = NotNan::new(*Prob::from(PHREDProb(parsed_prob_absent.into()))).unwrap();            }
+                prob_absent =
+                    NotNan::new(*Prob::from(PHREDProb(parsed_prob_absent.into()))).unwrap();
+            }
             if !parsed_prob_present.is_nan() {
-                prob_present = NotNan::new(*Prob::from(PHREDProb(parsed_prob_present.into()))).unwrap();
+                prob_present =
+                    NotNan::new(*Prob::from(PHREDProb(parsed_prob_present.into()))).unwrap();
             }
             // dbg!(&prob_absent, &prob_present);
 
@@ -1254,7 +1257,7 @@ pub fn collect_constraints_and_variants(
                     haplotype_dict.insert(haplotype.clone(), existing);
                 }
             }
-            let expr_to_add = *call.max_prob*(fraction_cont - call.af.clone().into_expression());
+            let expr_to_add = *call.max_prob * (fraction_cont - call.af.clone().into_expression());
             // dbg!(&expr_to_add);
             constraints.push(expr_to_add.clone());
             expr += expr_to_add;
@@ -1441,7 +1444,7 @@ pub fn get_event_posteriors(
     //generate one map with representative haplotypes as key (required for lp) and one map with all haplotypes as key (required for extension of resulting table)
     let (identical_haplotypes_map_rep, identical_haplotypes_map) =
         candidate_matrix.find_identical_haplotypes(haplotypes);
-        
+
     // Print the result
     // for (representative, group) in &identical_haplotypes_map {
     //     println!("Representative: {:?}, Group: {:?}", representative, group);
@@ -1468,8 +1471,7 @@ pub fn get_event_posteriors(
     //first, find all variants where ALL haplotypes have coverage=true
     //then, for a haplotype, get its genotype map restricted to those variants
     dbg!(&lp_haplotypes);
-    let similar_lp_haplotypes =
-        find_similar_haplotypes(&repr_haplotype_variants, &lp_haplotypes);
+    let similar_lp_haplotypes = find_similar_haplotypes(&repr_haplotype_variants, &lp_haplotypes);
     dbg!(&similar_lp_haplotypes);
 
     //collect all haplotypes (some haplotypes with the same genotype matrix set migt have been chosen twice in the lp solution)
