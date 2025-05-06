@@ -1495,14 +1495,14 @@ pub fn get_event_posteriors(
     dbg!(&haplotype_variants.list_haplotypes().len());
     dbg!(&reduced_vec.len());
     dbg!(&reduced_vec);
-    if haplotype_variants.list_haplotypes().len() == reduced_vec.len() {
-        output_empty_output(&outfile).unwrap();
-        println!(
-            "Cannot process this many haplotypes: {}, exiting now!",
-            reduced_vec.len()
-        );
-        std::process::exit(0);
-    }
+    // if haplotype_variants.list_haplotypes().len() == reduced_vec.len() {
+    //     output_empty_output(&outfile).unwrap();
+    //     println!(
+    //         "Cannot process this many haplotypes: {}, exiting now!",
+    //         reduced_vec.len()
+    //     );
+    //     std::process::exit(0);
+    // }
 
     //SECOND, model evaluation using ALL variants but only the LP- selected haplotypes
     //prepare inputs of model evaluation
