@@ -178,14 +178,14 @@ impl Likelihood {
         let variant_calls: Vec<(AlleleFreqDist, i32)> = data
             .variant_calls
             .iter()
-            .map(|(_, (_, _, _, afd, coverage))| (afd.clone(), *coverage))
+            .map(|(_, call)| (call.afd.clone(), call.dp))
             .collect();
         let mut final_prob = LogProb::ln_one();
         candidate_matrix_values
             .iter()
             .zip(variant_calls.iter())
-            .for_each(|((genotypes, covered), (afd, cov))| {
-                if *cov != 0 {
+            .for_each(|((genotypes, covered), (afd, dp))| {
+                if *dp != 0 {
                     let mut denom = NotNan::new(1.0).unwrap();
                     let mut vaf_sum = NotNan::new(0.0).unwrap();
                     event.iter().enumerate().for_each(|(i, fraction)| {
