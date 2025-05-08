@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.12.0](https://www.github.com/orthanq/orthanq/compare/v1.10.0...v1.12.0) (2025-05-08)
+
+
+### Features
+
+* apply the max of PROB_PRESENT or PROB_ABSENT for weighting the LP constraints
+* add pinned feature to template for first 4 columns of lp datavzrd report ([#66](https://www.github.com/orthanq/orthanq/issues/66)) ([e8ee175](https://www.github.com/orthanq/orthanq/commit/e8ee175838288f3e896a9c4b7c511f04f3150357))
+* export searchable and filterable datavzrd report for lp solutions ([#59](https://www.github.com/orthanq/orthanq/issues/59)) ([571ed2f](https://www.github.com/orthanq/orthanq/commit/571ed2f1ed8a90a7ee67107934b76d8c729fbb01))
+* replace bubble plot with tick marks and use normal probs instead of logprobs in the final solution plot ([#65](https://www.github.com/orthanq/orthanq/issues/65)) ([dad9322](https://www.github.com/orthanq/orthanq/commit/dad93229d939057bf7166d7a5bc7c92091990cc3))
+* use only probable variants for LP ([#64](https://www.github.com/orthanq/orthanq/issues/64)) ([7d35bf1](https://www.github.com/orthanq/orthanq/commit/7d35bf1cc43f94e93f10e5618f078d8813ee6998))
+
+
+### Bug Fixes
+
+* add chr name to plots ([#56](https://www.github.com/orthanq/orthanq/issues/56)) ([606f9fe](https://www.github.com/orthanq/orthanq/commit/606f9fe6f9ed135f84cc7d919571b42e4a75f641))
+* find similar haplotypes by identical variant set of lp haplotypes and extend lp haplotypes accordingly and refactor VariantCalls struct ([#67](https://www.github.com/orthanq/orthanq/issues/67)) ([2acdbc0](https://www.github.com/orthanq/orthanq/commit/2acdbc0d327919cba35fe7147abb49fee800dce3))
+* fix g group outputting ([#61](https://www.github.com/orthanq/orthanq/issues/61)) ([bb6038f](https://www.github.com/orthanq/orthanq/commit/bb6038f9ed53d71ac3e3247993c54ed25e437232))
+* fix retrieval of confirmed field from xml file ([#58](https://www.github.com/orthanq/orthanq/issues/58)) ([4c4ed31](https://www.github.com/orthanq/orthanq/commit/4c4ed316519be5fc88b96b29ffa5cd5d42a954bb))
+* output empty output when there are no calls for LP ([#69](https://www.github.com/orthanq/orthanq/issues/69)) ([ee92b9a](https://www.github.com/orthanq/orthanq/commit/ee92b9abd6abc631b4905f93bbe1ee0de5f40a2c))
+* provide 2-field csv and G rgoups in empty output ([#70](https://www.github.com/orthanq/orthanq/issues/70)) ([8fffcd8](https://www.github.com/orthanq/orthanq/commit/8fffcd80680c78614834f8559c5291b6c57f8a4e))
+* remove unnecessary G from the outputted name and handle case where there is no g group field for the allele in the xml file and handle haplotypes that do not have direct match with the names in the xml ([#63](https://www.github.com/orthanq/orthanq/issues/63)) ([ecc19ad](https://www.github.com/orthanq/orthanq/commit/ecc19ad3a6d1091a9087e8c95a3be82b06d3e4a1))
+* use the length of haplotypes in case the length is smaller than num_constraint_haplotypes and decrement this number if the solution is infeasible ([71e6170](https://www.github.com/orthanq/orthanq/commit/71e6170f4ebdd9f2de19800b6fb395aa27a21ea7))
+
+
+### Miscellaneous Chores
+
+* release 1.12.0 ([530ba7e](https://www.github.com/orthanq/orthanq/commit/530ba7e020f28f3c2a427c3c2a25334d81d1e130))
+
 ## [1.10.0](https://www.github.com/orthanq/orthanq/compare/v1.9.3...v1.10.0) (2025-03-24)
 
 
