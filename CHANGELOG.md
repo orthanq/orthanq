@@ -5,6 +5,7 @@
 
 ### Features
 
+* apply the max of PROB_PRESENT or PROB_ABSENT for weighting the LP constraints
 * add pinned feature to template for first 4 columns of lp datavzrd report ([#66](https://www.github.com/orthanq/orthanq/issues/66)) ([e8ee175](https://www.github.com/orthanq/orthanq/commit/e8ee175838288f3e896a9c4b7c511f04f3150357))
 * export searchable and filterable datavzrd report for lp solutions ([#59](https://www.github.com/orthanq/orthanq/issues/59)) ([571ed2f](https://www.github.com/orthanq/orthanq/commit/571ed2f1ed8a90a7ee67107934b76d8c729fbb01))
 * replace bubble plot with tick marks and use normal probs instead of logprobs in the final solution plot ([#65](https://www.github.com/orthanq/orthanq/issues/65)) ([dad9322](https://www.github.com/orthanq/orthanq/commit/dad93229d939057bf7166d7a5bc7c92091990cc3))
