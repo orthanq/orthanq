@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.12.1](https://www.github.com/orthanq/orthanq/compare/v1.12.0...v1.12.1) (2025-05-12)
+
+
+### Bug Fixes
+
+* update datavzrd ([#72](https://www.github.com/orthanq/orthanq/issues/72)) ([8504aac](https://www.github.com/orthanq/orthanq/commit/8504aac31f791dbc075ef12f40d38a237492af09))
+
 ## [1.12.0](https://www.github.com/orthanq/orthanq/compare/v1.10.0...v1.12.0) (2025-05-08)
 
 
