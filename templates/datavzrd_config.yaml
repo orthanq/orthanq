@@ -71,7 +71,7 @@ views:
           display-mode: pinned        
         prediction_error:
           display-mode: pinned
-        regex('A.+'):
+        regex('[AXBC].+'):
           spell:
             url: v1.2.2/logic/boolean
             with:
