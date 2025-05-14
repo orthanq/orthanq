@@ -828,13 +828,26 @@ pub fn plot_prediction(
                                     });
                                 }
                             }
-                            //also add the heatmap for afd below the covered panels
+                            //also add the tick plot for afd
+                            //normalize probs of allele freqs by the sum of the values
+                            let mut max_prob = f64::MIN; // or use `f64::NEG_INFINITY` for clarity
+
+                            // find the maximum of all exponentiated probabilities
+                            for (_, prob) in call.afd.iter() {
+                                let exp_prob = f64::from(prob.exp());
+                                if exp_prob > max_prob {
+                                    max_prob = exp_prob;
+                                }
+                            }
+                            //normalize and collect into plot_data_dataset_afd
                             for (allele_freq, prob) in call.afd.iter() {
+                                let raw_prob = f64::from(prob.exp());
+                                let normalized_prob = raw_prob / max_prob;
                                 plot_data_dataset_afd.push(DatasetAfd {
                                     variant_change: call.change.to_string(),
                                     allele_freq: *allele_freq,
-                                    probability: f64::from(prob.exp()),
-                                })
+                                    probability: normalized_prob,
+                                });
                             }
                             b_check = true;
                         } else {
@@ -853,13 +866,26 @@ pub fn plot_prediction(
                                         });
                                     }
                                 }
-                                //also add the heatmap for afd below the covered panels
+                                //also add the tick plot for afd
+                                //normalize probs of allele freqs by the sum of the values
+                                let mut max_prob = f64::MIN; // or use `f64::NEG_INFINITY` for clarity
+
+                                // find the maximum of all exponentiated probabilities
+                                for (_, prob) in call.afd.iter() {
+                                    let exp_prob = f64::from(prob.exp());
+                                    if exp_prob > max_prob {
+                                        max_prob = exp_prob;
+                                    }
+                                }
+                                //normalize and collect into plot_data_dataset_afd
                                 for (allele_freq, prob) in call.afd.iter() {
+                                    let raw_prob = f64::from(prob.exp());
+                                    let normalized_prob = raw_prob / max_prob;
                                     plot_data_dataset_afd.push(DatasetAfd {
                                         variant_change: call.change.to_string(),
                                         allele_freq: *allele_freq,
-                                        probability: f64::from(prob.exp()),
-                                    })
+                                        probability: normalized_prob,
+                                    });
                                 }
                             }
                         }

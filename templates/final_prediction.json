@@ -1,7 +1,10 @@
 {
   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
   "config": {
-    "axis": {"grid": true, "tickBand": "extent"}
+    "axis": {"grid": true, "tickBand": "extent"},
+    "tick": {
+      "orient": "horizontal"
+    }
   },
   "datasets": {
     "variants": [],
@@ -97,6 +100,11 @@
           "type": "quantitative",
           "title": "Allele frequency",
           "axis": {"labelFontSize": 12, "titleFontSize": 16}
+        },
+        "size": {
+          "field": "probability",
+          "type": "quantitative",
+          "legend": {"title": null}
         }
       }
     }    
