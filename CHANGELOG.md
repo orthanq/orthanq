@@ -1,5 +1,13 @@
 # Changelog
 
+### [1.12.2](https://www.github.com/orthanq/orthanq/compare/v1.12.1...v1.12.2) (2025-05-14)
+
+
+### Bug Fixes
+
+* fix regex for datavzrd report ([4e44106](https://www.github.com/orthanq/orthanq/commit/4e44106f9b0ed58677fd16d8c9a772084ddf0f72))
+* include size channel for tick plot and normalize values by max ([081bfee](https://www.github.com/orthanq/orthanq/commit/081bfee2b1c0e9579449fa3dd80c209b32282fff))
+
 ### [1.12.1](https://www.github.com/orthanq/orthanq/compare/v1.12.0...v1.12.1) (2025-05-12)
 
 
