@@ -107,6 +107,15 @@ impl Caller {
                 false,
             )?;
 
+            // // arrow plot with a flag
+            // let significant_haplotypes = get_significant_haplotypes(&all_haplotypes, &best_fractions);
+            // let significant_haps_candidate_matrix = CandidateMatrix::new(
+            //     &haplotype_variants
+            //         .filter_for_haplotypes(&significant_haps_candidate_matrix.keys().cloned().collect())
+            //         .unwrap(),
+            // );
+            // haplotypes::arrow_plot(&self.outcsv, significant_haps_candidate_matrix, significant_haplotypes, &data.variant_calls);
+
             //second: 2-field
             let (two_field_haplotypes, two_field_event_posteriors) =
                 convert_to_two_field(&event_posteriors, &all_haplotypes)?;
@@ -349,3 +358,22 @@ fn convert_to_two_field(
     Ok((final_haplotypes, event_posteriors_two_field))
     // Ok(())
 }
+
+
+// fn get_significant_haplotypes(
+//     haplotypes: &[Haplotype],
+//     fractions: &HaplotypeFractions,
+// ) -> BTreeMap<String, f64> {
+//     haplotypes
+//         .iter()
+//         .zip(fractions.iter())
+//         .filter_map(|(hap, freq)| {
+//             let value = **freq; // assuming AlleleFreq derefs to f64
+//             if value == NotNan::new(0.5).unwrap() || value == NotNan::new(1.0).unwrap() {
+//                 Some((hap.clone(), *value)) 
+//             } else {
+//                 None
+//             }
+//         })
+//         .collect()
+// }

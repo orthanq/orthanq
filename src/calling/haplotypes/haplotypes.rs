@@ -921,6 +921,15 @@ pub fn plot_prediction(
     Ok(())
 }
 
+// pub fn arrow_plot(
+//     outdir: &PathBuf,
+//     candidate_matrix: &CandidateMatrix,
+//     significant_haplotypes: BTreeMap<String, f64>,
+//     variant_calls: &VariantCalls
+// ) -> Result<()> {
+//     Ok((()))
+// }
+
 pub fn linear_program(
     output_lp_datavzrd: &bool,
     outdir: &PathBuf,
