@@ -25,7 +25,7 @@ fern = "0.6"
 statrs = "0.15"
 anyhow = "1.0"
 derefable = "0.1"
-bio = { git="https://github.com/huzuner/rust-bio.git", branch = "update-lazy-static"}
+bio = "2.3.0"
 derive_deref = "1.1.1"
 assert_approx_eq = "1.1.0"
 ndarray = "0.15.4"
