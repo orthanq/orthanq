@@ -488,7 +488,7 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
 
     let mut unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
     let confirmed_alleles = confirmed_alleles.keys().cloned().collect::<Vec<String>>();
-    
+
     dbg!(&unconfirmed_alleles.len());
     dbg!(&confirmed_alleles.len());
     dbg!(&unconfirmed_alleles);
