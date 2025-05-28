@@ -27,7 +27,7 @@ pub struct Caller {
     alleles: PathBuf,
     genome: PathBuf,
     xml: PathBuf,
-    allele_freq: PathBuf,
+    // allele_freq: PathBuf,
     output: Option<PathBuf>,
     threads: String,
 }
@@ -35,9 +35,9 @@ impl Caller {
     pub fn call(&self) -> Result<()> {
         //prepare the map to look up which alleles are confirmed and unconfirmed and g codes available
         //IMGT/HLA version for xml file is 3.35, set this to the same version in the evaluation workflow
-        //and only include alleles that have AF >0.05
-        let (_confirmed_alleles, unconfirmed_alleles) =
-            confirmed_alleles(&self.xml, &self.allele_freq).unwrap();
+        //and only include alleles that have AF >0.05 - deactivated
+        let unconfirmed_alleles =
+            confirmed_alleles(&self.xml).unwrap();
 
         //write loci to separate fasta files (Confirmed and alleles that have g codes available)
         // self.write_to_fasta(&confirmed_alleles)?;
@@ -337,9 +337,9 @@ struct Record {
 //Confirmed_alleles() function finds HLA alleles that are "Confirmed" and "Unconfirmed".
 //In the end the unconfirmed vector contains "Unconfirmed" alleles
 
-//update: remove alleles that are not AF <0.05 in at least one population.
+//deactivated - remove alleles that are not AF <0.05 in at least one population.
 
-fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<String>, Vec<String>)> {
+fn confirmed_alleles(xml_path: &PathBuf) -> Result<Vec<String>> {
     let mut reader = xml_reader::from_file(xml_path)?;
     reader.trim_text(true);
     let mut buf = Vec::new();
@@ -487,13 +487,13 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
     // unconfirmed_alleles.extend(below_criterium);
 
     let mut unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
-    let confirmed_alleles = confirmed_alleles.keys().cloned().collect::<Vec<String>>();
+    // let confirmed_alleles = confirmed_alleles.keys().cloned().collect::<Vec<String>>();
 
     dbg!(&unconfirmed_alleles.len());
-    dbg!(&confirmed_alleles.len());
+    // dbg!(&confirmed_alleles.len());
     dbg!(&unconfirmed_alleles);
-    dbg!(&confirmed_alleles);
-    Ok((confirmed_alleles, unconfirmed_alleles))
+    // dbg!(&confirmed_alleles);
+    Ok(unconfirmed_alleles)
 }
 
 #[allow(dead_code)]
