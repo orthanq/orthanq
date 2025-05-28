@@ -36,7 +36,7 @@ impl Caller {
         //prepare the map to look up which alleles are confirmed and unconfirmed and g codes available
         //IMGT/HLA version for xml file is 3.35, set this to the same version in the evaluation workflow
         //and only include alleles that have AF >0.05 - deactivated
-        let unconfirmed_alleles = confirmed_alleles(&self.xml).unwrap();
+        let unconfirmed_alleles = get_unconfirmed_alleles(&self.xml).unwrap();
 
         //write loci to separate fasta files (Confirmed and alleles that have g codes available)
         // self.write_to_fasta(&confirmed_alleles)?;
@@ -290,7 +290,7 @@ impl Caller {
         }
         Ok(())
     }
-    //Write_to_fasta() function collects confirmed allele list from confirmed_alleles() function.
+    //Write_to_fasta() function collects confirmed allele list from get_unconfirmed_alleles) function.
     //Then it generates Fasta files for those alleles for each loci (necessary for quantifications e.g. kallisto, salmon)
     // fn write_to_fasta(&self, confirmed_alleles: &Vec<String>) -> Result<()> {
     //     for locus in vec!["A", "B", "C", "DQA1", "DQB1"] {
@@ -333,12 +333,12 @@ struct Record {
     frequency: NotNan<f64>,
 }
 
-//Confirmed_alleles() function finds HLA alleles that are "Confirmed" and "Unconfirmed".
+//get_unconfirmed_alleles function finds HLA alleles that are "Confirmed" and "Unconfirmed".
 //In the end the unconfirmed vector contains "Unconfirmed" alleles
 
 //deactivated - remove alleles that are not AF <0.05 in at least one population.
 
-fn confirmed_alleles(xml_path: &PathBuf) -> Result<Vec<String>> {
+fn get_unconfirmed_alleles(xml_path: &PathBuf) -> Result<Vec<String>> {
     let mut reader = xml_reader::from_file(xml_path)?;
     reader.trim_text(true);
     let mut buf = Vec::new();
