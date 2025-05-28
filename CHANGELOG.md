@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.13.1](https://www.github.com/orthanq/orthanq/compare/v1.13.0...v1.13.1) (2025-05-28)
+
+
+### Bug Fixes
+
+* update rust bio version ([#77](https://www.github.com/orthanq/orthanq/issues/77)) ([af7c867](https://www.github.com/orthanq/orthanq/commit/af7c867b57e8671560822ce8f0c0940a0a6267dc))
+
 ## [1.13.0](https://www.github.com/orthanq/orthanq/compare/v1.12.1...v1.13.0) (2025-05-28)
 
 
