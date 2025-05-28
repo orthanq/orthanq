@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.13.0](https://www.github.com/orthanq/orthanq/compare/v1.12.1...v1.13.0) (2025-05-28)
+
+
+### Features
+
+* deactivate allele frequency filtering ([#75](https://www.github.com/orthanq/orthanq/issues/75)) ([76e0409](https://www.github.com/orthanq/orthanq/commit/76e040920a9bcd160da0dde573421360b4de6497))
+
+
+### Bug Fixes
+
+* fix regex for datavzrd report ([4e44106](https://www.github.com/orthanq/orthanq/commit/4e44106f9b0ed58677fd16d8c9a772084ddf0f72))
+* include size channel for tick plot and normalize values by max ([081bfee](https://www.github.com/orthanq/orthanq/commit/081bfee2b1c0e9579449fa3dd80c209b32282fff))
+
 ### [1.12.1](https://www.github.com/orthanq/orthanq/compare/v1.12.0...v1.12.1) (2025-05-12)
 
 
