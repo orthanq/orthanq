@@ -36,8 +36,7 @@ impl Caller {
         //prepare the map to look up which alleles are confirmed and unconfirmed and g codes available
         //IMGT/HLA version for xml file is 3.35, set this to the same version in the evaluation workflow
         //and only include alleles that have AF >0.05 - deactivated
-        let unconfirmed_alleles =
-            confirmed_alleles(&self.xml).unwrap();
+        let unconfirmed_alleles = confirmed_alleles(&self.xml).unwrap();
 
         //write loci to separate fasta files (Confirmed and alleles that have g codes available)
         // self.write_to_fasta(&confirmed_alleles)?;
