@@ -23,6 +23,7 @@ use rust_htslib::bcf::{
 };
 use std::cmp;
 use std::error::Error;
+use std::path::Path;
 
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
@@ -921,14 +922,84 @@ pub fn plot_prediction(
     Ok(())
 }
 
-// pub fn arrow_plot(
-//     outdir: &PathBuf,
-//     candidate_matrix: &CandidateMatrix,
-//     significant_haplotypes: BTreeMap<String, f64>,
-//     variant_calls: &VariantCalls
-// ) -> Result<()> {
-//     Ok((()))
-// }
+pub fn arrow_plot(
+    outdir: &PathBuf,
+    candidate_matrix: &CandidateMatrix,
+    nonzero_haplotype_fractions: &BTreeMap<String, f32>,
+    variant_calls: &VariantCalls
+) -> Result<()> {
+    let mut arrow_plot_records = Vec::new();
+
+    candidate_matrix
+    .iter()
+    .zip(variant_calls.iter())
+    .for_each(|((variant_id, (genotypes, covered)), (_,call))| {
+        let mut containing_haplotypes = Vec::new();
+        nonzero_haplotype_fractions.iter().enumerate().for_each(|(i, (haplotype, fraction))| {
+            if genotypes[i as u64] {
+                containing_haplotypes.push(haplotype.to_string());
+            }
+
+        });
+
+        if containing_haplotypes.is_empty() {
+            containing_haplotypes.push("none".to_string());
+        }
+
+        //get arrrow plot record
+        let record = get_arrow_plot_record(nonzero_haplotype_fractions, &call.change, call.af, &containing_haplotypes).unwrap();
+        arrow_plot_records.push(record);
+    });
+
+    let arrow_plot_records = json!(arrow_plot_records);
+
+    //read the blueprint and insert records to the blueprint
+    let json = include_str!("../../../templates/arrow_plot.json");
+    let mut blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
+    blueprint["datasets"]["arrow_records"] = arrow_plot_records;
+
+    //write to file
+    let mut parent = outdir.clone();
+    parent.pop();
+    let file = fs::File::create(parent.join("arrow_plot.json".to_string())).unwrap();
+    serde_json::to_writer(file, &blueprint)?;
+
+    Ok(())
+
+}
+
+pub fn get_arrow_plot_record(
+    nonzero_haplotype_fractions: &BTreeMap<String, f32>,
+    call_change: &String,
+    call_vaf: f32,
+    containing_haplotypes: &Vec<String>
+) -> Result<ArrowRecord> {
+    let haplofrac = 
+        if containing_haplotypes != &vec!["none"]{
+            containing_haplotypes.iter().map(|h| nonzero_haplotype_fractions[h]).sum()
+        } else { 
+            0.0
+        };
+    let status = if call_vaf > haplofrac {"up".to_string()} else {"down".to_string()};
+    let containing_haplotypes_str = containing_haplotypes.join(",").to_string();
+    
+    Ok(ArrowRecord{
+        containing_haplotypes: containing_haplotypes_str, 
+        haplofrac: haplofrac,
+        call_vaf: call_vaf,
+        call_change: call_change.clone(),
+        status: status
+    })
+}
+
+#[derive(Serialize, Debug)]
+pub(crate) struct ArrowRecord{
+    containing_haplotypes: String,
+    haplofrac: f32,
+    call_vaf: f32,
+    call_change: String,
+    status:String
+}
 
 pub fn linear_program(
     output_lp_datavzrd: &bool,
