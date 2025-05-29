@@ -107,6 +107,15 @@ impl Caller {
                 false,
             )?;
 
+            // arrow plot with a flag
+            let nonzero_haplotype_fractions = get_nonzero_haplotype_fractions(&all_haplotypes, &best_fractions);
+            let nonzero_haps_candidate_matrix = CandidateMatrix::new(
+                &haplotype_variants
+                    .filter_for_haplotypes(&nonzero_haplotype_fractions.keys().map(|hap_str|Haplotype(hap_str.clone())).collect())
+                    .unwrap(),
+            )?;
+            haplotypes::arrow_plot(&self.outcsv, &nonzero_haps_candidate_matrix, &nonzero_haplotype_fractions, &data.variant_calls);
+
             //second: 2-field
             let (two_field_haplotypes, two_field_event_posteriors) =
                 convert_to_two_field(&event_posteriors, &all_haplotypes)?;
@@ -348,4 +357,23 @@ fn convert_to_two_field(
     // dbg!(&event_posteriors_two_field);
     Ok((final_haplotypes, event_posteriors_two_field))
     // Ok(())
+}
+
+
+fn get_nonzero_haplotype_fractions(
+    haplotypes: &[Haplotype],
+    fractions: &Vec<f64>,
+) -> BTreeMap<String, f32> {
+    haplotypes
+        .iter()
+        .zip(fractions.iter())
+        .filter_map(|(hap, freq)| {
+            let value = *freq as f32; // assuming AlleleFreq derefs to f64
+            if value != 0.0 {
+                Some((hap.to_string(), value)) 
+            } else {
+                None
+            }
+        })
+        .collect()
 }
