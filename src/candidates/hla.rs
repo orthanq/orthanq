@@ -27,7 +27,7 @@ pub struct Caller {
     alleles: PathBuf,
     genome: PathBuf,
     xml: PathBuf,
-    allele_freq: PathBuf,
+    // allele_freq: PathBuf,
     output: Option<PathBuf>,
     threads: String,
 }
@@ -35,9 +35,8 @@ impl Caller {
     pub fn call(&self) -> Result<()> {
         //prepare the map to look up which alleles are confirmed and unconfirmed and g codes available
         //IMGT/HLA version for xml file is 3.35, set this to the same version in the evaluation workflow
-        //and only include alleles that have AF >0.05
-        let (_confirmed_alleles, unconfirmed_alleles) =
-            confirmed_alleles(&self.xml, &self.allele_freq).unwrap();
+        //and only include alleles that have AF >0.05 - deactivated
+        let unconfirmed_alleles = get_unconfirmed_alleles(&self.xml).unwrap();
 
         //write loci to separate fasta files (Confirmed and alleles that have g codes available)
         // self.write_to_fasta(&confirmed_alleles)?;
@@ -291,7 +290,7 @@ impl Caller {
         }
         Ok(())
     }
-    //Write_to_fasta() function collects confirmed allele list from confirmed_alleles() function.
+    //Write_to_fasta() function collects confirmed allele list from get_unconfirmed_alleles) function.
     //Then it generates Fasta files for those alleles for each loci (necessary for quantifications e.g. kallisto, salmon)
     // fn write_to_fasta(&self, confirmed_alleles: &Vec<String>) -> Result<()> {
     //     for locus in vec!["A", "B", "C", "DQA1", "DQB1"] {
@@ -334,12 +333,12 @@ struct Record {
     frequency: NotNan<f64>,
 }
 
-//Confirmed_alleles() function finds HLA alleles that are "Confirmed" and "Unconfirmed".
+//get_unconfirmed_alleles function finds HLA alleles that are "Confirmed" and "Unconfirmed".
 //In the end the unconfirmed vector contains "Unconfirmed" alleles
 
-//update: remove alleles that are not AF <0.05 in at least one population.
+//deactivated - remove alleles that are not AF <0.05 in at least one population.
 
-fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<String>, Vec<String>)> {
+fn get_unconfirmed_alleles(xml_path: &PathBuf) -> Result<Vec<String>> {
     let mut reader = xml_reader::from_file(xml_path)?;
     reader.trim_text(true);
     let mut buf = Vec::new();
@@ -436,63 +435,64 @@ fn confirmed_alleles(xml_path: &PathBuf, af_path: &PathBuf) -> Result<(Vec<Strin
         .filter(|(id, _name)| !unconfirmed_alleles.contains_key(&format!("HLA:{}", id)))
         .map(|(id, name)| (format!("HLA:{}", id.clone()), name.clone()))
         .collect::<HashMap<String, String>>();
-    //include only alleles that have >0.01 AF in at least one population
-    let mut unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
-    let mut confirmed_alleles_clone = confirmed_alleles.clone();
-    let mut allele_freq_rdr = CsvReader::from_path(af_path)?;
-    let mut to_be_included = Vec::new();
+    // //include only alleles that have >0.01 AF in at least one population
+    // let mut confirmed_alleles_clone = confirmed_alleles.clone();
+    // let mut allele_freq_rdr = CsvReader::from_path(af_path)?;
+    // let mut to_be_included = Vec::new();
     // dbg!(confirmed_alleles_clone.len());
-    confirmed_alleles_clone.retain(|&_, y| {
-        y.starts_with('A')
-            || y.starts_with('B')
-            || y.starts_with('C')
-            || y.starts_with("DQA1")
-            || y.starts_with("DQB1")
-    });
+    // confirmed_alleles_clone.retain(|&_, y| {
+    //     y.starts_with('A')
+    //         || y.starts_with('B')
+    //         || y.starts_with('C')
+    //         || y.starts_with("DQA1")
+    //         || y.starts_with("DQB1")
+    // });
     // dbg!(confirmed_alleles_clone.len());
     // dbg!(&confirmed_alleles_clone);
-    allele_freq_rdr.deserialize().for_each(|result| {
-        let record: Record = result.unwrap();
-        confirmed_alleles_clone.iter().for_each(|(id, name)| {
-            let mut first_three = String::from("");
-            let splitted = name.split(':').collect::<Vec<&str>>(); //DQB1*05:02:01 is alone not an allele name, but DQB1*05:02:01:01, DQB1*05:02:01:02.. are.
-                                                                   //some allele names might be like "HLA-DQA1*05013" which seems like a bug in the naming.
-                                                                   //we need to cover that case here, in the second if arm.
-            let first_two = format!("{}:{}", splitted[0], splitted[1]);
-            if splitted.len() > 2 {
-                first_three = format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]);
-            }
-            // first a direct match then if it doesn't match, then perform matches against the first three and first two fields of the record in the confirmed alleles.
-            if &record.var == name {
-                if record.frequency > NotNan::new(0.05).unwrap() {
-                    to_be_included.push(id.clone());
-                }
-            } else if (record.var == first_three && record.frequency > NotNan::new(0.05).unwrap())
-                || (record.var == first_two && record.frequency > NotNan::new(0.05).unwrap())
-            {
-                to_be_included.push(id.clone());
-            }
-            // else if record.var == first_two && record.frequency > NotNan::new(0.05).unwrap() {
-            //     to_be_included.push(id.clone());
-            // }
-        });
-    });
-    // dbg!(&to_be_included);
-    // dbg!(&to_be_included.len());
-    let below_criterium: Vec<String> = confirmed_alleles_clone
-        .iter()
-        .filter(|(id, _)| !to_be_included.contains(id))
-        .map(|(id, _)| id.clone())
-        .collect();
-    // dbg!(&below_criterium.len());
-    //todo: confirmed_alleles
-    let confirmed_alleles = confirmed_alleles.keys().cloned().collect::<Vec<String>>();
-    unconfirmed_alleles.extend(below_criterium);
+    // allele_freq_rdr.deserialize().for_each(|result| {
+    //     let record: Record = result.unwrap();
+    //     confirmed_alleles_clone.iter().for_each(|(id, name)| {
+    //         let mut first_three = String::from("");
+    //         let splitted = name.split(':').collect::<Vec<&str>>(); //DQB1*05:02:01 is alone not an allele name, but DQB1*05:02:01:01, DQB1*05:02:01:02.. are.
+    //                                                                //some allele names might be like "HLA-DQA1*05013" which seems like a bug in the naming.
+    //                                                                //we need to cover that case here, in the second if arm.
+    //         let first_two = format!("{}:{}", splitted[0], splitted[1]);
+    //         if splitted.len() > 2 {
+    //             first_three = format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]);
+    //         }
+    //         // first a direct match then if it doesn't match, then perform matches against the first three and first two fields of the record in the confirmed alleles.
+    //         if &record.var == name {
+    //             if record.frequency > NotNan::new(0.05).unwrap() {
+    //                 to_be_included.push(id.clone());
+    //             }
+    //         } else if (record.var == first_three && record.frequency > NotNan::new(0.05).unwrap())
+    //             || (record.var == first_two && record.frequency > NotNan::new(0.05).unwrap())
+    //         {
+    //             to_be_included.push(id.clone());
+    //         }
+    //         // else if record.var == first_two && record.frequency > NotNan::new(0.05).unwrap() {
+    //         //     to_be_included.push(id.clone());
+    //         // }
+    //     });
+    // });
+    // // dbg!(&to_be_included);
+    // // dbg!(&to_be_included.len());
+    // let below_criterium: Vec<String> = confirmed_alleles_clone
+    //     .iter()
+    //     .filter(|(id, _)| !to_be_included.contains(id))
+    //     .map(|(id, _)| id.clone())
+    //     .collect();
+    // // dbg!(&below_criterium.len());
+    // unconfirmed_alleles.extend(below_criterium);
+
+    let mut unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
+    // let confirmed_alleles = confirmed_alleles.keys().cloned().collect::<Vec<String>>();
+
     dbg!(&unconfirmed_alleles.len());
-    dbg!(&confirmed_alleles.len());
+    // dbg!(&confirmed_alleles.len());
     dbg!(&unconfirmed_alleles);
-    dbg!(&confirmed_alleles);
-    Ok((confirmed_alleles, unconfirmed_alleles))
+    // dbg!(&confirmed_alleles);
+    Ok(unconfirmed_alleles)
 }
 
 #[allow(dead_code)]

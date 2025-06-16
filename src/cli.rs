@@ -153,12 +153,12 @@ pub enum CandidatesKind {
             help = "xml file that is acquired from IMGT/HLA for the corresponding version"
         )]
         xml: PathBuf,
-        #[structopt(
-            long = "allele-freq",
-            required = true,
-            help = "allele frequencies for filterin purposes"
-        )]
-        allele_freq: PathBuf,
+        // #[structopt(
+        //     long = "allele-freq",
+        //     required = true,
+        //     help = "allele frequencies for filterin purposes"
+        // )]
+        // allele_freq: PathBuf,
         #[structopt(
             long,
             help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
@@ -382,7 +382,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 alleles,
                 genome,
                 xml,
-                allele_freq,
+                // allele_freq,
                 output,
                 threads,
             } => {
@@ -390,7 +390,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .alleles(alleles)
                     .genome(genome)
                     .xml(xml)
-                    .allele_freq(allele_freq)
+                    // .allele_freq(allele_freq)
                     .output(output)
                     .threads(threads)
                     .build()
