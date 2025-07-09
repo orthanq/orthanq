@@ -931,7 +931,13 @@ pub fn get_arrow_plot(
     let mut arrow_plot_records = Vec::new();
 
     candidate_matrix.iter().zip(variant_calls.iter()).for_each(
-        |((variant_id, (genotypes, covered)), (_, call))| {
+        |((variant_id, (genotypes, _covered)), (_id, call))| {
+            
+            //do not include zero af variants
+            if call.af == 0.0 {
+                return;
+            }
+
             let mut containing_haplotypes = Vec::new();
             nonzero_haplotype_fractions.iter().enumerate().for_each(
                 |(i, (haplotype, fraction))| {
