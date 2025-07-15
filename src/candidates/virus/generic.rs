@@ -26,6 +26,7 @@ impl Caller {
     pub fn call(&mut self) -> Result<()> {
         //align and sort
         alignment(
+            &"virus",
             &self.genome,
             &self.lineages,
             &self.threads,
