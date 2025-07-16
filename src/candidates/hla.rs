@@ -185,7 +185,7 @@ impl Caller {
         //     "DRB3", "MICA", "U", //all the non-pseudogenes
         // ]
         // for locus in ["A", "B", "C", "DQA1", "DQB1", "DRB1"] { todo: activate all other genes; include DQA1 and DRB1
-        for locus in ["B"] {
+        for locus in ["A", "B", "C", "DQB1"] {
             let mut locus_columns = vec!["Index".to_string(), "ID".to_string()];
             for column_name in names.iter().skip(2) {
                 let splitted = column_name.split('*').collect::<Vec<&str>>();
