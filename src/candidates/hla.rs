@@ -58,7 +58,7 @@ impl Caller {
         //find variants from cigar
         let (mut genotype_df, mut loci_df) = find_variants_from_cigar(
             &self.genome,
-            &self.output.as_ref().unwrap().join("alleles_alignment.bam"),
+            &self.output.as_ref().unwrap().join("alleles_alignment_sorted.bam"),
         )
         .unwrap();
         //Unconfirmed alleles are removed from both dataframes
@@ -787,7 +787,7 @@ pub fn alignment(
         fs::write(&aligned_file, stdout).expect("Unable to write minimap2 alignment to file");
 
         //sort and convert the resulting sam to bam
-        let aligned_sorted = output.join("alleles_alignment.bam");
+        let aligned_sorted = output.join("alleles_alignment_sorted.bam");
         let sort = {
             Command::new("samtools")
                 .arg("sort")
