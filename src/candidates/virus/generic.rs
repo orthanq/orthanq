@@ -36,7 +36,7 @@ impl Caller {
 
         //find variants from cigar
         let (genotype_df, loci_df) =
-            find_variants_from_cigar(&self.genome, &self.output.join("alignment_sorted.sam"))
+            find_variants_from_cigar(&self.genome, &self.output.join("viruses_alignment_sorted.bam"))
                 .unwrap();
 
         //write locus-wise vcf files.

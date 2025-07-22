@@ -823,7 +823,7 @@ pub fn alignment(
         fs::write(&aligned_file, stdout).expect("Unable to write minimap2 alignment to file");
 
         //sort and convert the resulting sam to bam
-        let aligned_sorted = output.join("alleles_alignment_sorted.bam");
+        let aligned_sorted = output.join("viruses_alignment_sorted.bam");
         let sort = {
             Command::new("samtools")
                 .arg("sort")
