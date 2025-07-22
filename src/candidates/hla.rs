@@ -765,7 +765,6 @@ pub fn alignment(
         std::fs::remove_file(output.join("C_aligned_corrected.bam"))?;
         std::fs::remove_file(output.join("DQB1_aligned_corrected.bam"))?;
 
-        
         if !sort.success() {
             panic!(
                 "samtools sort of given bam failed with exit code: {:?}",
