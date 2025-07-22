@@ -527,10 +527,10 @@ pub fn alignment(
 
         //1-) create FASTA files for each locus.
         //create separate files and handles for each locus
-        let a_alleles = output.join("A_alleles.fasta");
-        let b_alleles = output.join("B_alleles.fasta");
-        let c_alleles = output.join("C_alleles.fasta");
-        let dqb1_alleles = output.join("DQB1_alleles.fasta");
+        let a_alleles = temp_dir.path().join("A_alleles.fasta");
+        let b_alleles = temp_dir.path().join("B_alleles.fasta");
+        let c_alleles = temp_dir.path().join("C_alleles.fasta");
+        let dqb1_alleles = temp_dir.path().join("DQB1_alleles.fasta");
 
         let mut writer_a =
             bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(a_alleles).unwrap()));
@@ -602,7 +602,7 @@ pub fn alignment(
                 genome_path = temp_dir.path().join(&"A_ref.fasta");
                 allele_path = temp_dir.path().join(&"A_alleles.fasta");
                 aligned_file = temp_dir.path().join(&"A_aligned.sam");
-                corrected_file_path = temp_dir.path().join(&"A_aligned_corrected.bam");
+                corrected_file_path = output.join(&"A_aligned_corrected.bam");
                 awk_string =
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+29940260-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:29940260-29950572/SN:6/"#;
@@ -612,7 +612,7 @@ pub fn alignment(
                 genome_path = temp_dir.path().join(&"B_ref.fasta");
                 allele_path = temp_dir.path().join(&"B_alleles.fasta");
                 aligned_file = temp_dir.path().join(&"B_aligned.sam");
-                corrected_file_path = temp_dir.path().join(&"B_aligned_corrected.bam");
+                corrected_file_path = output.join(&"B_aligned_corrected.bam");
                 awk_string =
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+31352872-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:31352872-31368067/SN:6/"#;
@@ -622,7 +622,7 @@ pub fn alignment(
                 genome_path = temp_dir.path().join(&"C_ref.fasta");
                 allele_path = temp_dir.path().join(&"C_alleles.fasta");
                 aligned_file = temp_dir.path().join(&"C_aligned.sam");
-                corrected_file_path = temp_dir.path().join(&"C_aligned_corrected.bam");
+                corrected_file_path = output.join(&"C_aligned_corrected.bam");
                 awk_string =
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+31267749-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:31267749-31273130/SN:6/"#;
@@ -632,7 +632,7 @@ pub fn alignment(
                 genome_path = temp_dir.path().join(&"DQB1_ref.fasta");
                 allele_path = temp_dir.path().join(&"DQB1_alleles.fasta");
                 aligned_file = temp_dir.path().join(&"DQB1_aligned.sam");
-                corrected_file_path = temp_dir.path().join(&"DQB1_aligned_corrected.bam");
+                corrected_file_path = output.join(&"DQB1_aligned_corrected.bam");
                 awk_string =
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+32658467-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:32658467-32669383/SN:6/"#;
@@ -721,7 +721,7 @@ pub fn alignment(
             println!("Processing {} done!", locus);
         }
 
-        let merged_path = output.join("merged_alignment.bam");
+        let merged_path = temp_dir.path().join("merged_alignment.bam");
 
         let merge_bams = Command::new("samtools")
             .arg("merge")
@@ -759,6 +759,13 @@ pub fn alignment(
                 .expect("failed to execute the sorting process")
         };
 
+        //delete separate alignment files
+        std::fs::remove_file(output.join("A_aligned_corrected.bam"))?;
+        std::fs::remove_file(output.join("B_aligned_corrected.bam"))?;
+        std::fs::remove_file(output.join("C_aligned_corrected.bam"))?;
+        std::fs::remove_file(output.join("DQB1_aligned_corrected.bam"))?;
+
+        
         if !sort.success() {
             panic!(
                 "samtools sort of given bam failed with exit code: {:?}",
