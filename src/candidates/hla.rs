@@ -14,9 +14,9 @@ use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::io::BufWriter;
-use std::process::Stdio;
-use std::io::Write;
 use std::io::Seek;
+use std::io::Write;
+use std::process::Stdio;
 
 use std::iter::FromIterator;
 
@@ -58,7 +58,11 @@ impl Caller {
         //find variants from cigar
         let (mut genotype_df, mut loci_df) = find_variants_from_cigar(
             &self.genome,
-            &self.output.as_ref().unwrap().join("alleles_alignment_sorted.bam"),
+            &self
+                .output
+                .as_ref()
+                .unwrap()
+                .join("alleles_alignment_sorted.bam"),
         )
         .unwrap();
         //Unconfirmed alleles are removed from both dataframes
@@ -529,13 +533,13 @@ pub fn alignment(
         let dqb1_alleles = output.join("DQB1_alleles.fasta");
 
         let mut writer_a =
-        bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(a_alleles).unwrap()));
+            bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(a_alleles).unwrap()));
         let mut writer_b =
-        bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(b_alleles).unwrap()));
+            bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(b_alleles).unwrap()));
         let mut writer_c =
-        bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(c_alleles).unwrap()));
+            bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(c_alleles).unwrap()));
         let mut writer_dqb1 =
-        bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(dqb1_alleles).unwrap()));
+            bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(dqb1_alleles).unwrap()));
 
         //read alleles fasta
         let hla_alleles_rdr = bio::io::fasta::Reader::from_file(&alleles)?;
@@ -559,10 +563,10 @@ pub fn alignment(
                 writer_dqb1.write_record(&record)?;
             }
         }
-        writer_a.flush()?; 
-        writer_b.flush()?; 
-        writer_c.flush()?; 
-        writer_dqb1.flush()?; 
+        writer_a.flush()?;
+        writer_b.flush()?;
+        writer_c.flush()?;
+        writer_dqb1.flush()?;
 
         //2-)align fasta files separately to corresponding genomic regions
         //samtools faidx reference.fasta chr1:100000-200000 > region.fasta
@@ -599,7 +603,8 @@ pub fn alignment(
                 allele_path = temp_dir.path().join(&"A_alleles.fasta");
                 aligned_file = temp_dir.path().join(&"A_aligned.sam");
                 corrected_file_path = temp_dir.path().join(&"A_aligned_corrected.bam");
-                awk_string = r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+29940260-1; print } /^@/ { print }"#;
+                awk_string =
+                    r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+29940260-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:29940260-29950572/SN:6/"#;
                 regex_second = r#"s/LN:10313/LN:170805979/"#;
             } else if locus == &"B" {
@@ -608,7 +613,8 @@ pub fn alignment(
                 allele_path = temp_dir.path().join(&"B_alleles.fasta");
                 aligned_file = temp_dir.path().join(&"B_aligned.sam");
                 corrected_file_path = temp_dir.path().join(&"B_aligned_corrected.bam");
-                awk_string = r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+31352872-1; print } /^@/ { print }"#;
+                awk_string =
+                    r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+31352872-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:31352872-31368067/SN:6/"#;
                 regex_second = r#"s/LN:15196/LN:170805979/"#;
             } else if locus == &"C" {
@@ -617,20 +623,22 @@ pub fn alignment(
                 allele_path = temp_dir.path().join(&"C_alleles.fasta");
                 aligned_file = temp_dir.path().join(&"C_aligned.sam");
                 corrected_file_path = temp_dir.path().join(&"C_aligned_corrected.bam");
-                awk_string = r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+31267749-1; print } /^@/ { print }"#;
+                awk_string =
+                    r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+31267749-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:31267749-31273130/SN:6/"#;
-                regex_second = r#"s/LN:5382/LN:170805979/"#; 
+                regex_second = r#"s/LN:5382/LN:170805979/"#;
             } else if locus == &"DQB1" {
                 region = &"6:32658467-32669383";
                 genome_path = temp_dir.path().join(&"DQB1_ref.fasta");
                 allele_path = temp_dir.path().join(&"DQB1_alleles.fasta");
                 aligned_file = temp_dir.path().join(&"DQB1_aligned.sam");
                 corrected_file_path = temp_dir.path().join(&"DQB1_aligned_corrected.bam");
-                awk_string = r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+32658467-1; print } /^@/ { print }"#;
+                awk_string =
+                    r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+32658467-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:32658467-32669383/SN:6/"#;
                 regex_second = r#"s/LN:10917/LN:170805979/"#;
             }
-        
+
             let faidx = {
                 Command::new("samtools")
                     .arg("faidx")
@@ -639,7 +647,10 @@ pub fn alignment(
                     .arg("-o")
                     .arg(&genome_path)
                     .status()
-                    .expect(&format!("failed to execute indexing process for locus {}", locus))
+                    .expect(&format!(
+                        "failed to execute indexing process for locus {}",
+                        locus
+                    ))
             };
             println!("indexing process finished with: {}", faidx);
 
@@ -650,13 +661,16 @@ pub fn alignment(
                     .arg(genome_path)
                     .arg(allele_path)
                     .output()
-                    .expect(&format!("failed to execute alignment process for locus {}", locus))
+                    .expect(&format!(
+                        "failed to execute alignment process for locus {}",
+                        locus
+                    ))
             };
             println!(
                 "alignment process finished with exit status {}!",
                 align.status
             );
-    
+
             let stdout = String::from_utf8(align.stdout).unwrap();
             fs::write(&aligned_file, stdout).expect("Unable to write minimap2 alignment to file");
 
@@ -664,37 +678,38 @@ pub fn alignment(
             //check for supplementary alignments, flag 2048, should work for that too though
 
             //first update CHROM and POS fields and write to file
-            let awk = 
-                Command::new("awk")
-                    .arg(&awk_string)
-                    .arg(&aligned_file)
-                    .stdout(Stdio::piped())
-                    .spawn()
-                    .expect(&format!("failed to execute alignment process for locus {}", locus));
+            let awk = Command::new("awk")
+                .arg(&awk_string)
+                .arg(&aligned_file)
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect(&format!(
+                    "failed to execute alignment process for locus {}",
+                    locus
+                ));
 
             //update the header
             //length of chromosome 6 is 170805979, for ref: https://www.ncbi.nlm.nih.gov/grc/human/data
             let sed: std::process::Child = Command::new("sed")
-            .arg("-e")
-            .arg(&regex_first)
-            .arg("-e")
-            .arg(&regex_second)
-            .stdin(Stdio::from(awk.stdout.unwrap())) 
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();   
+                .arg("-e")
+                .arg(&regex_first)
+                .arg("-e")
+                .arg(&regex_second)
+                .stdin(Stdio::from(awk.stdout.unwrap()))
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
 
-   
             //convert SAM to BAM
             let mut corrected_file_path_file = std::fs::File::create(&corrected_file_path)?;
             let convert_bam = Command::new("samtools")
-            .arg("view")
-            .arg("-O")
-            .arg("BAM")
-            .stdin(Stdio::from(sed.stdout.unwrap())) 
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();   
+                .arg("view")
+                .arg("-O")
+                .arg("BAM")
+                .stdin(Stdio::from(sed.stdout.unwrap()))
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
 
             let convert_bam_output = convert_bam
                 .wait_with_output()
@@ -709,14 +724,19 @@ pub fn alignment(
         let merged_path = output.join("merged_alignment.bam");
 
         let merge_bams = Command::new("samtools")
-        .arg("merge")
-        .args([&output.join("A_aligned_corrected.bam"), &output.join("B_aligned_corrected.bam"), &output.join("C_aligned_corrected.bam"), &output.join("DQB1_aligned_corrected.bam")]) 
-        .arg("-O")
-        .arg("BAM")
-        .arg("-o")
-        .arg(&merged_path)
-        .status()
-        .unwrap();   
+            .arg("merge")
+            .args([
+                &output.join("A_aligned_corrected.bam"),
+                &output.join("B_aligned_corrected.bam"),
+                &output.join("C_aligned_corrected.bam"),
+                &output.join("DQB1_aligned_corrected.bam"),
+            ])
+            .arg("-O")
+            .arg("BAM")
+            .arg("-o")
+            .arg(&merged_path)
+            .status()
+            .unwrap();
 
         if !merge_bams.success() {
             panic!(
@@ -724,9 +744,7 @@ pub fn alignment(
                 merge_bams.code(),
             );
         } else {
-            println!(
-                "Merge of per locus alignments was done!"
-            ); 
+            println!("Merge of per locus alignments was done!");
         }
 
         println!("Sorting input bam..");
@@ -747,11 +765,8 @@ pub fn alignment(
                 sort.code(),
             );
         } else {
-            println!(
-                "samtools sort of given bam done!"
-            ); 
+            println!("samtools sort of given bam done!");
         }
-        
     } else if application == "virus" {
         // Create a directory inside of `std::env::temp_dir()`
         let temp_dir = tempdir()?;
