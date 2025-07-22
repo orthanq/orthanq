@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.14.0](https://www.github.com/orthanq/orthanq/compare/v1.13.0...v1.14.0) (2025-07-22)
+
+
+### Features
+
+* separately align HLA alleles to genomic regions ([#80](https://www.github.com/orthanq/orthanq/issues/80)) ([1b321f6](https://www.github.com/orthanq/orthanq/commit/1b321f6e0f49b95c75f9c87c59dc1f5a0d5450aa))
+
+
+### Bug Fixes
+
+* update rust bio version ([#77](https://www.github.com/orthanq/orthanq/issues/77)) ([af7c867](https://www.github.com/orthanq/orthanq/commit/af7c867b57e8671560822ce8f0c0940a0a6267dc))
+
 ## [1.13.0](https://www.github.com/orthanq/orthanq/compare/v1.12.1...v1.13.0) (2025-05-28)
 
 
