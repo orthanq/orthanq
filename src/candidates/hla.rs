@@ -513,6 +513,7 @@ pub fn alignment(
     fs::create_dir_all(output)?;
 
     //FOR HLA: separate HLA loci to separate FASTA files. align those to corresponding loci on the genome. merge bam. reheader if necessary.
+    //TODO: implement DQA1 and DRB1.
     if application == "hla" {
         //create output path
         let sorted_merged_path = output.join("alleles_alignment_sorted.bam");
@@ -594,38 +595,37 @@ pub fn alignment(
 
             if locus == &"A" {
                 region = &"6:29940260-29950572";
-                genome_path = output.join(&"A_ref.fasta");
-                allele_path = output.join(&"A_alleles.fasta");
-                aligned_file = output.join(&"A_aligned.sam");
-                corrected_file_path = output.join(&"A_aligned_corrected.bam");
-                // aligned_file = temp_dir().path().join(&"A_alignment.sam");
+                genome_path = temp_dir.path().join(&"A_ref.fasta");
+                allele_path = temp_dir.path().join(&"A_alleles.fasta");
+                aligned_file = temp_dir.path().join(&"A_aligned.sam");
+                corrected_file_path = temp_dir.path().join(&"A_aligned_corrected.bam");
                 awk_string = r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+29940260-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:29940260-29950572/SN:6/"#;
                 regex_second = r#"s/LN:10313/LN:170805979/"#;
             } else if locus == &"B" {
                 region = &"6:31352872-31368067";
-                genome_path = output.join(&"B_ref.fasta");
-                allele_path = output.join(&"B_alleles.fasta");
-                aligned_file = output.join(&"B_aligned.sam");
-                corrected_file_path = output.join(&"B_aligned_corrected.bam");
+                genome_path = temp_dir.path().join(&"B_ref.fasta");
+                allele_path = temp_dir.path().join(&"B_alleles.fasta");
+                aligned_file = temp_dir.path().join(&"B_aligned.sam");
+                corrected_file_path = temp_dir.path().join(&"B_aligned_corrected.bam");
                 awk_string = r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+31352872-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:31352872-31368067/SN:6/"#;
                 regex_second = r#"s/LN:15196/LN:170805979/"#;
             } else if locus == &"C" {
                 region = &"6:31267749-31273130";
-                genome_path = output.join(&"C_ref.fasta");
-                allele_path = output.join(&"C_alleles.fasta");
-                aligned_file = output.join(&"C_aligned.sam");
-                corrected_file_path = output.join(&"C_aligned_corrected.bam");
+                genome_path = temp_dir.path().join(&"C_ref.fasta");
+                allele_path = temp_dir.path().join(&"C_alleles.fasta");
+                aligned_file = temp_dir.path().join(&"C_aligned.sam");
+                corrected_file_path = temp_dir.path().join(&"C_aligned_corrected.bam");
                 awk_string = r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+31267749-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:31267749-31273130/SN:6/"#;
                 regex_second = r#"s/LN:5382/LN:170805979/"#; 
             } else if locus == &"DQB1" {
                 region = &"6:32658467-32669383";
-                genome_path = output.join(&"DQB1_ref.fasta");
-                allele_path = output.join(&"DQB1_alleles.fasta");
-                aligned_file = output.join(&"DQB1_aligned.sam");
-                corrected_file_path = output.join(&"DQB1_aligned_corrected.bam");
+                genome_path = temp_dir.path().join(&"DQB1_ref.fasta");
+                allele_path = temp_dir.path().join(&"DQB1_alleles.fasta");
+                aligned_file = temp_dir.path().join(&"DQB1_aligned.sam");
+                corrected_file_path = temp_dir.path().join(&"DQB1_aligned_corrected.bam");
                 awk_string = r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+32658467-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:32658467-32669383/SN:6/"#;
                 regex_second = r#"s/LN:10917/LN:170805979/"#;
