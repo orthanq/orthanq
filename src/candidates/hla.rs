@@ -34,6 +34,7 @@ pub struct Caller {
     // allele_freq: PathBuf,
     output: Option<PathBuf>,
     threads: String,
+    output_bcf: bool,
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
@@ -71,10 +72,10 @@ impl Caller {
             let _ = loci_df.drop_in_place(unconf_allele);
         });
 
-        //write to vcf
+        //write to file
         let genotype_df = self.split_haplotypes(&mut genotype_df)?;
         let loci_df = self.split_haplotypes(&mut loci_df)?;
-        //write locus-wise vcf files.
+        //write locus-wise files.
         self.write_loci_to_vcf(&genotype_df, &loci_df)?;
         Ok(())
     }
@@ -202,7 +203,7 @@ impl Caller {
             let variant_table = variant_table.select(&locus_columns)?;
             let loci_table = loci_table.select(&locus_columns)?;
 
-            //Create VCF header
+            //create header
             let mut header = Header::new();
             //push contig names to the header depending on the reference format
             variant_table["Index"]
@@ -225,20 +226,26 @@ impl Caller {
                 header.push_sample(sample_name.as_bytes());
             }
             fs::create_dir_all(self.output.as_ref().unwrap())?;
-            let mut vcf = Writer::from_path(
-                format!(
-                    "{}.vcf",
-                    self.output.as_ref().unwrap().join(locus).display()
-                ),
-                &header,
-                true,
-                Format::Vcf,
-            )
-            .unwrap();
+
+            //create VCF/BCF Writer
+            let output_path = self.output.as_ref().unwrap().join(format!(
+                "{}.{}",
+                locus,
+                if self.output_bcf { "bcf" } else { "vcf" }
+            ));
+
+            let format = if self.output_bcf {
+                Format::Bcf
+            } else {
+                Format::Vcf
+            };
+
+            let mut writer = Writer::from_path(&output_path, &header, true, format)
+                .expect("Failed to create VCF/BCF writer");
 
             let _id_iter = variant_table["ID"].i64().unwrap().into_iter();
             for row_index in 0..variant_table.height() {
-                let mut record = vcf.empty_record();
+                let mut record = writer.empty_record();
                 let mut variant_iter = variant_table["Index"].utf8().unwrap().into_iter();
                 let mut id_iter = variant_table["ID"].i64().unwrap().into_iter();
                 let splitted = variant_iter
@@ -253,7 +260,7 @@ impl Caller {
                 let ref_base = splitted[2];
                 let alt_base = splitted[3];
                 let alleles: &[&[u8]] = &[ref_base.as_bytes(), alt_base.as_bytes()];
-                let rid = vcf.header().name2rid(chrom.as_bytes()).unwrap();
+                let rid = writer.header().name2rid(chrom.as_bytes()).unwrap();
 
                 record.set_rid(Some(rid));
                 record.set_pos(pos.parse::<i64>().unwrap() - 1);
@@ -295,7 +302,7 @@ impl Caller {
                     all_c.push(c);
                 }
                 record.push_format_integer(b"C", &all_c)?;
-                vcf.write(&record).unwrap();
+                writer.write(&record).unwrap();
             }
         }
         Ok(())
