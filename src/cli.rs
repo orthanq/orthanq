@@ -170,6 +170,11 @@ pub enum CandidatesKind {
             help = "Threads to use for minimap2 used candidate generation."
         )]
         threads: String,
+        #[structopt(
+            long,
+            help = "Generate BCF output instead of the default VCF file format."
+        )]
+        output_bcf: bool,
     },
     Virus {
         #[structopt(
@@ -188,6 +193,11 @@ pub enum CandidatesKind {
             help = "Threads to use for minimap2 that is used in candidate generation."
         )]
         threads: String,
+        #[structopt(
+            long,
+            help = "Generate BCF output instead of the default VCF file format."
+        )]
+        output_bcf: bool,
     },
 }
 
@@ -385,6 +395,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 // allele_freq,
                 output,
                 threads,
+                output_bcf,
             } => {
                 let caller = candidates::hla::CallerBuilder::default()
                     .alleles(alleles)
@@ -393,6 +404,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     // .allele_freq(allele_freq)
                     .output(output)
                     .threads(threads)
+                    .output_bcf(output_bcf)
                     .build()
                     .unwrap();
                 caller.call()?;
@@ -403,12 +415,14 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 lineages,
                 output,
                 threads,
+                output_bcf,
             } => {
                 let mut caller = candidates::virus::generic::CallerBuilder::default()
                     .genome(genome)
                     .lineages(lineages)
                     .output(output)
                     .threads(threads)
+                    .output_bcf(output_bcf)
                     .build()
                     .unwrap();
                 caller.call()?;
