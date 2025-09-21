@@ -161,9 +161,9 @@ pub enum CandidatesKind {
         // allele_freq: PathBuf,
         #[structopt(
             long,
-            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
+            help = "Folder to store candidate variants for each loci. Currently, only A, B, C and DQB1 are supported."
         )]
-        output: Option<PathBuf>,
+        output: PathBuf,
         #[structopt(
             default_value = "1",
             long = "threads",
@@ -175,6 +175,11 @@ pub enum CandidatesKind {
             help = "Generate BCF output instead of the default VCF file format."
         )]
         output_bcf: bool,
+        #[structopt(
+            long,
+            help = "Output BAM containing alignment of haplotypes against the reference genome."
+        )]
+        output_bam: bool,
     },
     Virus {
         #[structopt(
@@ -198,6 +203,11 @@ pub enum CandidatesKind {
             help = "Generate BCF output instead of the default VCF file format."
         )]
         output_bcf: bool,
+        #[structopt(
+            long,
+            help = "Output BAM containing alignment of haplotypes against the reference genome."
+        )]
+        output_bam: bool,
     },
 }
 
@@ -396,6 +406,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 output,
                 threads,
                 output_bcf,
+                output_bam,
             } => {
                 let caller = candidates::hla::CallerBuilder::default()
                     .alleles(alleles)
@@ -405,6 +416,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .output(output)
                     .threads(threads)
                     .output_bcf(output_bcf)
+                    .output_bam(output_bam)
                     .build()
                     .unwrap();
                 caller.call()?;
@@ -416,6 +428,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 output,
                 threads,
                 output_bcf,
+                output_bam,
             } => {
                 let mut caller = candidates::virus::generic::CallerBuilder::default()
                     .genome(genome)
@@ -423,6 +436,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .output(output)
                     .threads(threads)
                     .output_bcf(output_bcf)
+                    .output_bam(output_bam)
                     .build()
                     .unwrap();
                 caller.call()?;
