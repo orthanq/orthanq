@@ -32,9 +32,10 @@ pub struct Caller {
     genome: PathBuf,
     xml: PathBuf,
     // allele_freq: PathBuf,
-    output: Option<PathBuf>,
+    output: PathBuf,
     threads: String,
     output_bcf: bool,
+    output_bam: bool
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
@@ -53,19 +54,17 @@ impl Caller {
             &self.alleles,
             &self.threads,
             true,
-            self.output.as_ref().unwrap(),
+            &self.output,
         )?;
 
         //find variants from cigar
+        let bam_path: &PathBuf = &self.output.join("alleles_alignment_sorted.bam");
         let (mut genotype_df, mut loci_df) = find_variants_from_cigar(
             &self.genome,
-            &self
-                .output
-                .as_ref()
-                .unwrap()
-                .join("alleles_alignment_sorted.bam"),
+            bam_path,
         )
         .unwrap();
+
         //Unconfirmed alleles are removed from both dataframes
         unconfirmed_alleles.iter().for_each(|unconf_allele| {
             let _ = genotype_df.drop_in_place(unconf_allele);
@@ -75,8 +74,14 @@ impl Caller {
         //write to file
         let genotype_df = self.split_haplotypes(&mut genotype_df)?;
         let loci_df = self.split_haplotypes(&mut loci_df)?;
+
         //write locus-wise files.
         self.write_loci_to_vcf(&genotype_df, &loci_df)?;
+
+        //remove alignment file based on output_bam
+        if !self.output_bam {
+            std::fs::remove_file(bam_path)?;
+        }
         Ok(())
     }
     fn split_haplotypes(&self, variant_table: &mut DataFrame) -> Result<DataFrame> {
@@ -225,10 +230,9 @@ impl Caller {
             for sample_name in variant_table.get_column_names().iter().skip(2) {
                 header.push_sample(sample_name.as_bytes());
             }
-            fs::create_dir_all(self.output.as_ref().unwrap())?;
 
             //create VCF/BCF Writer
-            let output_path = self.output.as_ref().unwrap().join(format!(
+            let output_path = &self.output.join(format!(
                 "{}.{}",
                 locus,
                 if self.output_bcf { "bcf" } else { "vcf" }
@@ -521,12 +525,11 @@ pub fn alignment(
     index: bool,
     output: &PathBuf,
 ) -> Result<()> {
-    fs::create_dir_all(output)?;
-
     //FOR HLA: separate HLA loci to separate FASTA files. align those to corresponding loci on the genome. merge bam. reheader if necessary.
     //TODO: implement DQA1 and DRB1.
     if application == "hla" {
-        //create output path
+        //create output path, for hla the output has to be given as a folder, for virus, a BCF or a VCF file.
+        fs::create_dir_all(&output)?;
         let sorted_merged_path = output.join("alleles_alignment_sorted.bam");
 
         // Create a directory inside of `std::env::temp_dir()`
@@ -603,7 +606,6 @@ pub fn alignment(
             //6:31352872-31368067 -> B adjusted length -> 15196
             //6:31267749-31273130 -> C adjusted length -> 5382
             //6:32658467-32669383 -> DQB1 adjusted length -> 10917
-
             if locus == &"A" {
                 region = &"6:29940260-29950572";
                 genome_path = temp_dir.path().join(&"A_ref.fasta");
@@ -829,7 +831,10 @@ pub fn alignment(
         fs::write(&aligned_file, stdout).expect("Unable to write minimap2 alignment to file");
 
         //sort and convert the resulting sam to bam
-        let aligned_sorted = output.join("viruses_alignment_sorted.bam");
+        let mut output_folder = output.clone();
+        output_folder.pop();
+        fs::create_dir_all(&output_folder)?;
+        let aligned_sorted = output_folder.join("viruses_alignment_sorted.bam");
         let sort = {
             Command::new("samtools")
                 .arg("sort")
