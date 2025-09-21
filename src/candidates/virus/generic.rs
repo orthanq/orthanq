@@ -22,7 +22,7 @@ pub struct Caller {
     output: PathBuf,
     threads: String,
     output_bcf: bool,
-    output_bam: bool
+    output_bam: bool,
 }
 impl Caller {
     pub fn call(&mut self) -> Result<()> {
@@ -37,17 +37,13 @@ impl Caller {
         )?;
 
         //create path to the bam file
-        let bam_path: &PathBuf = &self.output.with_file_name("viruses_alignment_sorted.bam"); 
+        let bam_path: &PathBuf = &self.output.with_file_name("viruses_alignment_sorted.bam");
 
         //find variants from cigar
-        let (genotype_df, loci_df) = find_variants_from_cigar(
-            &self.genome,
-            &bam_path,
-        )
-        .unwrap();
+        let (genotype_df, loci_df) = find_variants_from_cigar(&self.genome, &bam_path).unwrap();
 
         //write locus-wise vcf files.
-        write_to_vcf( &self.output, genotype_df, loci_df, self.output_bcf)?;
+        write_to_vcf(&self.output, genotype_df, loci_df, self.output_bcf)?;
 
         //remove alignment file based on output_bam
         if !self.output_bam {

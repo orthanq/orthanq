@@ -35,7 +35,7 @@ pub struct Caller {
     output: PathBuf,
     threads: String,
     output_bcf: bool,
-    output_bam: bool
+    output_bam: bool,
 }
 impl Caller {
     pub fn call(&self) -> Result<()> {
@@ -59,11 +59,8 @@ impl Caller {
 
         //find variants from cigar
         let bam_path: &PathBuf = &self.output.join("alleles_alignment_sorted.bam");
-        let (mut genotype_df, mut loci_df) = find_variants_from_cigar(
-            &self.genome,
-            bam_path,
-        )
-        .unwrap();
+        let (mut genotype_df, mut loci_df) =
+            find_variants_from_cigar(&self.genome, bam_path).unwrap();
 
         //Unconfirmed alleles are removed from both dataframes
         unconfirmed_alleles.iter().for_each(|unconf_allele| {

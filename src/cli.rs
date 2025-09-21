@@ -179,7 +179,7 @@ pub enum CandidatesKind {
             long,
             help = "Output BAM containing alignment of haplotypes against the reference genome."
         )]
-        output_bam: bool
+        output_bam: bool,
     },
     Virus {
         #[structopt(
@@ -207,7 +207,7 @@ pub enum CandidatesKind {
             long,
             help = "Output BAM containing alignment of haplotypes against the reference genome."
         )]
-        output_bam: bool
+        output_bam: bool,
     },
 }
 
@@ -406,7 +406,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 output,
                 threads,
                 output_bcf,
-                output_bam
+                output_bam,
             } => {
                 let caller = candidates::hla::CallerBuilder::default()
                     .alleles(alleles)
@@ -428,7 +428,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 output,
                 threads,
                 output_bcf,
-                output_bam
+                output_bam,
             } => {
                 let mut caller = candidates::virus::generic::CallerBuilder::default()
                     .genome(genome)
