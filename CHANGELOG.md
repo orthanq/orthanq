@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.15.0](https://www.github.com/orthanq/orthanq/compare/v1.14.0...v1.15.0) (2025-09-21)
+
+
+### Features
+
+* implement bcf export option for candidate variant generation ([#82](https://www.github.com/orthanq/orthanq/issues/82)) ([6f82e4b](https://www.github.com/orthanq/orthanq/commit/6f82e4bdceaa56496ac259f7367959f0eae3aba9))
+* implement optional parameter for outputting bam file produced with alleles to reference genome alignment and configure virus output to the given filepath instead of the previous candidates.vcf ([#84](https://www.github.com/orthanq/orthanq/issues/84)) ([9a827ba](https://www.github.com/orthanq/orthanq/commit/9a827baa04a29fee1c1b1c72526c1532a5e3c676))
+
 ## [1.14.0](https://www.github.com/orthanq/orthanq/compare/v1.13.0...v1.14.0) (2025-07-22)
 
 
