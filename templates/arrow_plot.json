@@ -1,0 +1,93 @@
+{
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.20.1.json",
+    "datasets": {
+        "arrow_records": []
+    },
+    "data": {
+        "name": "arrow_records"
+    },
+    "layer": [
+        {
+            "mark": {
+                "type": "rule",
+                "tooltip": true
+            },
+            "encoding": {
+                "color": {
+                    "field": "containing_haplotypes",
+                    "legend": {
+                        "title": ""
+                    },
+                    "type": "nominal"
+                },
+                "x": {
+                    "field": "call_change",
+                    "type": "nominal"
+                },
+                "y": {
+                    "field": "haplofrac",
+                    "title": "",
+                    "type": "quantitative"
+                },
+                "y2": {
+                    "field": "call_vaf"
+                }
+            }
+        },
+        {
+            "mark": {
+                "type": "point",
+                "tooltip": true
+            },
+            "encoding": {
+                "color": {
+                    "field": "containing_haplotypes",
+                    "type": "nominal"
+                },
+                "shape": {
+                    "field": "status",
+                    "legend": null,
+                    "scale": {
+                        "domain": [
+                            "up",
+                            "down"
+                        ],
+                        "range": [
+                            "triangle-up",
+                            "triangle-down"
+                        ]
+                    },
+                    "type": "nominal"
+                },
+                "x": {
+                    "field": "call_change",
+                    "type": "nominal"
+                },
+                "y": {
+                    "field": "call_vaf",
+                    "type": "quantitative"
+                }
+            }
+        },
+        {
+            "mark": {
+                "type": "circle",
+                "tooltip": true
+            },
+            "encoding": {
+                "color": {
+                    "field": "containing_haplotypes",
+                    "type": "nominal"
+                },
+                "x": {
+                    "field": "call_change",
+                    "type": "nominal"
+                },
+                "y": {
+                    "field": "haplofrac",
+                    "type": "quantitative"
+                }
+            }
+        }
+    ]
+}
