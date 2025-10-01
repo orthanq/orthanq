@@ -16,6 +16,7 @@ use ordered_float::NotNan;
 use good_lp::IntoAffineExpression;
 use good_lp::*;
 use good_lp::{constraint, variable, variables, Expression, ResolutionError, SolverModel};
+use rust_htslib::bcf::record::Numeric;
 use rust_htslib::bcf::{
     self,
     record::GenotypeAllele::{Phased, Unphased},
@@ -224,10 +225,11 @@ impl VariantCalls {
 
             // get max of prob_absent and prob_present to use for weighting in linear program
             let max_prob = cmp::max(prob_absent, prob_present);
-            
-            // parse read depth
-            let read_depth = record.format(b"DP").integer().unwrap();
-            let read_depth_int = read_depth[0].get(0).unwrap();
+
+            // parse read depth by handling missing DP values
+            let dp = record.format(b"DP").integer().unwrap();
+            let dp_val = dp[0][0];
+            let read_depth_int = if dp_val.is_missing() { 0 } else { dp_val };
 
             // parse variant ID
             let variant_id: i32 = String::from_utf8(record.id())?.parse()?;
@@ -248,7 +250,8 @@ impl VariantCalls {
                     vaf_density.insert(vaf, LogProb::from(PHREDProb(density)));
                 }
             }
-            //exxtract reference (REF), alternative (ALT), and position (POS)
+
+            //extract reference (REF), alternative (ALT), and position (POS)
             let chr_name = std::str::from_utf8(header.rid2name(record.rid().unwrap()).unwrap())?;
             let pos = record.pos() + 1; // 1-based indexing
             let ref_base = std::str::from_utf8(record.alleles()[0])?;
@@ -261,7 +264,7 @@ impl VariantCalls {
                 change: variant_change,
                 af,
                 afd: AlleleFreqDist(vaf_density),
-                dp: *read_depth_int,
+                dp: read_depth_int,
             };
 
             calls.insert(VariantID(variant_id), variant_call);
