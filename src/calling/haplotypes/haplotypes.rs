@@ -16,6 +16,7 @@ use ordered_float::NotNan;
 use good_lp::IntoAffineExpression;
 use good_lp::*;
 use good_lp::{constraint, variable, variables, Expression, ResolutionError, SolverModel};
+use rust_htslib::bcf::record::Numeric;
 use rust_htslib::bcf::{
     self,
     record::GenotypeAllele::{Phased, Unphased},
@@ -181,7 +182,7 @@ impl VariantCalls {
             let mut record = record_result?;
             record.unpack();
             let variant_id: i32 = String::from_utf8(record.id())?.parse()?;
-            // dbg!(&variant_id);
+
             //by default, make prob_absent and prob_present 0.0 to handle the case with NaN prob values
             let mut prob_absent = NotNan::new(0.0).unwrap();
             let mut prob_present = NotNan::new(0.0).unwrap();
@@ -197,20 +198,20 @@ impl VariantCalls {
                 prob_present =
                     NotNan::new(*Prob::from(PHREDProb(parsed_prob_present.into()))).unwrap();
             }
-            // dbg!(&prob_absent, &prob_present);
 
             //get max of prob_absent and prob_present to use for weighting in linear program
             let max_prob = cmp::max(prob_absent, prob_present);
-            // dbg!(&max_prob);
 
+            //retrieve afd string
             let afd_utf = record.format(b"AFD").string()?;
             let afd_str = std::str::from_utf8(afd_utf[0])?;
-            let read_depth = record.format(b"DP").integer().unwrap();
-            let read_depth_int = read_depth[0].get(0).unwrap();
+
+            //handle missing DP values
+            let dp = record.format(b"DP").integer().unwrap();
+            let dp_val = dp[0][0];
+            let read_depth_int = if dp_val.is_missing() { 0 } else { dp_val };
+
             //include all variants without making a difference for their depth of coverage.
-            // if read_depth[0] != &[0]
-            // // && (&prob_absent_prob <= &Prob(0.05) || &prob_absent_prob >= &Prob(0.95))
-            // {
             //because some afd strings are just "." and that throws an error while splitting below.
             let variant_id: i32 = String::from_utf8(record.id())?.parse()?;
             let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
@@ -223,7 +224,8 @@ impl VariantCalls {
                     vaf_density.insert(vaf, LogProb::from(PHREDProb(density)));
                 }
             }
-            //exxtract reference (REF), alternative (ALT), and position (POS)
+
+            //extract reference (REF), alternative (ALT), and position (POS)
             let chr_name = std::str::from_utf8(header.rid2name(record.rid().unwrap()).unwrap())?;
             let pos = record.pos() + 1; // 1-based indexing
             let ref_base = std::str::from_utf8(record.alleles()[0])?;
@@ -236,7 +238,7 @@ impl VariantCalls {
                 change: variant_change,
                 af,
                 afd: AlleleFreqDist(vaf_density),
-                dp: *read_depth_int,
+                dp: read_depth_int,
             };
 
             calls.insert(VariantID(variant_id), variant_call);
