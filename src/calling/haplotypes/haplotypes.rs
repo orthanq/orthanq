@@ -21,6 +21,7 @@ use rust_htslib::bcf::{
     record::GenotypeAllele::{Phased, Unphased},
     Read,
 };
+use rust_htslib::bcf::record::Numeric;
 use std::cmp;
 use std::error::Error;
 
@@ -205,8 +206,11 @@ impl VariantCalls {
 
             let afd_utf = record.format(b"AFD").string()?;
             let afd_str = std::str::from_utf8(afd_utf[0])?;
-            let read_depth = record.format(b"DP").integer().unwrap();
-            let read_depth_int = read_depth[0].get(0).unwrap();
+            //handle missing DP values 
+            let dp = record.format(b"DP").integer().unwrap();
+            let dp_val = dp[0][0];
+            let read_depth_int = if dp_val.is_missing() { 0 } else { dp_val };
+
             //include all variants without making a difference for their depth of coverage.
             // if read_depth[0] != &[0]
             // // && (&prob_absent_prob <= &Prob(0.05) || &prob_absent_prob >= &Prob(0.95))
@@ -236,7 +240,7 @@ impl VariantCalls {
                 change: variant_change,
                 af,
                 afd: AlleleFreqDist(vaf_density),
-                dp: *read_depth_int,
+                dp: read_depth_int,
             };
 
             calls.insert(VariantID(variant_id), variant_call);
