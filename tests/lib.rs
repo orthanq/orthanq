@@ -19,6 +19,7 @@ fn check_haplotype_fractions_5050() {
         .num_extend_haplotypes(3)
         .num_constraint_haplotypes(6)
         .output_lp_datavzrd(false)
+        .sample_name(None)
         .build()
         .unwrap()
         .call();
