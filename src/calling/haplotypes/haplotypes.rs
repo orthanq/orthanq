@@ -187,13 +187,17 @@ impl VariantCalls {
                 idx
             } else {
                 let available_samples = header
-                .samples()
-                .iter()
-                .map(|s| String::from_utf8_lossy(s).into_owned())
-                .collect::<Vec<_>>()
-                .join(", ");
+                    .samples()
+                    .iter()
+                    .map(|s| String::from_utf8_lossy(s).into_owned())
+                    .collect::<Vec<_>>()
+                    .join(", ");
 
-                anyhow::bail!("sample name '{}' not found in header. Available samples: [{}]", name, available_samples);
+                anyhow::bail!(
+                    "sample name '{}' not found in header. Available samples: [{}]",
+                    name,
+                    available_samples
+                );
             }
         } else {
             0 // default to the first sample
@@ -230,9 +234,9 @@ impl VariantCalls {
             let dp = record.format(b"DP").integer().unwrap();
             let dp_val = dp[sample_index][0];
             let read_depth_int = if dp_val.is_missing() { 0 } else { dp_val };
-            
+
             // parse allele frequencies
-            let af = (&*record.format(b"AF").float().unwrap()[sample_index]).to_vec()[0];  
+            let af = (&*record.format(b"AF").float().unwrap()[sample_index]).to_vec()[0];
 
             // parse afd string
             let afd_utf = record.format(b"AFD").string()?;

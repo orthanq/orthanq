@@ -353,7 +353,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 num_extend_haplotypes,
                 num_constraint_haplotypes,
                 output_lp_datavzrd,
-                sample_name
+                sample_name,
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
