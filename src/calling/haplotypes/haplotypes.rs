@@ -173,16 +173,40 @@ pub struct VariantCall {
 #[derive(Derefable, DerefMut, Debug, Clone)]
 pub struct VariantCalls(#[deref] BTreeMap<VariantID, VariantCall>);
 impl VariantCalls {
-    pub fn new(variant_calls: &mut bcf::Reader) -> Result<Self> {
+    pub fn new(variant_calls: &mut bcf::Reader, sample_name: &Option<String>) -> Result<Self> {
+        //initialize the final struct
         let mut calls = BTreeMap::new();
+
+        // find and the header of the bcf
         let header = variant_calls.header().clone();
 
+        // find index of the given sample name in the header, if no sample_name is provided default to zero.
+        let sample_index = if let Some(name) = sample_name {
+            if let Some(idx) = header.samples().iter().position(|&s| s == name.as_bytes()) {
+                idx
+            } else {
+                let available_samples = header
+                .samples()
+                .iter()
+                .map(|s| String::from_utf8_lossy(s).into_owned())
+                .collect::<Vec<_>>()
+                .join(", ");
+
+                anyhow::bail!("sample name '{}' not found in header. Available samples: [{}]", name, available_samples);
+            }
+        } else {
+            0 // default to the first sample
+        };
         for record_result in variant_calls.records() {
+            // unwrap and unpack the record
             let mut record = record_result?;
             record.unpack();
+
+            // parse variant id
             let variant_id: i32 = String::from_utf8(record.id())?.parse()?;
-            // dbg!(&variant_id);
-            //by default, make prob_absent and prob_present 0.0 to handle the case with NaN prob values
+
+            // parse probability of the variant being present and absent to be used in the LP.
+            // by default, make prob_absent and prob_present 0.0 to handle the case with NaN prob values
             let mut prob_absent = NotNan::new(0.0).unwrap();
             let mut prob_present = NotNan::new(0.0).unwrap();
 
@@ -197,24 +221,25 @@ impl VariantCalls {
                 prob_present =
                     NotNan::new(*Prob::from(PHREDProb(parsed_prob_present.into()))).unwrap();
             }
-            // dbg!(&prob_absent, &prob_present);
 
-            //get max of prob_absent and prob_present to use for weighting in linear program
+            // get max of prob_absent and prob_present to use for weighting in linear program
             let max_prob = cmp::max(prob_absent, prob_present);
-            // dbg!(&max_prob);
-
-            let afd_utf = record.format(b"AFD").string()?;
-            let afd_str = std::str::from_utf8(afd_utf[0])?;
+            
+            // parse read depth
             let read_depth = record.format(b"DP").integer().unwrap();
             let read_depth_int = read_depth[0].get(0).unwrap();
-            //include all variants without making a difference for their depth of coverage.
-            // if read_depth[0] != &[0]
-            // // && (&prob_absent_prob <= &Prob(0.05) || &prob_absent_prob >= &Prob(0.95))
-            // {
-            //because some afd strings are just "." and that throws an error while splitting below.
+
+            // parse variant ID
             let variant_id: i32 = String::from_utf8(record.id())?.parse()?;
+            
+            // parse allele frequencies
             let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
 
+            // parse afd string
+            let afd_utf = record.format(b"AFD").string()?;
+            let afd_str = std::str::from_utf8(afd_utf[sample_index])?;
+
+            // parse densities per vaf. Some afd strings are just "." and this must be handled.
             let mut vaf_density = BTreeMap::new();
             for pair in afd_str.split(',') {
                 if let Some((vaf, density)) = pair.split_once('=') {

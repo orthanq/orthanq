@@ -284,6 +284,11 @@ pub enum CallKind {
         num_constraint_haplotypes: i32,
         #[structopt(long, help = "Output Datavzrd report for LP solution.")]
         output_lp_datavzrd: bool,
+        #[structopt(
+            long,
+            help = "Sample to use in case of multisample BCFs. Sample name should match the sample name in the variant calls BCF."
+        )]
+        sample_name: Option<String>,
     },
     Virus {
         #[structopt(
@@ -348,6 +353,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 num_extend_haplotypes,
                 num_constraint_haplotypes,
                 output_lp_datavzrd,
+                sample_name
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
@@ -365,6 +371,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .num_extend_haplotypes(num_extend_haplotypes)
                     .num_constraint_haplotypes(num_constraint_haplotypes)
                     .output_lp_datavzrd(output_lp_datavzrd)
+                    .sample_name(sample_name)
                     .build()
                     .unwrap();
                 caller.call()?;
