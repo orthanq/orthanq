@@ -41,6 +41,7 @@ pub struct Caller {
     num_extend_haplotypes: i64,
     num_constraint_haplotypes: i32,
     output_lp_datavzrd: bool,
+    sample_name: Option<String>
 }
 
 impl Caller {

@@ -228,14 +228,11 @@ impl VariantCalls {
 
             // parse read depth by handling missing DP values
             let dp = record.format(b"DP").integer().unwrap();
-            let dp_val = dp[0][0];
+            let dp_val = dp[sample_index][0];
             let read_depth_int = if dp_val.is_missing() { 0 } else { dp_val };
-
-            // parse variant ID
-            let variant_id: i32 = String::from_utf8(record.id())?.parse()?;
             
             // parse allele frequencies
-            let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
+            let af = (&*record.format(b"AF").float().unwrap()[sample_index]).to_vec()[0];  
 
             // parse afd string
             let afd_utf = record.format(b"AFD").string()?;
