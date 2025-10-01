@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.16.0](https://www.github.com/orthanq/orthanq/compare/v1.15.0...v1.16.0) (2025-10-01)
+
+
+### Features
+
+* --sample-name parameter for hla calling ([#86](https://www.github.com/orthanq/orthanq/issues/86)) ([e17a5c4](https://www.github.com/orthanq/orthanq/commit/e17a5c4445608e8e2b11ad300dfc2c624897cb3d))
+
+
+### Bug Fixes
+
+* handle missing DP ([#85](https://www.github.com/orthanq/orthanq/issues/85)) ([7a090e2](https://www.github.com/orthanq/orthanq/commit/7a090e2815a2c2f147ab093af261e9065e900343))
+
 ## [1.15.0](https://www.github.com/orthanq/orthanq/compare/v1.14.0...v1.15.0) (2025-09-21)
 
 
