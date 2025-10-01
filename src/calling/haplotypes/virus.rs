@@ -42,7 +42,7 @@ impl Caller {
     pub fn call(&mut self) -> Result<()> {
         //Step 1: Prepare data and compute the model
         //initially prepare haplotype_variants and variant_calls
-        let variant_calls = VariantCalls::new(&mut self.variant_calls)?;
+        let variant_calls = VariantCalls::new(&mut self.variant_calls, &None)?;
 
         //write blank plots and tsv table if no variants are available.
         if variant_calls.len() == 0 {
