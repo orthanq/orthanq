@@ -24,6 +24,11 @@ views:
                   "data": {
                     "values": []
                   },
+                  "config": {
+                    "view": {
+                      "stroke": null
+                    }
+                  },
                   "layer": [
                     {
                       "mark": {
@@ -36,7 +41,7 @@ views:
                           "type": "quantitative",
                           "stack": "zero",
                           "scale": {"domain": [0,1]},
-                          "axis": { "title": null, "labels": false, "ticks": false }
+                          "axis": null
                         },
                         "color": {
                           "legend": null,
