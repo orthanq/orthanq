@@ -96,11 +96,11 @@ pub enum PreprocessKind {
     },
     Virus {
         #[structopt(
-            long = "candidates",
+            long = "haplotype-variants",
             required = true,
-            help = "Folder that is used to create candidate variants."
+            help = "Haplotype variants compared to a common reference."
         )]
-        candidates: PathBuf,
+        haplotype_variants: PathBuf,
         #[structopt(
             long = "genome",
             required = true,
@@ -478,7 +478,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 Ok(())
             }
             PreprocessKind::Virus {
-                candidates,
+                haplotype_variants,
                 genome,
                 reads,
                 output,
@@ -486,7 +486,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 output_bam,
             } => {
                 preprocess::virus::CallerBuilder::default()
-                    .candidates(candidates)
+                    .haplotype_variants(haplotype_variants)
                     .genome(genome)
                     .reads(reads)
                     .output(output)

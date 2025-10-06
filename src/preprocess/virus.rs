@@ -15,7 +15,7 @@ use tempfile::tempdir;
 #[builder(pattern = "owned")]
 pub struct Caller {
     genome: PathBuf,
-    candidates: PathBuf,
+    haplotype_variants: PathBuf,
     reads: Vec<PathBuf>,
     output: PathBuf,
     threads: String,
@@ -40,13 +40,10 @@ impl Caller {
         // for sarscov2, genome must have been downloaded in the candidate generation step (see reference.fasta):
         let ref_genome = &self.genome;
 
-        //haplotype variantts must have been downloaded in the candidate generation step:
-        let haplotype_variants = &self.candidates;
-        dbg!(&haplotype_variants);
-        //create the output file name in temp directory
+        //haplotype variants that comes from candidate variant generation as the initial step.
+        let haplotype_variants = &self.haplotype_variants;
 
         //get file name
-        // let file_name = &self.output.file_stem().unwrap().to_str().unwrap();
         let file_name = Path::new(&haplotype_variants)
             .file_name()
             .unwrap()
