@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.16.1](https://www.github.com/orthanq/orthanq/compare/v1.16.0...v1.16.1) (2025-10-07)
+
+
+### Bug Fixes
+
+* Update haplotype bar plot config with view and axis changes ([#88](https://www.github.com/orthanq/orthanq/issues/88)) ([b613f3e](https://www.github.com/orthanq/orthanq/commit/b613f3e7732f320b83354073b4d073a784abd7a2))
+
 ## [1.16.0](https://www.github.com/orthanq/orthanq/compare/v1.15.0...v1.16.0) (2025-10-01)
 
 
