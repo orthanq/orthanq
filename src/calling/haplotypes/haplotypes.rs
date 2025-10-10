@@ -927,7 +927,7 @@ pub fn plot_prediction(
                     });
                 }
             });
-        file_name.push_str("final_solution.json");
+        file_name.push_str("best_solution.json");
     }
     let plot_data_variants = json!(plot_data_variants);
     let plot_data_haplotype_variants = json!(plot_data_haplotype_variants);
@@ -1765,7 +1765,7 @@ pub fn output_empty_output(output_folder: &PathBuf) -> Result<(), Box<dyn Error>
     // Write blank plots
     for file_name in [
         "lp_solution.json",
-        "final_solution.json",
+        "best_solution.json",
         "2_field_solutions.json",
         "3_field_solutions.json",
     ] {
