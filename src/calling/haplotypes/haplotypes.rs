@@ -413,9 +413,7 @@ impl HaplotypeVariants {
         output_graph: &PathBuf,
     ) -> Result<HaplotypeGraph> {
         //create file path  for the graph
-        let mut parent = output_graph.clone();
-        parent.pop();
-        let mut file = fs::File::create(parent.join("graph.dot")).unwrap();
+        let mut file = fs::File::create(output_graph.join("graph.dot")).unwrap();
 
         let mut equivalence_classes: BTreeMap<Haplotype, Vec<VariantID>> = BTreeMap::new();
 
@@ -587,16 +585,15 @@ pub(crate) struct DatasetAfd {
 
 pub fn plot_prediction(
     output_lp_datavzrd: &bool,
-    outdir: &PathBuf,
+    output_folder: &PathBuf,
     solution: &str,
     candidate_matrix_values: &Vec<(BitVec, BitVec)>,
     haplotypes: &Vec<Haplotype>,
     variant_calls: &VariantCalls,
     best_variables: &Vec<f64>,
 ) -> Result<()> {
-    let mut parent = outdir.clone();
-    parent.pop();
-    fs::create_dir_all(&parent)?;
+    //create the output folder
+    fs::create_dir_all(&output_folder)?;
 
     let mut file_name = "".to_string();
     let mut json = include_str!("../../../templates/final_prediction.json");
@@ -613,7 +610,7 @@ pub fn plot_prediction(
     if &solution == &"lp" {
         //write tsv table for datavzrd view
         let mut variant_records = Vec::new();
-        let lp_solution_path = parent.join("lp_solution.tsv");
+        let lp_solution_path = output_folder.join("lp_solution.tsv");
         let mut wtr_lp = csv::WriterBuilder::new()
             .delimiter(b'\t')
             .quote_style(csv::QuoteStyle::Never)
@@ -805,12 +802,12 @@ pub fn plot_prediction(
             eprintln!("Warning: 'datasets' not found in config");
         }
         //write updated config back to a new file (or overwrite the original)
-        let filled_config_yaml = parent.join("datavzrd_config_filled.yaml");
+        let filled_config_yaml = output_folder.join("datavzrd_config_filled.yaml");
         let yaml_output = PathBuf::from(&filled_config_yaml);
         fs::write(&yaml_output, serde_yaml::to_string(&config_yaml)?)?;
 
         //then create datavzrd report
-        let datavzrd_output = parent.join("datavzrd_report");
+        let datavzrd_output = output_folder.join("datavzrd_report");
 
         if *output_lp_datavzrd {
             println!("Creating datavzrd report for LP solution.");
@@ -945,14 +942,14 @@ pub fn plot_prediction(
     blueprint["datasets"]["covered_variants"] = plot_data_covered_variants;
     blueprint["datasets"]["allele_frequency_distribution"] = plot_data_dataset_afd;
 
-    let file = fs::File::create(parent.join(file_name)).unwrap();
+    let file = fs::File::create(output_folder.join(file_name)).unwrap();
     serde_json::to_writer(file, &blueprint)?;
     Ok(())
 }
 
 pub fn linear_program(
     output_lp_datavzrd: &bool,
-    outdir: &PathBuf,
+    output_folder: &PathBuf,
     candidate_matrix: &CandidateMatrix,
     haplotypes: &Vec<Haplotype>,
     variant_calls: &VariantCalls,
@@ -1069,7 +1066,7 @@ pub fn linear_program(
             candidate_matrix.values().cloned().collect();
         plot_prediction(
             output_lp_datavzrd,
-            outdir,
+            output_folder,
             &"lp",
             &candidate_matrix_values,
             &haplotypes,
@@ -1111,14 +1108,14 @@ pub fn linear_program(
             Ok(lp_haplotypes_keys)
         }
     } else {
-        output_empty_output(&outdir).unwrap();
+        output_empty_output(&output_folder).unwrap();
         println!("No feasible LP solution found. Wrote empty output.");
         return Ok(vec![]);
     }
 }
 
 pub fn write_results(
-    outdir: &PathBuf,
+    outcsv: &PathBuf,
     data: &Data,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     final_haplotypes: &Vec<Haplotype>,
@@ -1169,7 +1166,7 @@ pub fn write_results(
     // Then,print TSV table with results
     // Columns: posterior_prob, haplotype_a, haplotype_b, haplotype_c, ...
     // with each column after the first showing the fraction of the respective haplotype
-    let mut wtr = csv::Writer::from_path(outdir)?;
+    let mut wtr = csv::Writer::from_path(outcsv)?;
     let mut headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
     let haplotypes_str: Vec<String> = final_haplotypes
         .clone()
@@ -1335,7 +1332,7 @@ pub(crate) struct DatasetDensitySolution {
 }
 
 pub fn plot_densities(
-    outdir: &PathBuf,
+    output_folder: &PathBuf,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     final_haplotypes: &Vec<Haplotype>,
     file_prefix: &str,
@@ -1370,15 +1367,14 @@ pub fn plot_densities(
         }
     }
 
-    //write to json
+    //fill in blueprints
     let plot_data_fractions = json!(plot_data_fractions);
     let plot_density = json!(plot_density);
     blueprint["datasets"]["haplotype_fractions"] = plot_data_fractions;
     blueprint["datasets"]["densities"] = plot_density;
 
-    let mut parent = outdir.clone();
-    parent.pop();
-    let file = fs::File::create(parent.join(file_name)).unwrap();
+    //create the file and write to json
+    let file = fs::File::create(output_folder.join(file_name)).unwrap();
     serde_json::to_writer(file, &blueprint)?;
     Ok(())
 }
@@ -1464,7 +1460,7 @@ pub fn get_event_posteriors(
     variant_calls: VariantCalls,
     application: &str,
     prior: &String,
-    outfile: &PathBuf,
+    output_folder: &PathBuf,
     extend_haplotypes: bool,
     num_extend_haplotypes: i64,
     num_constraint_haplotypes: i32,
@@ -1477,7 +1473,7 @@ pub fn get_event_posteriors(
     let filtered_calls = variant_calls.without_zero_dp();
 
     if filtered_calls.len() == 0 {
-        output_empty_output(&outfile).unwrap();
+        output_empty_output(&output_folder).unwrap();
         println!("No calls to use for LP, exiting with empty output!");
         std::process::exit(0);
     }
@@ -1512,7 +1508,7 @@ pub fn get_event_posteriors(
     //employ the linear program
     let lp_haplotypes = linear_program(
         output_lp_datavzrd,
-        &outfile,
+        &output_folder,
         &repr_candidate_matrix,
         &representatives,
         &filtered_calls,
@@ -1584,7 +1580,7 @@ pub fn get_event_posteriors(
                 .find_equivalence_classes_with_graph(
                     "hla",
                     threshold_equivalence_class.unwrap(),
-                    &outfile,
+                    &output_folder,
                 )
                 .unwrap(),
         );
@@ -1777,10 +1773,8 @@ pub fn extend_resulting_table(
     Ok((new_event_posteriors, all_haplotypes))
 }
 
-pub fn output_empty_output(outcsv: &PathBuf) -> Result<(), Box<dyn Error>> {
-    let mut parent = outcsv.clone();
-    parent.pop();
-    fs::create_dir_all(&parent)?;
+pub fn output_empty_output(output_folder: &PathBuf) -> Result<(), Box<dyn Error>> {
+    fs::create_dir_all(&output_folder)?;
 
     // Write blank plots
     for file_name in [
@@ -1791,19 +1785,19 @@ pub fn output_empty_output(outcsv: &PathBuf) -> Result<(), Box<dyn Error>> {
     ] {
         let json = include_str!("../../../templates/final_prediction.json");
         let blueprint: Value = serde_json::from_str(json)?;
-        let file = fs::File::create(parent.join(file_name))?;
+        let file = fs::File::create(output_folder.join(file_name))?;
         serde_json::to_writer(file, &blueprint)?;
     }
 
     // Write blank CSV for final solution, 2-field.csv and G_groups.csv
-    let mut wtr = csv::Writer::from_path(outcsv)?;
+    let mut wtr = csv::Writer::from_path(output_folder.join("predictions.csv"))?;
     let headers = ["density", "odds"];
     wtr.write_record(&headers)?;
 
     // Write blank CSV for 2-field.csv and G_groups.csv
-    for file_name in ["2-field.csv", "G_groups.csv"] {
-        let file_name = parent.join(file_name);
-        let mut wtr = csv::Writer::from_path(file_name)?;
+    for file in ["2-field.csv", "G_groups.csv"] {
+        let output_path = output_folder.join(file);
+        let mut wtr = csv::Writer::from_path(output_path)?;
         let headers = ["density", "odds"];
         wtr.write_record(&headers)?;
     }
