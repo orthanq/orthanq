@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0](https://github.com/orthanq/orthanq/compare/v1.16.1...v1.17.0) (2025-10-10)
+
+
+### Features
+
+* support output to directory instead of CSV file ([#92](https://github.com/orthanq/orthanq/issues/92)) ([42bdc7f](https://github.com/orthanq/orthanq/commit/42bdc7f662f48362c09eb364bb1b26c03cf2b440))
+
 ### [1.16.1](https://www.github.com/orthanq/orthanq/compare/v1.16.0...v1.16.1) (2025-10-07)
 
 
