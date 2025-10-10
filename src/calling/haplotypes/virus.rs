@@ -104,7 +104,12 @@ impl Caller {
             )?;
 
             //plot first 10 posteriors of orthanq output
-            haplotypes::plot_densities(&self.output_folder, &event_posteriors, &all_haplotypes, "viral")?;
+            haplotypes::plot_densities(
+                &self.output_folder,
+                &event_posteriors,
+                &all_haplotypes,
+                "viral",
+            )?;
             Ok(())
         }
     }
@@ -125,7 +130,8 @@ impl Caller {
         }
 
         //write empty viral solutions
-        let file = fs::File::create(self.output_folder.join("viral_solutions.json".to_string())).unwrap();
+        let file =
+            fs::File::create(self.output_folder.join("viral_solutions.json".to_string())).unwrap();
         serde_json::to_writer(file, &blueprint)?;
 
         //write blank tsv
