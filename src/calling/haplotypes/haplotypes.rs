@@ -630,7 +630,6 @@ pub fn plot_prediction(
                 }
             }
         }
-        // dbg!(&contributing_haplotypes.len());
 
         // print haplotypes that will not be displayed
         // for haplotype in haplotypes.iter() {
@@ -1016,7 +1015,6 @@ pub fn linear_program(
     let mut solution = None;
     let max_haplotypes = cmp::min(num_constraint_haplotypes, haplotypes.len() as i32);
     for constraint_value in (1..=max_haplotypes).rev() {
-        dbg!("constraint number is : {}", constraint_value);
 
         // constraint: sum of binary selection variables == constraint_value
         model = model.with(constraint!(binary_sum.clone() == constraint_value));
@@ -1052,7 +1050,6 @@ pub fn linear_program(
         //finally, print the variables and the sum
         let mut lp_haplotypes = BTreeMap::new();
         for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
-            dbg!(format!("v{}, {:?}={}", i, haplotype, sol.value(*var)));
             best_variables.push(sol.value(var.clone()).clone());
             if sol.value(*var) > lp_cutoff {
                 //the speed of fraction exploration is managable in case of diploid priors
@@ -1060,7 +1057,6 @@ pub fn linear_program(
             }
         }
 
-        dbg!(format!("sum = {}", sol.eval(sum_tvars)));
         //plot the best result
         let candidate_matrix_values: Vec<(BitVec, BitVec)> =
             candidate_matrix.values().cloned().collect();
@@ -1102,7 +1098,6 @@ pub fn linear_program(
                     });
             });
             let extended_haplotypes = extended_haplotypes_bset.into_iter().collect();
-            dbg!(&extended_haplotypes);
             Ok(extended_haplotypes)
         } else {
             Ok(lp_haplotypes_keys)
@@ -1294,7 +1289,6 @@ pub fn collect_constraints_and_variants(
         let _prime_fraction_cont = Expression::from_other_affine(0.);
         let _vaf = Expression::from_other_affine(0.);
         let mut counter = 0;
-        // dbg!(&variant);
         for (i, _variable) in variables.iter().enumerate() {
             if coverage_matrix[i as u64] {
                 counter += 1;
@@ -1310,7 +1304,6 @@ pub fn collect_constraints_and_variants(
                 }
             }
             let expr_to_add = *call.max_prob * (fraction_cont - call.af.clone().into_expression());
-            // dbg!(&expr_to_add);
             constraints.push(expr_to_add.clone());
             expr += expr_to_add;
         }
@@ -1504,7 +1497,6 @@ pub fn get_event_posteriors(
     let repr_haplotype_variants =
         var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
     let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
-    dbg!(&representatives);
     //employ the linear program
     let lp_haplotypes = linear_program(
         output_lp_datavzrd,
@@ -1521,9 +1513,7 @@ pub fn get_event_posteriors(
     //add haplotypes that are the same considering all covered variants used in the LP.
     //first, find all variants where ALL haplotypes have coverage=true
     //then, for a haplotype, get its genotype map restricted to those variants
-    dbg!(&lp_haplotypes);
     let similar_lp_haplotypes = find_similar_haplotypes(&repr_haplotype_variants, &lp_haplotypes);
-    dbg!(&similar_lp_haplotypes);
 
     //collect all haplotypes (some haplotypes with the same genotype matrix set migt have been chosen twice in the lp solution)
     let mut lp_haplotypes_extended_set = BTreeSet::new();
@@ -1543,9 +1533,6 @@ pub fn get_event_posteriors(
     );
 
     //output empty output in case the list of original haplotypes and extended haplotype list are the same, otherwise the process gets killed my high memory usage
-    dbg!(&haplotype_variants.list_haplotypes().len());
-    dbg!(&reduced_vec.len());
-    dbg!(&reduced_vec);
     // if haplotype_variants.list_haplotypes().len() == reduced_vec.len() {
     //     output_empty_output(&outfile).unwrap();
     //     println!(
@@ -1618,7 +1605,6 @@ pub fn get_event_posteriors(
         &prior,
         &identical_haplotypes_map,
     )?;
-    dbg!(&all_haplotypes);
     Ok((new_event_posteriors, all_haplotypes, data))
 }
 
