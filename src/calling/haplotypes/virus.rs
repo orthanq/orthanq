@@ -122,7 +122,7 @@ impl Caller {
 
         for file_name in vec![
             "lp_solution.json".to_string(),
-            "final_solution.json".to_string(),
+            "best_solution.json".to_string(),
         ] {
             let blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
             let file = fs::File::create(self.output_folder.join(file_name)).unwrap();
