@@ -29,7 +29,7 @@ use std::collections::HashSet;
 pub struct Caller {
     haplotype_variants: bcf::Reader,
     variant_calls: bcf::Reader,
-    outcsv: PathBuf,
+    output_folder: PathBuf,
     prior: String,
     lp_cutoff: f64,
     extend_haplotypes: bool,
@@ -57,7 +57,7 @@ impl Caller {
                 variant_calls,
                 &"virus",
                 &self.prior,
-                &self.outcsv,
+                &self.output_folder,
                 self.extend_haplotypes,
                 self.num_extend_haplotypes,
                 self.num_constraint_haplotypes,
@@ -85,7 +85,7 @@ impl Caller {
 
             haplotypes::plot_prediction(
                 &self.output_lp_datavzrd,
-                &self.outcsv,
+                &self.output_folder,
                 &"final",
                 &candidate_matrix,
                 &all_haplotypes,
@@ -95,7 +95,7 @@ impl Caller {
 
             //write results to tsv
             haplotypes::write_results(
-                &self.outcsv,
+                &self.output_folder.join(&"predictions.csv"),
                 &data,
                 &event_posteriors,
                 &all_haplotypes,
@@ -104,15 +104,13 @@ impl Caller {
             )?;
 
             //plot first 10 posteriors of orthanq output
-            haplotypes::plot_densities(&self.outcsv, &event_posteriors, &all_haplotypes, "viral")?;
+            haplotypes::plot_densities(&self.output_folder, &event_posteriors, &all_haplotypes, "viral")?;
             Ok(())
         }
     }
     pub fn output_empty_files(&self) -> Result<()> {
         //write blank plots, required for the workflow!
-        let mut parent = self.outcsv.clone();
-        parent.pop();
-        fs::create_dir_all(&parent)?;
+        fs::create_dir_all(&self.output_folder)?;
 
         let json: &str = include_str!("../../../templates/final_prediction.json");
         let blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
@@ -122,16 +120,16 @@ impl Caller {
             "final_solution.json".to_string(),
         ] {
             let blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
-            let file = fs::File::create(parent.join(file_name)).unwrap();
+            let file = fs::File::create(self.output_folder.join(file_name)).unwrap();
             serde_json::to_writer(file, &blueprint)?;
         }
 
         //write empty viral solutions
-        let file = fs::File::create(parent.join("viral_solutions.json".to_string())).unwrap();
+        let file = fs::File::create(self.output_folder.join("viral_solutions.json".to_string())).unwrap();
         serde_json::to_writer(file, &blueprint)?;
 
         //write blank tsv
-        let mut wtr = csv::Writer::from_path(&self.outcsv)?;
+        let mut wtr = csv::Writer::from_path(&self.output_folder.join("predictions.csv"))?;
         let headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
         wtr.write_record(&headers)?;
         Ok(())

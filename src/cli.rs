@@ -236,7 +236,7 @@ pub enum CallKind {
         xml: PathBuf,
         #[structopt(
             long,
-            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
+            help = "Folder to store results and diagnostic plots in json format."
         )]
         output: PathBuf,
         #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
@@ -306,7 +306,7 @@ pub enum CallKind {
         variant_calls: PathBuf,
         #[structopt(
             long,
-            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
+            help = "Folder to store results and diagnostic plots in json format."
         )]
         output: PathBuf,
         #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
@@ -361,7 +361,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .xml(xml)
                     // .max_haplotypes(max_haplotypes)
                     // .min_norm_counts(min_norm_counts)
-                    .outcsv(output)
+                    .output_folder(output)
                     .prior(prior)
                     // .common_variants(common_variants)
                     .lp_cutoff(lp_cutoff)
@@ -391,7 +391,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
                     .variant_calls(bcf::Reader::from_path(variant_calls)?)
-                    .outcsv(output)
+                    .output_folder(output)
                     .prior(prior)
                     .lp_cutoff(lp_cutoff)
                     .extend_haplotypes(extend_haplotypes)
