@@ -1015,7 +1015,6 @@ pub fn linear_program(
     let mut solution = None;
     let max_haplotypes = cmp::min(num_constraint_haplotypes, haplotypes.len() as i32);
     for constraint_value in (1..=max_haplotypes).rev() {
-
         // constraint: sum of binary selection variables == constraint_value
         model = model.with(constraint!(binary_sum.clone() == constraint_value));
 
