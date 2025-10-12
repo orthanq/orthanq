@@ -932,7 +932,6 @@ pub fn get_arrow_plot(
 
     candidate_matrix.iter().zip(variant_calls.iter()).for_each(
         |((variant_id, (genotypes, _covered)), (_id, call))| {
-            
             //do not include zero af variants
             if call.af == 0.0 {
                 return;
