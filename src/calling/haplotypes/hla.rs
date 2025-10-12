@@ -122,7 +122,7 @@ impl Caller {
                     .unwrap(),
             )?;
             haplotypes::get_arrow_plot(
-                &self.outcsv,
+                &self.output_folder,
                 &nonzero_haps_candidate_matrix,
                 &nonzero_haplotype_fractions,
                 &data.variant_calls,

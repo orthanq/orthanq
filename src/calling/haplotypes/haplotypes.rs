@@ -995,9 +995,7 @@ pub fn get_arrow_plot(
     blueprint["datasets"]["arrow_records"] = arrow_plot_records;
 
     //write to file
-    let mut parent = outdir.clone();
-    parent.pop();
-    let file = fs::File::create(parent.join("arrow_plot.json".to_string())).unwrap();
+    let file = fs::File::create(outdir.join("arrow_plot.json".to_string())).unwrap();
     serde_json::to_writer(file, &blueprint)?;
 
     Ok(())
