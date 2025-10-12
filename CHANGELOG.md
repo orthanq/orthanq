@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.17.0](https://github.com/orthanq/orthanq/compare/v1.16.1...v1.17.0) (2025-10-10)
+
+
+### Features
+
+* support output to directory instead of CSV file ([#92](https://github.com/orthanq/orthanq/issues/92)) ([42bdc7f](https://github.com/orthanq/orthanq/commit/42bdc7f662f48362c09eb364bb1b26c03cf2b440))
+
+### [1.16.1](https://www.github.com/orthanq/orthanq/compare/v1.16.0...v1.16.1) (2025-10-07)
+
+
+### Bug Fixes
+
+* Update haplotype bar plot config with view and axis changes ([#88](https://www.github.com/orthanq/orthanq/issues/88)) ([b613f3e](https://www.github.com/orthanq/orthanq/commit/b613f3e7732f320b83354073b4d073a784abd7a2))
+
+## [1.16.0](https://www.github.com/orthanq/orthanq/compare/v1.15.0...v1.16.0) (2025-10-01)
+
+
+### Features
+
+* --sample-name parameter for hla calling ([#86](https://www.github.com/orthanq/orthanq/issues/86)) ([e17a5c4](https://www.github.com/orthanq/orthanq/commit/e17a5c4445608e8e2b11ad300dfc2c624897cb3d))
+
+
+### Bug Fixes
+
+* handle missing DP ([#85](https://www.github.com/orthanq/orthanq/issues/85)) ([7a090e2](https://www.github.com/orthanq/orthanq/commit/7a090e2815a2c2f147ab093af261e9065e900343))
+
+## [1.15.0](https://www.github.com/orthanq/orthanq/compare/v1.14.0...v1.15.0) (2025-09-21)
+
+
+### Features
+
+* implement bcf export option for candidate variant generation ([#82](https://www.github.com/orthanq/orthanq/issues/82)) ([6f82e4b](https://www.github.com/orthanq/orthanq/commit/6f82e4bdceaa56496ac259f7367959f0eae3aba9))
+* implement optional parameter for outputting bam file produced with alleles to reference genome alignment and configure virus output to the given filepath instead of the previous candidates.vcf ([#84](https://www.github.com/orthanq/orthanq/issues/84)) ([9a827ba](https://www.github.com/orthanq/orthanq/commit/9a827baa04a29fee1c1b1c72526c1532a5e3c676))
+
+## [1.14.0](https://www.github.com/orthanq/orthanq/compare/v1.13.0...v1.14.0) (2025-07-22)
+
+
+### Features
+
+* separately align HLA alleles to genomic regions ([#80](https://www.github.com/orthanq/orthanq/issues/80)) ([1b321f6](https://www.github.com/orthanq/orthanq/commit/1b321f6e0f49b95c75f9c87c59dc1f5a0d5450aa))
+
+
+### Bug Fixes
+
+* update rust bio version ([#77](https://www.github.com/orthanq/orthanq/issues/77)) ([af7c867](https://www.github.com/orthanq/orthanq/commit/af7c867b57e8671560822ce8f0c0940a0a6267dc))
+
 ## [1.13.0](https://www.github.com/orthanq/orthanq/compare/v1.12.1...v1.13.0) (2025-05-28)
 
 

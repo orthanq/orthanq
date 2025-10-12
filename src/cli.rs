@@ -96,11 +96,11 @@ pub enum PreprocessKind {
     },
     Virus {
         #[structopt(
-            long = "candidates",
+            long = "haplotype-variants",
             required = true,
-            help = "Folder that is used to create candidate variants."
+            help = "Haplotype variants compared to a common reference."
         )]
-        candidates: PathBuf,
+        haplotype_variants: PathBuf,
         #[structopt(
             long = "genome",
             required = true,
@@ -161,15 +161,25 @@ pub enum CandidatesKind {
         // allele_freq: PathBuf,
         #[structopt(
             long,
-            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
+            help = "Folder to store candidate variants for each loci. Currently, only A, B, C and DQB1 are supported."
         )]
-        output: Option<PathBuf>,
+        output: PathBuf,
         #[structopt(
             default_value = "1",
             long = "threads",
             help = "Threads to use for minimap2 used candidate generation."
         )]
         threads: String,
+        #[structopt(
+            long,
+            help = "Generate BCF output instead of the default VCF file format."
+        )]
+        output_bcf: bool,
+        #[structopt(
+            long,
+            help = "Output BAM containing alignment of haplotypes against the reference genome."
+        )]
+        output_bam: bool,
     },
     Virus {
         #[structopt(
@@ -188,6 +198,16 @@ pub enum CandidatesKind {
             help = "Threads to use for minimap2 that is used in candidate generation."
         )]
         threads: String,
+        #[structopt(
+            long,
+            help = "Generate BCF output instead of the default VCF file format."
+        )]
+        output_bcf: bool,
+        #[structopt(
+            long,
+            help = "Output BAM containing alignment of haplotypes against the reference genome."
+        )]
+        output_bam: bool,
     },
 }
 
@@ -216,7 +236,7 @@ pub enum CallKind {
         xml: PathBuf,
         #[structopt(
             long,
-            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
+            help = "Folder to store results and diagnostic plots in json format."
         )]
         output: PathBuf,
         #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
@@ -264,6 +284,11 @@ pub enum CallKind {
         num_constraint_haplotypes: i32,
         #[structopt(long, help = "Output Datavzrd report for LP solution.")]
         output_lp_datavzrd: bool,
+        #[structopt(
+            long,
+            help = "Sample to use in case of multisample BCFs. Sample name should match the sample name in the variant calls BCF."
+        )]
+        sample_name: Option<String>,
     },
     Virus {
         #[structopt(
@@ -281,7 +306,7 @@ pub enum CallKind {
         variant_calls: PathBuf,
         #[structopt(
             long,
-            help = "Folder to store quality control plots for the inference of a CDF from Kallisto bootstraps for each haplotype of interest."
+            help = "Folder to store results and diagnostic plots in json format."
         )]
         output: PathBuf,
         #[structopt(long, help = "Choose uniform, diploid or diploid-subclonal")]
@@ -328,6 +353,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 num_extend_haplotypes,
                 num_constraint_haplotypes,
                 output_lp_datavzrd,
+                sample_name,
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
@@ -335,7 +361,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .xml(xml)
                     // .max_haplotypes(max_haplotypes)
                     // .min_norm_counts(min_norm_counts)
-                    .outcsv(output)
+                    .output_folder(output)
                     .prior(prior)
                     // .common_variants(common_variants)
                     .lp_cutoff(lp_cutoff)
@@ -345,6 +371,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .num_extend_haplotypes(num_extend_haplotypes)
                     .num_constraint_haplotypes(num_constraint_haplotypes)
                     .output_lp_datavzrd(output_lp_datavzrd)
+                    .sample_name(sample_name)
                     .build()
                     .unwrap();
                 caller.call()?;
@@ -364,7 +391,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
                     .variant_calls(bcf::Reader::from_path(variant_calls)?)
-                    .outcsv(output)
+                    .output_folder(output)
                     .prior(prior)
                     .lp_cutoff(lp_cutoff)
                     .extend_haplotypes(extend_haplotypes)
@@ -385,6 +412,8 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 // allele_freq,
                 output,
                 threads,
+                output_bcf,
+                output_bam,
             } => {
                 let caller = candidates::hla::CallerBuilder::default()
                     .alleles(alleles)
@@ -393,6 +422,8 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     // .allele_freq(allele_freq)
                     .output(output)
                     .threads(threads)
+                    .output_bcf(output_bcf)
+                    .output_bam(output_bam)
                     .build()
                     .unwrap();
                 caller.call()?;
@@ -403,12 +434,16 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 lineages,
                 output,
                 threads,
+                output_bcf,
+                output_bam,
             } => {
                 let mut caller = candidates::virus::generic::CallerBuilder::default()
                     .genome(genome)
                     .lineages(lineages)
                     .output(output)
                     .threads(threads)
+                    .output_bcf(output_bcf)
+                    .output_bam(output_bam)
                     .build()
                     .unwrap();
                 caller.call()?;
@@ -443,7 +478,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 Ok(())
             }
             PreprocessKind::Virus {
-                candidates,
+                haplotype_variants,
                 genome,
                 reads,
                 output,
@@ -451,7 +486,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 output_bam,
             } => {
                 preprocess::virus::CallerBuilder::default()
-                    .candidates(candidates)
+                    .haplotype_variants(haplotype_variants)
                     .genome(genome)
                     .reads(reads)
                     .output(output)

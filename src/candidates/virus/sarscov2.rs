@@ -37,6 +37,7 @@ use std::process::Command;
 pub struct Caller {
     output: PathBuf,
     threads: String,
+    output_bcf: bool,
 }
 impl Caller {
     pub fn call(&mut self) -> Result<()> {
@@ -220,7 +221,7 @@ impl Caller {
         let loci_df = convert_to_dataframe(&candidate_variants, loci_array, &clade_names).unwrap();
 
         //then write to vcf
-        write_to_vcf(&self.output, genotype_df, loci_df)?;
+        write_to_vcf(&self.output, genotype_df, loci_df, self.output_bcf)?;
 
         //convert mutations to sequences and write sequences for each clade to fasta
         self.write_sequences_to_fasta(&clade_mutations_with_parents, &reference_path)?;
