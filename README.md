@@ -28,11 +28,7 @@ Second, activate the environment with
 
     mamba activate orthanq-dev
 
-Third, build Orthanq via
-
-    HDF5_DIR=$CONDA_PREFIX RUSTFLAGS='-L $CONDA_PREFIX/include' cargo build
-
-Fourth, conda lib location is set via
+Third, conda lib location is set via
 
     export LD_LIBRARY_PATH=$CONDA_PREFIX/lib
     

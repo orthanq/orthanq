@@ -21,11 +21,14 @@ pub struct Caller {
     lineages: PathBuf,
     output: PathBuf,
     threads: String,
+    output_bcf: bool,
+    output_bam: bool,
 }
 impl Caller {
     pub fn call(&mut self) -> Result<()> {
         //align and sort
         alignment(
+            &"virus",
             &self.genome,
             &self.lineages,
             &self.threads,
@@ -33,25 +36,30 @@ impl Caller {
             &self.output,
         )?;
 
+        //create path to the bam file
+        let bam_path: &PathBuf = &self.output.with_file_name("viruses_alignment_sorted.bam");
+
         //find variants from cigar
-        let (genotype_df, loci_df) =
-            find_variants_from_cigar(&self.genome, &self.output.join("alignment_sorted.sam"))
-                .unwrap();
+        let (genotype_df, loci_df) = find_variants_from_cigar(&self.genome, &bam_path).unwrap();
 
         //write locus-wise vcf files.
-        write_to_vcf(&self.output, genotype_df, loci_df)?;
+        write_to_vcf(&self.output, genotype_df, loci_df, self.output_bcf)?;
+
+        //remove alignment file based on output_bam
+        if !self.output_bam {
+            std::fs::remove_file(bam_path)?;
+        }
 
         Ok(())
     }
 }
 
 pub fn write_to_vcf(
-    outdir: &PathBuf,
+    output_path: &PathBuf,
     variant_table: DataFrame,
     loci_table: DataFrame,
+    output_bcf: bool,
 ) -> Result<()> {
-    // dbg!(&variant_table);
-    //Create VCF header
     let mut header = Header::new();
 
     //get contig name of the reference
@@ -82,17 +90,14 @@ pub fn write_to_vcf(
     // fs::create_dir_all(self.output.as_ref().unwrap())?;
     // let outdir: &_ = outdir;
 
-    let mut vcf = Writer::from_path(
-        format!("{}.vcf", outdir.join("candidates").display()),
-        &header,
-        true,
-        Format::Vcf,
-    )
-    .unwrap();
+    //create VCF/BCF Writer
+    let format = if output_bcf { Format::Bcf } else { Format::Vcf };
+    let mut writer = Writer::from_path(&output_path, &header, true, format)
+        .expect("Failed to create VCF/BCF writer");
 
     let _id_iter = variant_table["ID"].i64().unwrap().into_iter();
     for row_index in 0..variant_table.height() {
-        let mut record = vcf.empty_record();
+        let mut record = writer.empty_record();
         let mut variant_iter = variant_table["Index"].utf8().unwrap().into_iter();
         let mut id_iter = variant_table["ID"].i64().unwrap().into_iter();
         let splitted = variant_iter
@@ -107,7 +112,7 @@ pub fn write_to_vcf(
         let ref_base = splitted[2];
         let alt_base = splitted[3];
         let alleles: &[&[u8]] = &[ref_base.as_bytes(), alt_base.as_bytes()];
-        let rid = vcf.header().name2rid(chrom.as_bytes()).unwrap();
+        let rid = writer.header().name2rid(chrom.as_bytes()).unwrap();
 
         record.set_rid(Some(rid));
         record.set_pos(pos.parse::<i64>().unwrap() - 1);
@@ -149,7 +154,7 @@ pub fn write_to_vcf(
             all_c.push(c);
         }
         record.push_format_integer(b"C", &all_c)?;
-        vcf.write(&record).unwrap();
+        writer.write(&record).unwrap();
     }
     Ok(())
 }

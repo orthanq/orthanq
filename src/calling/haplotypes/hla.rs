@@ -31,7 +31,7 @@ pub struct Caller {
     haplotype_variants: bcf::Reader,
     variant_calls: bcf::Reader,
     xml: PathBuf,
-    outcsv: PathBuf,
+    output_folder: PathBuf,
     prior: String,
     // common_variants: bool,
     lp_cutoff: f64,
@@ -41,17 +41,18 @@ pub struct Caller {
     num_extend_haplotypes: i64,
     num_constraint_haplotypes: i32,
     output_lp_datavzrd: bool,
+    sample_name: Option<String>,
 }
 
 impl Caller {
     pub fn call(&mut self) -> Result<()> {
         //Step 1: Prepare data and compute the model
         //initially prepare haplotype_variants and variant_calls
-        let variant_calls = VariantCalls::new(&mut self.variant_calls)?;
+        let variant_calls = VariantCalls::new(&mut self.variant_calls, &self.sample_name)?;
 
         //write blank plots and tsv table if no variants are available.
         if variant_calls.len() == 0 {
-            output_empty_output(&self.outcsv).unwrap();
+            output_empty_output(&self.output_folder).unwrap();
             Ok(())
         } else {
             let haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
@@ -61,7 +62,7 @@ impl Caller {
                 variant_calls,
                 &"hla",
                 &self.prior,
-                &self.outcsv,
+                &self.output_folder,
                 self.extend_haplotypes.unwrap_or(true),
                 self.num_extend_haplotypes,
                 self.num_constraint_haplotypes,
@@ -89,7 +90,7 @@ impl Caller {
 
             haplotypes::plot_prediction(
                 &self.output_lp_datavzrd,
-                &self.outcsv,
+                &self.output_folder,
                 &"final",
                 &candidate_matrix,
                 &all_haplotypes,
@@ -99,7 +100,7 @@ impl Caller {
 
             //write results to tsv
             haplotypes::write_results(
-                &self.outcsv,
+                &self.output_folder.join(&"predictions.csv"),
                 &data,
                 &event_posteriors,
                 &all_haplotypes,
@@ -130,7 +131,7 @@ impl Caller {
             //second: 2-field
             let (two_field_haplotypes, two_field_event_posteriors) =
                 convert_to_two_field(&event_posteriors, &all_haplotypes)?;
-            let mut path_for_two_fields = PathBuf::from(&self.outcsv.parent().unwrap());
+            let mut path_for_two_fields = PathBuf::from(&self.output_folder);
             path_for_two_fields.push("2-field.csv");
             haplotypes::write_results(
                 &path_for_two_fields,
@@ -143,13 +144,13 @@ impl Caller {
 
             //plot first 10 posteriors of orthanq output
             haplotypes::plot_densities(
-                &self.outcsv,
+                &self.output_folder,
                 &event_posteriors,
                 &all_haplotypes,
                 "3_field",
             )?;
             haplotypes::plot_densities(
-                &self.outcsv,
+                &self.output_folder,
                 &two_field_event_posteriors,
                 &two_field_haplotypes,
                 "2_field",
@@ -157,7 +158,7 @@ impl Caller {
 
             //write table for G groups of HLA alleles, for HLA alleles with None G group in the XML table, we write the haplotype name back.
             //as a hint, successfuly converted G groups will have G in the end, while the ones with no G group will not have one.
-            let mut converted_name = PathBuf::from(&self.outcsv.parent().unwrap());
+            let mut converted_name = PathBuf::from(&self.output_folder);
             converted_name.push("G_groups.csv");
             let allele_to_g_groups = self.convert_to_g().unwrap();
             // dbg!(&allele_to_g_groups);

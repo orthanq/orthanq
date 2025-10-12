@@ -3,7 +3,7 @@ use rust_htslib::bcf;
 #[test]
 fn check_haplotype_fractions_5050() {
     let mut output = std::path::PathBuf::new();
-    output.push("test_output.csv");
+    output.push("test_output");
     let _ = orthanq::calling::haplotypes::hla::CallerBuilder::default()
         .haplotype_variants(bcf::Reader::from_path("tests/B.vcf").unwrap())
         .variant_calls(
@@ -11,7 +11,7 @@ fn check_haplotype_fractions_5050() {
         )
         .xml("tests/hla.xml".into())
         .enable_equivalence_class_constraint(false)
-        .outcsv(output)
+        .output_folder(output.clone())
         .prior("diploid".to_string())
         .lp_cutoff(0.01)
         .threshold_equivalence_class(1)
@@ -19,12 +19,13 @@ fn check_haplotype_fractions_5050() {
         .num_extend_haplotypes(3)
         .num_constraint_haplotypes(6)
         .output_lp_datavzrd(false)
+        .sample_name(None)
         .build()
         .unwrap()
         .call();
 
     //check if the haplotype is correct
-    let mut rdr = csv::Reader::from_path("test_output.csv").unwrap();
+    let mut rdr = csv::Reader::from_path(output.join("predictions.csv")).unwrap();
 
     //access haplotype names
     let headers = rdr.headers().unwrap().clone();

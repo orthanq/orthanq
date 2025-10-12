@@ -16,6 +16,7 @@ use ordered_float::NotNan;
 use good_lp::IntoAffineExpression;
 use good_lp::*;
 use good_lp::{constraint, variable, variables, Expression, ResolutionError, SolverModel};
+use rust_htslib::bcf::record::Numeric;
 use rust_htslib::bcf::{
     self,
     record::GenotypeAllele::{Phased, Unphased},
@@ -174,16 +175,44 @@ pub struct VariantCall {
 #[derive(Derefable, DerefMut, Debug, Clone)]
 pub struct VariantCalls(#[deref] BTreeMap<VariantID, VariantCall>);
 impl VariantCalls {
-    pub fn new(variant_calls: &mut bcf::Reader) -> Result<Self> {
+    pub fn new(variant_calls: &mut bcf::Reader, sample_name: &Option<String>) -> Result<Self> {
+        //initialize the final struct
         let mut calls = BTreeMap::new();
+
+        // find and the header of the bcf
         let header = variant_calls.header().clone();
 
+        // find index of the given sample name in the header, if no sample_name is provided default to zero.
+        let sample_index = if let Some(name) = sample_name {
+            if let Some(idx) = header.samples().iter().position(|&s| s == name.as_bytes()) {
+                idx
+            } else {
+                let available_samples = header
+                    .samples()
+                    .iter()
+                    .map(|s| String::from_utf8_lossy(s).into_owned())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                anyhow::bail!(
+                    "sample name '{}' not found in header. Available samples: [{}]",
+                    name,
+                    available_samples
+                );
+            }
+        } else {
+            0 // default to the first sample
+        };
         for record_result in variant_calls.records() {
+            // unwrap and unpack the record
             let mut record = record_result?;
             record.unpack();
+
+            // parse variant id
             let variant_id: i32 = String::from_utf8(record.id())?.parse()?;
-            // dbg!(&variant_id);
-            //by default, make prob_absent and prob_present 0.0 to handle the case with NaN prob values
+
+            // parse probability of the variant being present and absent to be used in the LP.
+            // by default, make prob_absent and prob_present 0.0 to handle the case with NaN prob values
             let mut prob_absent = NotNan::new(0.0).unwrap();
             let mut prob_present = NotNan::new(0.0).unwrap();
 
@@ -198,24 +227,23 @@ impl VariantCalls {
                 prob_present =
                     NotNan::new(*Prob::from(PHREDProb(parsed_prob_present.into()))).unwrap();
             }
-            // dbg!(&prob_absent, &prob_present);
 
-            //get max of prob_absent and prob_present to use for weighting in linear program
+            // get max of prob_absent and prob_present to use for weighting in linear program
             let max_prob = cmp::max(prob_absent, prob_present);
-            // dbg!(&max_prob);
 
+            // parse read depth by handling missing DP values
+            let dp = record.format(b"DP").integer().unwrap();
+            let dp_val = dp[sample_index][0];
+            let read_depth_int = if dp_val.is_missing() { 0 } else { dp_val };
+
+            // parse allele frequencies
+            let af = (&*record.format(b"AF").float().unwrap()[sample_index]).to_vec()[0];
+
+            // parse afd string
             let afd_utf = record.format(b"AFD").string()?;
-            let afd_str = std::str::from_utf8(afd_utf[0])?;
-            let read_depth = record.format(b"DP").integer().unwrap();
-            let read_depth_int = read_depth[0].get(0).unwrap();
-            //include all variants without making a difference for their depth of coverage.
-            // if read_depth[0] != &[0]
-            // // && (&prob_absent_prob <= &Prob(0.05) || &prob_absent_prob >= &Prob(0.95))
-            // {
-            //because some afd strings are just "." and that throws an error while splitting below.
-            let variant_id: i32 = String::from_utf8(record.id())?.parse()?;
-            let af = (&*record.format(b"AF").float().unwrap()[0]).to_vec()[0];
+            let afd_str = std::str::from_utf8(afd_utf[sample_index])?;
 
+            // parse densities per vaf. Some afd strings are just "." and this must be handled.
             let mut vaf_density = BTreeMap::new();
             for pair in afd_str.split(',') {
                 if let Some((vaf, density)) = pair.split_once('=') {
@@ -224,7 +252,8 @@ impl VariantCalls {
                     vaf_density.insert(vaf, LogProb::from(PHREDProb(density)));
                 }
             }
-            //exxtract reference (REF), alternative (ALT), and position (POS)
+
+            //extract reference (REF), alternative (ALT), and position (POS)
             let chr_name = std::str::from_utf8(header.rid2name(record.rid().unwrap()).unwrap())?;
             let pos = record.pos() + 1; // 1-based indexing
             let ref_base = std::str::from_utf8(record.alleles()[0])?;
@@ -237,7 +266,7 @@ impl VariantCalls {
                 change: variant_change,
                 af,
                 afd: AlleleFreqDist(vaf_density),
-                dp: *read_depth_int,
+                dp: read_depth_int,
             };
 
             calls.insert(VariantID(variant_id), variant_call);
@@ -385,9 +414,7 @@ impl HaplotypeVariants {
         output_graph: &PathBuf,
     ) -> Result<HaplotypeGraph> {
         //create file path  for the graph
-        let mut parent = output_graph.clone();
-        parent.pop();
-        let mut file = fs::File::create(parent.join("graph.dot")).unwrap();
+        let mut file = fs::File::create(output_graph.join("graph.dot")).unwrap();
 
         let mut equivalence_classes: BTreeMap<Haplotype, Vec<VariantID>> = BTreeMap::new();
 
@@ -559,16 +586,15 @@ pub(crate) struct DatasetAfd {
 
 pub fn plot_prediction(
     output_lp_datavzrd: &bool,
-    outdir: &PathBuf,
+    output_folder: &PathBuf,
     solution: &str,
     candidate_matrix_values: &Vec<(BitVec, BitVec)>,
     haplotypes: &Vec<Haplotype>,
     variant_calls: &VariantCalls,
     best_variables: &Vec<f64>,
 ) -> Result<()> {
-    let mut parent = outdir.clone();
-    parent.pop();
-    fs::create_dir_all(&parent)?;
+    //create the output folder
+    fs::create_dir_all(&output_folder)?;
 
     let mut file_name = "".to_string();
     let mut json = include_str!("../../../templates/final_prediction.json");
@@ -585,7 +611,7 @@ pub fn plot_prediction(
     if &solution == &"lp" {
         //write tsv table for datavzrd view
         let mut variant_records = Vec::new();
-        let lp_solution_path = parent.join("lp_solution.tsv");
+        let lp_solution_path = output_folder.join("lp_solution.tsv");
         let mut wtr_lp = csv::WriterBuilder::new()
             .delimiter(b'\t')
             .quote_style(csv::QuoteStyle::Never)
@@ -605,7 +631,6 @@ pub fn plot_prediction(
                 }
             }
         }
-        // dbg!(&contributing_haplotypes.len());
 
         // print haplotypes that will not be displayed
         // for haplotype in haplotypes.iter() {
@@ -777,12 +802,12 @@ pub fn plot_prediction(
             eprintln!("Warning: 'datasets' not found in config");
         }
         //write updated config back to a new file (or overwrite the original)
-        let filled_config_yaml = parent.join("datavzrd_config_filled.yaml");
+        let filled_config_yaml = output_folder.join("datavzrd_config_filled.yaml");
         let yaml_output = PathBuf::from(&filled_config_yaml);
         fs::write(&yaml_output, serde_yaml::to_string(&config_yaml)?)?;
 
         //then create datavzrd report
-        let datavzrd_output = parent.join("datavzrd_report");
+        let datavzrd_output = output_folder.join("datavzrd_report");
 
         if *output_lp_datavzrd {
             println!("Creating datavzrd report for LP solution.");
@@ -903,7 +928,7 @@ pub fn plot_prediction(
                     });
                 }
             });
-        file_name.push_str("final_solution.json");
+        file_name.push_str("best_solution.json");
     }
     let plot_data_variants = json!(plot_data_variants);
     let plot_data_haplotype_variants = json!(plot_data_haplotype_variants);
@@ -917,7 +942,7 @@ pub fn plot_prediction(
     blueprint["datasets"]["covered_variants"] = plot_data_covered_variants;
     blueprint["datasets"]["allele_frequency_distribution"] = plot_data_dataset_afd;
 
-    let file = fs::File::create(parent.join(file_name)).unwrap();
+    let file = fs::File::create(output_folder.join(file_name)).unwrap();
     serde_json::to_writer(file, &blueprint)?;
     Ok(())
 }
@@ -1020,7 +1045,7 @@ pub(crate) struct ArrowRecord {
 
 pub fn linear_program(
     output_lp_datavzrd: &bool,
-    outdir: &PathBuf,
+    output_folder: &PathBuf,
     candidate_matrix: &CandidateMatrix,
     haplotypes: &Vec<Haplotype>,
     variant_calls: &VariantCalls,
@@ -1087,8 +1112,6 @@ pub fn linear_program(
     let mut solution = None;
     let max_haplotypes = cmp::min(num_constraint_haplotypes, haplotypes.len() as i32);
     for constraint_value in (1..=max_haplotypes).rev() {
-        dbg!("constraint number is : {}", constraint_value);
-
         // constraint: sum of binary selection variables == constraint_value
         model = model.with(constraint!(binary_sum.clone() == constraint_value));
 
@@ -1123,7 +1146,6 @@ pub fn linear_program(
         //finally, print the variables and the sum
         let mut lp_haplotypes = BTreeMap::new();
         for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
-            dbg!(format!("v{}, {:?}={}", i, haplotype, sol.value(*var)));
             best_variables.push(sol.value(var.clone()).clone());
             if sol.value(*var) > lp_cutoff {
                 //the speed of fraction exploration is managable in case of diploid priors
@@ -1131,13 +1153,12 @@ pub fn linear_program(
             }
         }
 
-        dbg!(format!("sum = {}", sol.eval(sum_tvars)));
         //plot the best result
         let candidate_matrix_values: Vec<(BitVec, BitVec)> =
             candidate_matrix.values().cloned().collect();
         plot_prediction(
             output_lp_datavzrd,
-            outdir,
+            output_folder,
             &"lp",
             &candidate_matrix_values,
             &haplotypes,
@@ -1173,20 +1194,19 @@ pub fn linear_program(
                     });
             });
             let extended_haplotypes = extended_haplotypes_bset.into_iter().collect();
-            dbg!(&extended_haplotypes);
             Ok(extended_haplotypes)
         } else {
             Ok(lp_haplotypes_keys)
         }
     } else {
-        output_empty_output(&outdir).unwrap();
+        output_empty_output(&output_folder).unwrap();
         println!("No feasible LP solution found. Wrote empty output.");
         return Ok(vec![]);
     }
 }
 
 pub fn write_results(
-    outdir: &PathBuf,
+    outcsv: &PathBuf,
     data: &Data,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     final_haplotypes: &Vec<Haplotype>,
@@ -1237,7 +1257,7 @@ pub fn write_results(
     // Then,print TSV table with results
     // Columns: posterior_prob, haplotype_a, haplotype_b, haplotype_c, ...
     // with each column after the first showing the fraction of the respective haplotype
-    let mut wtr = csv::Writer::from_path(outdir)?;
+    let mut wtr = csv::Writer::from_path(outcsv)?;
     let mut headers: Vec<_> = vec!["density".to_string(), "odds".to_string()];
     let haplotypes_str: Vec<String> = final_haplotypes
         .clone()
@@ -1365,7 +1385,6 @@ pub fn collect_constraints_and_variants(
         let _prime_fraction_cont = Expression::from_other_affine(0.);
         let _vaf = Expression::from_other_affine(0.);
         let mut counter = 0;
-        // dbg!(&variant);
         for (i, _variable) in variables.iter().enumerate() {
             if coverage_matrix[i as u64] {
                 counter += 1;
@@ -1381,7 +1400,6 @@ pub fn collect_constraints_and_variants(
                 }
             }
             let expr_to_add = *call.max_prob * (fraction_cont - call.af.clone().into_expression());
-            // dbg!(&expr_to_add);
             constraints.push(expr_to_add.clone());
             expr += expr_to_add;
         }
@@ -1403,7 +1421,7 @@ pub(crate) struct DatasetDensitySolution {
 }
 
 pub fn plot_densities(
-    outdir: &PathBuf,
+    output_folder: &PathBuf,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     final_haplotypes: &Vec<Haplotype>,
     file_prefix: &str,
@@ -1438,15 +1456,14 @@ pub fn plot_densities(
         }
     }
 
-    //write to json
+    //fill in blueprints
     let plot_data_fractions = json!(plot_data_fractions);
     let plot_density = json!(plot_density);
     blueprint["datasets"]["haplotype_fractions"] = plot_data_fractions;
     blueprint["datasets"]["densities"] = plot_density;
 
-    let mut parent = outdir.clone();
-    parent.pop();
-    let file = fs::File::create(parent.join(file_name)).unwrap();
+    //create the file and write to json
+    let file = fs::File::create(output_folder.join(file_name)).unwrap();
     serde_json::to_writer(file, &blueprint)?;
     Ok(())
 }
@@ -1532,7 +1549,7 @@ pub fn get_event_posteriors(
     variant_calls: VariantCalls,
     application: &str,
     prior: &String,
-    outfile: &PathBuf,
+    output_folder: &PathBuf,
     extend_haplotypes: bool,
     num_extend_haplotypes: i64,
     num_constraint_haplotypes: i32,
@@ -1545,7 +1562,7 @@ pub fn get_event_posteriors(
     let filtered_calls = variant_calls.without_zero_dp();
 
     if filtered_calls.len() == 0 {
-        output_empty_output(&outfile).unwrap();
+        output_empty_output(&output_folder).unwrap();
         println!("No calls to use for LP, exiting with empty output!");
         std::process::exit(0);
     }
@@ -1576,11 +1593,10 @@ pub fn get_event_posteriors(
     let repr_haplotype_variants =
         var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
     let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
-    dbg!(&representatives);
     //employ the linear program
     let lp_haplotypes = linear_program(
         output_lp_datavzrd,
-        &outfile,
+        &output_folder,
         &repr_candidate_matrix,
         &representatives,
         &filtered_calls,
@@ -1593,9 +1609,7 @@ pub fn get_event_posteriors(
     //add haplotypes that are the same considering all covered variants used in the LP.
     //first, find all variants where ALL haplotypes have coverage=true
     //then, for a haplotype, get its genotype map restricted to those variants
-    dbg!(&lp_haplotypes);
     let similar_lp_haplotypes = find_similar_haplotypes(&repr_haplotype_variants, &lp_haplotypes);
-    dbg!(&similar_lp_haplotypes);
 
     //collect all haplotypes (some haplotypes with the same genotype matrix set migt have been chosen twice in the lp solution)
     let mut lp_haplotypes_extended_set = BTreeSet::new();
@@ -1615,9 +1629,6 @@ pub fn get_event_posteriors(
     );
 
     //output empty output in case the list of original haplotypes and extended haplotype list are the same, otherwise the process gets killed my high memory usage
-    dbg!(&haplotype_variants.list_haplotypes().len());
-    dbg!(&reduced_vec.len());
-    dbg!(&reduced_vec);
     // if haplotype_variants.list_haplotypes().len() == reduced_vec.len() {
     //     output_empty_output(&outfile).unwrap();
     //     println!(
@@ -1652,7 +1663,7 @@ pub fn get_event_posteriors(
                 .find_equivalence_classes_with_graph(
                     "hla",
                     threshold_equivalence_class.unwrap(),
-                    &outfile,
+                    &output_folder,
                 )
                 .unwrap(),
         );
@@ -1690,7 +1701,6 @@ pub fn get_event_posteriors(
         &prior,
         &identical_haplotypes_map,
     )?;
-    dbg!(&all_haplotypes);
     Ok((new_event_posteriors, all_haplotypes, data))
 }
 
@@ -1845,33 +1855,31 @@ pub fn extend_resulting_table(
     Ok((new_event_posteriors, all_haplotypes))
 }
 
-pub fn output_empty_output(outcsv: &PathBuf) -> Result<(), Box<dyn Error>> {
-    let mut parent = outcsv.clone();
-    parent.pop();
-    fs::create_dir_all(&parent)?;
+pub fn output_empty_output(output_folder: &PathBuf) -> Result<(), Box<dyn Error>> {
+    fs::create_dir_all(&output_folder)?;
 
     // Write blank plots
     for file_name in [
         "lp_solution.json",
-        "final_solution.json",
+        "best_solution.json",
         "2_field_solutions.json",
         "3_field_solutions.json",
     ] {
         let json = include_str!("../../../templates/final_prediction.json");
         let blueprint: Value = serde_json::from_str(json)?;
-        let file = fs::File::create(parent.join(file_name))?;
+        let file = fs::File::create(output_folder.join(file_name))?;
         serde_json::to_writer(file, &blueprint)?;
     }
 
     // Write blank CSV for final solution, 2-field.csv and G_groups.csv
-    let mut wtr = csv::Writer::from_path(outcsv)?;
+    let mut wtr = csv::Writer::from_path(output_folder.join("predictions.csv"))?;
     let headers = ["density", "odds"];
     wtr.write_record(&headers)?;
 
     // Write blank CSV for 2-field.csv and G_groups.csv
-    for file_name in ["2-field.csv", "G_groups.csv"] {
-        let file_name = parent.join(file_name);
-        let mut wtr = csv::Writer::from_path(file_name)?;
+    for file in ["2-field.csv", "G_groups.csv"] {
+        let output_path = output_folder.join(file);
+        let mut wtr = csv::Writer::from_path(output_path)?;
         let headers = ["density", "odds"];
         wtr.write_record(&headers)?;
     }
