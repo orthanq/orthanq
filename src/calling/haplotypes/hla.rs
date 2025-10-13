@@ -111,6 +111,7 @@ impl Caller {
             // arrow plot with a flag
             let nonzero_haplotype_fractions =
                 get_nonzero_haplotype_fractions(&all_haplotypes, &best_fractions);
+            //the haplotype order is preserved in the keys of nonzero_haplotype_fractions
             let nonzero_haps_candidate_matrix = CandidateMatrix::new(
                 &haplotype_variants
                     .filter_for_haplotypes(
