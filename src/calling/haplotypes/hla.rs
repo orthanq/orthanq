@@ -113,14 +113,12 @@ impl Caller {
                 get_nonzero_haplotype_fractions(&all_haplotypes, &best_fractions);
             //the haplotype order is preserved in the keys of nonzero_haplotype_fractions
             let nonzero_haps_candidate_matrix = CandidateMatrix::new(
-                &haplotype_variants
-                    .filter_for_haplotypes(
-                        &nonzero_haplotype_fractions
-                            .keys()
-                            .map(|hap_str| Haplotype(hap_str.clone()))
-                            .collect(),
-                    )
-                    .unwrap(),
+                &haplotype_variants.filter_for_haplotypes(
+                    &nonzero_haplotype_fractions
+                        .keys()
+                        .map(|hap_str| Haplotype(hap_str.clone()))
+                        .collect(),
+                )?,
             )?;
             haplotypes::get_arrow_plot(
                 &self.output_folder,
