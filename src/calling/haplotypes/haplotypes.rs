@@ -352,7 +352,7 @@ impl HaplotypeVariants {
         }
         Ok(HaplotypeVariants(filtered_haplotype_variants))
     }
-
+    // the order of haplotypes in haplotype variants is not determined with the input vector of haplotypes.
     pub fn filter_for_haplotypes(&self, haplotypes: &Vec<Haplotype>) -> Result<Self> {
         let mut new_haplotype_variants: BTreeMap<VariantID, BTreeMap<Haplotype, (bool, bool)>> =
             BTreeMap::new();
