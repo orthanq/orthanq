@@ -1,13 +1,10 @@
 dependencies:
   - coincbc
-  - hdf5 =1.10.5
   - fontconfig
   - gcc_linux-64
   - pkg-config
   - gsl =2.7
   - cmake
-  - ncbi-datasets-cli=16.4.4
-  - seqtk
   - samtools=1.17
   - varlociraptor=8.4.7
   - vg=1.50.1
