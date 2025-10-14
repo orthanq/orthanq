@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.0](https://github.com/orthanq/orthanq/compare/v1.17.0...v1.18.0) (2025-10-14)
+
+
+### Features
+
+* arrow plot ([#79](https://github.com/orthanq/orthanq/issues/79)) ([d1c65cc](https://github.com/orthanq/orthanq/commit/d1c65cc9d4b55d036d05d03b7867e063f0d785b3))
+
 ## [1.17.0](https://github.com/orthanq/orthanq/compare/v1.16.1...v1.17.0) (2025-10-10)
 
 
