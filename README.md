@@ -13,9 +13,13 @@ Orthanq is available as a Bioconda package and can be installed via:
 
     mamba install orthanq
 
-## Haplotype quantification & HLA typing
+## HLA typing
 
-Docs: https://orthanq.github.io/docs/index.html
+Instructions to perform HLA typing is documented here: https://orthanq.github.io/docs/usage.html#hla-quantification
+
+## Virus lineage quantification
+
+Instructions to perform virus lineage quantification is documented here: https://orthanq.github.io/docs/usage.html#virus-variant-quantification
 
 ## Building for development and manual installation
 
