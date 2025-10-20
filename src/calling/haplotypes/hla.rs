@@ -1,4 +1,5 @@
 use crate::calling::haplotypes::haplotypes;
+use crate::calling::haplotypes::haplotypes::filter_variants_for_best_solution_plot;
 use crate::calling::haplotypes::haplotypes::get_event_posteriors;
 use crate::calling::haplotypes::haplotypes::output_empty_output;
 use crate::calling::haplotypes::haplotypes::{
@@ -73,29 +74,46 @@ impl Caller {
             // dbg!(&event_posteriors, &all_haplotypes);
 
             //plot the best solution as final solution plot
-            let (best_fractions, _) = event_posteriors.iter().next().unwrap();
-            let candidate_matrix = CandidateMatrix::new(
-                &haplotype_variants
-                    .filter_for_haplotypes(&all_haplotypes)
-                    .unwrap(),
-            )
-            .unwrap()
-            .values()
-            .cloned()
-            .collect();
-            let best_fractions = best_fractions
+            let best_fractions = event_posteriors
+                .iter()
+                .next()
+                .unwrap()
+                .0
                 .iter()
                 .map(|f| NotNan::into_inner(*f))
                 .collect::<Vec<f64>>();
+
+            //output best solution plot for only nonzero fraction haplotypes
+            let (filtered_haplotypes, filtered_fractions): (Vec<_>, Vec<_>) = all_haplotypes
+                .iter()
+                .zip(best_fractions.iter())
+                .filter(|(_, frac)| **frac > 0.0)
+                .map(|(h, f)| (h.clone(), *f)) // Clone Haplotype, copy NotNan<f64>
+                .unzip();
+            dbg!(&filtered_haplotypes, &filtered_fractions);
+
+            let filtered_candidate_matrix = CandidateMatrix::new(
+                &haplotype_variants
+                    .filter_for_haplotypes(&filtered_haplotypes)
+                    .unwrap(),
+            )
+            .unwrap();
+
+            //plot best solution plot and only display variants that are found in one of the haplotypes.
+            let (best_solution_matrix, best_solution_variant_calls) =
+                filter_variants_for_best_solution_plot(
+                    &filtered_candidate_matrix,
+                    &data.variant_calls,
+                );
 
             haplotypes::plot_prediction(
                 &self.output_lp_datavzrd,
                 &self.output_folder,
                 &"final",
-                &candidate_matrix,
-                &all_haplotypes,
-                &data.variant_calls,
-                &best_fractions,
+                &best_solution_matrix,
+                &filtered_haplotypes,
+                &best_solution_variant_calls,
+                &filtered_fractions,
             )?;
 
             //write results to tsv
