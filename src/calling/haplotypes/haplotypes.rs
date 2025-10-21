@@ -1883,3 +1883,32 @@ pub fn output_empty_output(output_folder: &PathBuf) -> Result<(), Box<dyn Error>
 
     Ok(())
 }
+
+pub fn filter_variants_for_best_solution_plot(
+    candidate_matrix: &CandidateMatrix,
+    variant_calls: &VariantCalls,
+) -> (Vec<(BitVec, BitVec)>, VariantCalls) {
+    let mut new_matrix = Vec::new();
+    let mut new_calls = BTreeMap::new();
+
+    for (variant_id, (presence, data)) in candidate_matrix.0.iter() {
+        if bitvec_has_true(presence) {
+            new_matrix.push((presence.clone(), data.clone()));
+
+            if let Some(call) = variant_calls.0.get(variant_id) {
+                new_calls.insert(variant_id.clone(), call.clone());
+            }
+        }
+    }
+
+    (new_matrix, VariantCalls(new_calls))
+}
+
+fn bitvec_has_true(bits: &bv::BitVec) -> bool {
+    for i in 0..bits.len() {
+        if bits[i] {
+            return true;
+        }
+    }
+    false
+}
