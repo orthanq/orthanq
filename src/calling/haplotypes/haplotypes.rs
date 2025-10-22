@@ -950,7 +950,7 @@ pub fn plot_prediction(
 pub fn get_arrow_plot(
     outdir: &PathBuf,
     candidate_matrix: &CandidateMatrix,
-    nonzero_haplotype_fractions: &BTreeMap<String, f32>,
+    nonzero_haplotype_fractions: &BTreeMap<Haplotype, f64>,
     variant_calls: &VariantCalls,
 ) -> Result<()> {
     let mut arrow_plot_records = Vec::new();
@@ -1003,7 +1003,7 @@ pub fn get_arrow_plot(
 }
 
 pub fn get_arrow_plot_record(
-    nonzero_haplotype_fractions: &BTreeMap<String, f32>,
+    nonzero_haplotype_fractions: &BTreeMap<Haplotype, f64>,
     call_change: &String,
     call_vaf: f32,
     call_max_prob: f64,
@@ -1012,12 +1012,12 @@ pub fn get_arrow_plot_record(
     let haplofrac = if containing_haplotypes != &vec!["none"] {
         containing_haplotypes
             .iter()
-            .map(|h| nonzero_haplotype_fractions[h])
+            .map(|h| nonzero_haplotype_fractions[&Haplotype(h.to_string())])
             .sum()
     } else {
         0.0
     };
-    let status = if call_vaf > haplofrac {
+    let status = if call_vaf as f64 > haplofrac {
         "up".to_string()
     } else {
         "down".to_string()
@@ -1037,7 +1037,7 @@ pub fn get_arrow_plot_record(
 #[derive(Serialize, Debug)]
 pub(crate) struct ArrowRecord {
     containing_haplotypes: String,
-    haplofrac: f32,
+    haplofrac: f64,
     call_vaf: f32,
     call_prob: f64,
     call_change: String,

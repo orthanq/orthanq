@@ -6,6 +6,12 @@
     "data": {
       "name": "arrow_records"
     },
+    "transform": [
+    {
+        "calculate": "toNumber(replace(datum.call_change, /.*:[A-Za-z]+(\\d+)[A-Za-z]+.*/, '$1'))",
+        "as": "position"
+    }
+    ],
     "layer": [
       {
         "mark": {
@@ -17,6 +23,45 @@
             "field": "containing_haplotypes",
             "legend": {
               "title": ""
+            },
+            "type": "nominal"
+          },
+          "x": {
+            "field": "call_change",
+            "type": "nominal",
+            "sort": {
+              "field": "position",
+              "order": "ascending"
+            }
+          },
+          "y": {
+            "field": "haplofrac",
+            "title": "",
+            "type": "quantitative"
+          },
+          "y2": {
+            "field": "call_vaf"
+          }
+        }
+      },
+      {
+        "mark": {
+          "type": "point",
+          "tooltip": true
+        },
+        "encoding": {
+          "color": {
+            "field": "containing_haplotypes",
+            "legend": {
+              "title": ""
+            "type": "nominal"
+          },
+          "shape": {
+            "field": "status",
+            "legend": null,
+            "scale": {
+              "domain": ["up", "down"],
+              "range": ["triangle-up", "triangle-down"]
             },
             "type": "nominal"
           },
@@ -34,6 +79,14 @@
           },
           "opacity": {
             "field": "call_prob",
+            "type": "nominal",
+            "sort": {
+                "field": "position",
+                "order": "ascending"
+            }
+          },
+          "y": {
+            "field": "call_vaf",
             "type": "quantitative"
           }
         }
@@ -84,6 +137,13 @@
           "x": {
             "field": "call_change",
             "type": "nominal"
+          "x": {
+            "field": "call_change",
+            "type": "nominal",
+            "sort": {
+                "field": "position",
+                "order": "ascending"
+            }
           },
           "y": {
             "field": "haplofrac",
