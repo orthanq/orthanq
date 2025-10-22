@@ -127,7 +127,7 @@ impl Caller {
                 false,
             )?;
 
-            // arrow plot 
+            // arrow plot
 
             //the haplotype order is preserved in the keys of nonzero_haplotype_fractions
             haplotypes::get_arrow_plot(
