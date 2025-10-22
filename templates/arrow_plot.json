@@ -1,106 +1,117 @@
 {
-    "$schema": "https://vega.github.io/schema/vega-lite/v5.20.1.json",
-    "datasets": {
-      "arrow_records": []
-    },
-    "data": {
-      "name": "arrow_records"
-    },
-    "transform": [
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.20.1.json",
+  "datasets": {
+    "arrow_records": []
+  },
+  "data": {
+    "name": "arrow_records"
+  },
+  "transform": [
+  {
+      "calculate": "toNumber(replace(datum.call_change, /.*:[A-Za-z]+(\\d+)[A-Za-z]+.*/, '$1'))",
+      "as": "position"
+  }
+  ],
+  "layer": [
     {
-        "calculate": "toNumber(replace(datum.call_change, /.*:[A-Za-z]+(\\d+)[A-Za-z]+.*/, '$1'))",
-        "as": "position"
-    }
-    ],
-    "layer": [
-      {
-        "mark": {
-          "type": "rule",
-          "tooltip": true
-        },
-        "encoding": {
-          "color": {
-            "field": "containing_haplotypes",
-            "legend": {
-              "title": ""
-            },
-            "type": "nominal"
-          },
-          "x": {
-            "field": "call_change",
-            "type": "nominal",
-            "sort": {
-              "field": "position",
-              "order": "ascending"
-            }
-          },
-          "y": {
-            "field": "haplofrac",
-            "title": "",
-            "type": "quantitative"
-          },
-          "y2": {
-            "field": "call_vaf"
-          }
-        }
+      "mark": {
+        "type": "rule",
+        "tooltip": true
       },
-      {
-        "mark": {
-          "type": "point",
-          "tooltip": true
+      "encoding": {
+        "color": {
+          "field": "containing_haplotypes",
+          "legend": {
+            "title": ""
+          },
+          "type": "nominal"
         },
-        "encoding": {
-          "color": {
-            "field": "containing_haplotypes",
-            "type": "nominal"
-          },
-          "shape": {
-            "field": "status",
-            "legend": null,
-            "scale": {
-              "domain": ["up", "down"],
-              "range": ["triangle-up", "triangle-down"]
-            },
-            "type": "nominal"
-          },
-          "x": {
-            "field": "call_change",
-            "type": "nominal",
-            "sort": {
-                "field": "position",
-                "order": "ascending"
-            }
-          },
-          "y": {
-            "field": "call_vaf",
-            "type": "quantitative"
+        "x": {
+          "field": "call_change",
+          "type": "nominal",
+          "sort": {
+            "field": "position",
+            "order": "ascending"
           }
-        }
-      },
-      {
-        "mark": {
-          "type": "circle",
-          "tooltip": true
         },
-        "encoding": {
-          "color": {
-            "field": "containing_haplotypes",
-            "type": "nominal"
-          },
-          "x": {
-            "field": "call_change",
-            "type": "nominal",
-            "sort": {
-                "field": "position",
-                "order": "ascending"
-            }
-          },
-          "y": {
-            "field": "haplofrac",
-            "type": "quantitative"
-          }
+        "y": {
+          "field": "haplofrac",
+          "title": "",
+          "type": "quantitative"
+        },
+        "y2": {
+          "field": "call_vaf"
+        },
+        "opacity": {
+          "field": "call_prob",
+          "type": "quantitative"
         }
       }
-    ]
-  }
-  
+    },
+    {
+      "mark": {
+        "type": "point",
+        "tooltip": true
+      },
+      "encoding": {
+        "color": {
+          "field": "containing_haplotypes",
+          "type": "nominal"
+        },
+        "shape": {
+          "field": "status",
+          "legend": null,
+          "scale": {
+            "domain": ["up", "down"],
+            "range": ["triangle-up", "triangle-down"]
+          },
+          "type": "nominal"
+        },
+        "x": {
+          "field": "call_change",
+          "type": "nominal",
+          "sort": {
+              "field": "position",
+              "order": "ascending"
+          }
+        },
+        "y": {
+          "field": "call_vaf",
+          "type": "quantitative"
+        },
+        "opacity": {
+          "field": "call_prob",
+          "type": "quantitative"
+        }
+      }
+    },
+    {
+      "mark": {
+        "type": "circle",
+        "tooltip": true
+      },
+      "encoding": {
+        "color": {
+          "field": "containing_haplotypes",
+          "type": "nominal"
+        },
+        "x": {
+          "field": "call_change",
+          "type": "nominal",
+          "sort": {
+              "field": "position",
+              "order": "ascending"
+          }
+        },
+        "y": {
+          "field": "haplofrac",
+          "type": "quantitative"
+        },
+        "opacity": {
+          "field": "call_prob",
+          "type": "quantitative"
+        }
+      }
+    }
+  ]
+}

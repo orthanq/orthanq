@@ -980,6 +980,7 @@ pub fn get_arrow_plot(
                 nonzero_haplotype_fractions,
                 &call.change,
                 call.af,
+                call.max_prob.into_inner(),
                 &containing_haplotypes,
             )
             .unwrap();
@@ -1005,6 +1006,7 @@ pub fn get_arrow_plot_record(
     nonzero_haplotype_fractions: &BTreeMap<Haplotype, f64>,
     call_change: &String,
     call_vaf: f32,
+    call_max_prob: f64,
     containing_haplotypes: &Vec<String>,
 ) -> Result<ArrowRecord> {
     let haplofrac = if containing_haplotypes != &vec!["none"] {
@@ -1026,6 +1028,7 @@ pub fn get_arrow_plot_record(
         containing_haplotypes: containing_haplotypes_str,
         haplofrac: haplofrac,
         call_vaf: call_vaf,
+        call_prob: call_max_prob,
         call_change: call_change.clone(),
         status: status,
     })
@@ -1036,6 +1039,7 @@ pub(crate) struct ArrowRecord {
     containing_haplotypes: String,
     haplofrac: f64,
     call_vaf: f32,
+    call_prob: f64,
     call_change: String,
     status: String,
 }
