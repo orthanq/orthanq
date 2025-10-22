@@ -84,14 +84,15 @@ impl Caller {
                 .collect::<Vec<f64>>();
 
             //output best solution plot for only nonzero fraction haplotypes
-            let (filtered_haplotypes, filtered_fractions): (Vec<_>, Vec<_>) = all_haplotypes
-                .iter()
-                .zip(best_fractions.iter())
-                .filter(|(_, frac)| **frac > 0.0)
-                .map(|(h, f)| (h.clone(), *f)) // Clone Haplotype, copy NotNan<f64>
-                .unzip();
+            let nonzero_haplotype_fractions: BTreeMap<Haplotype, f64> =
+                get_nonzero_haplotype_fractions(&all_haplotypes, &best_fractions);
+
+            //collect haplotype names and fractions separately to be used later twice
+            let filtered_haplotypes = nonzero_haplotype_fractions.keys().cloned().collect();
+            let filtered_fractions = nonzero_haplotype_fractions.values().cloned().collect();
             dbg!(&filtered_haplotypes, &filtered_fractions);
 
+            //filter candidate matrix based on nonzero haplotype fractions
             let filtered_candidate_matrix = CandidateMatrix::new(
                 &haplotype_variants
                     .filter_for_haplotypes(&filtered_haplotypes)
@@ -126,21 +127,12 @@ impl Caller {
                 false,
             )?;
 
-            // arrow plot with a flag
-            let nonzero_haplotype_fractions =
-                get_nonzero_haplotype_fractions(&all_haplotypes, &best_fractions);
+            // arrow plot 
+
             //the haplotype order is preserved in the keys of nonzero_haplotype_fractions
-            let nonzero_haps_candidate_matrix = CandidateMatrix::new(
-                &haplotype_variants.filter_for_haplotypes(
-                    &nonzero_haplotype_fractions
-                        .keys()
-                        .map(|hap_str| Haplotype(hap_str.clone()))
-                        .collect(),
-                )?,
-            )?;
             haplotypes::get_arrow_plot(
                 &self.output_folder,
-                &nonzero_haps_candidate_matrix,
+                &filtered_candidate_matrix,
                 &nonzero_haplotype_fractions,
                 &data.variant_calls,
             );
@@ -391,14 +383,13 @@ fn convert_to_two_field(
 fn get_nonzero_haplotype_fractions(
     haplotypes: &[Haplotype],
     fractions: &[f64],
-) -> BTreeMap<String, f32> {
+) -> BTreeMap<Haplotype, f64> {
     haplotypes
         .iter()
         .zip(fractions.iter())
         .filter_map(|(hap, freq)| {
-            let value = *freq as f32; // assuming AlleleFreq derefs to f64
-            if value != 0.0 {
-                Some((hap.to_string(), value))
+            if *freq != 0.0 {
+                Some((hap.clone(), *freq))
             } else {
                 None
             }
