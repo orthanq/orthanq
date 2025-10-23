@@ -129,12 +129,19 @@ impl Caller {
 
             // arrow plot
 
+            //filter out the variants that are not within the range of the locus.
+            let first_haplotype = nonzero_haplotype_fractions.keys().next().unwrap();
+            let (locus_start, locus_end) = first_haplotype.get_coordinates_for_haplotype();
+            let (variant_calls_in_locus, candidate_matrix_in_locus) = &data
+                .variant_calls
+                .filter_variants_in_range(&filtered_candidate_matrix, locus_start, locus_end)?;
+
             //the haplotype order is preserved in the keys of nonzero_haplotype_fractions
             haplotypes::get_arrow_plot(
                 &self.output_folder,
-                &filtered_candidate_matrix,
+                candidate_matrix_in_locus,
                 &nonzero_haplotype_fractions,
-                &data.variant_calls,
+                variant_calls_in_locus,
             );
 
             //second: 2-field
