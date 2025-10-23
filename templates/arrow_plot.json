@@ -59,6 +59,10 @@
           "type": "nominal"
         },
         "shape": {
+          "condition": {
+            "test": "datum.call_vaf === datum.haplofrac",
+            "value": "circle"
+          },
           "field": "status",
           "legend": null,
           "scale": {
