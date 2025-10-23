@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.18.0](https://github.com/orthanq/orthanq/compare/v1.17.0...v1.18.0) (2025-10-23)
+
+
+### Features
+
+* arrow plot ([#79](https://github.com/orthanq/orthanq/issues/79)) ([d1c65cc](https://github.com/orthanq/orthanq/commit/d1c65cc9d4b55d036d05d03b7867e063f0d785b3))
+
+
+### Bug Fixes
+
+* add prob of variant to arrow plot through opacity ([#99](https://github.com/orthanq/orthanq/issues/99)) ([a36d2db](https://github.com/orthanq/orthanq/commit/a36d2db0e6c191b80b380811601ada173fb41917))
+* exclude variants that arent on the locus ([#101](https://github.com/orthanq/orthanq/issues/101)) ([695e805](https://github.com/orthanq/orthanq/commit/695e8057c549924b30773734beaa7fe313820be8))
+* output only nonzero fraction haplotypes & display variants that are present in one of the resulting haplotypes ([#97](https://github.com/orthanq/orthanq/issues/97)) ([56f9383](https://github.com/orthanq/orthanq/commit/56f938320ce971b887644f28727b9c0e3cee4bee))
+* sort by chromosomal locations ([#98](https://github.com/orthanq/orthanq/issues/98)) ([caa0c9f](https://github.com/orthanq/orthanq/commit/caa0c9f6a03ae95da914a243aac65835560bbfa0))
+* use filled circles when the expectation meets the predicted fractions ([#100](https://github.com/orthanq/orthanq/issues/100)) ([f11b607](https://github.com/orthanq/orthanq/commit/f11b6076d808bc9e5428a5350e393ae1f4fdc69e))
+
 ## [1.17.0](https://github.com/orthanq/orthanq/compare/v1.16.1...v1.17.0) (2025-10-10)
 
 
