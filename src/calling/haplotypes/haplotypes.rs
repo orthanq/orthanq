@@ -46,6 +46,24 @@ pub struct VariantID(#[deref] pub i32);
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub struct Haplotype(#[deref] pub String);
 
+impl Haplotype {
+    pub fn get_coordinates_for_haplotype(&self) -> (u32, u32) {
+        let h = self.0.as_str();
+        if h.starts_with("DQB1") {
+            (32658467, 32669383)
+        } else {
+            match h.chars().next().unwrap() {
+                'A' => (29940260, 29950572),
+                'B' => (31352872, 31368067),
+                'C' => (31267749, 31273130),
+                other => panic!(
+                    "Unknown haplotype prefix '{}': no coordinate mapping found!",
+                    other
+                ),
+            }
+        }
+    }
+}
 #[derive(Debug, Clone, Derefable)]
 pub struct AlleleFreqDist(#[deref] BTreeMap<AlleleFreq, LogProb>);
 
@@ -283,6 +301,46 @@ impl VariantCalls {
             .collect();
 
         VariantCalls(filtered)
+    }
+
+    // filter both VariantCalls and CandidateMatrix for positions within the provided range
+    pub fn filter_variants_in_range(
+        &self,
+        candidates: &CandidateMatrix,
+        start: u32,
+        end: u32,
+    ) -> Result<(VariantCalls, CandidateMatrix)> {
+        // 1. Filter variant calls
+        let filtered_variants: BTreeMap<VariantID, VariantCall> = self
+            .0
+            .iter()
+            .filter_map(|(id, vc)| {
+                if let Some(pos) = parse_position(&vc.change) {
+                    if pos >= start && pos <= end {
+                        return Some((id.clone(), vc.clone()));
+                    }
+                }
+                None
+            })
+            .collect();
+
+        // 2. Filter candidate matrix using the same VariantIDs
+        let filtered_candidates: BTreeMap<VariantID, (BitVec, BitVec)> = candidates
+            .0
+            .iter()
+            .filter_map(|(id, v)| {
+                if filtered_variants.contains_key(id) {
+                    Some((id.clone(), v.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Ok((
+            VariantCalls(filtered_variants),
+            CandidateMatrix(filtered_candidates),
+        ))
     }
 }
 
@@ -1915,4 +1973,16 @@ fn bitvec_has_true(bits: &bv::BitVec) -> bool {
         }
     }
     false
+}
+
+fn parse_position(change: &str) -> Option<u32> {
+    let parts: Vec<&str> = change.split(':').collect();
+
+    let variant = parts[1];
+    let pos_str = variant
+        .chars()
+        .skip_while(|c| !c.is_ascii_digit())
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<String>();
+    pos_str.parse::<u32>().ok()
 }
