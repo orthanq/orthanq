@@ -293,7 +293,7 @@ pub enum CallKind {
             long,
             help = "List of HLA alleles to enforce during prediction (e.g. --enforce-given-alleles A*01:01:01 A*02:01:01)."
         )]
-        enforce_given_alleles: Option<Vec<String>>
+        enforce_given_alleles: Option<Vec<String>>,
     },
     Virus {
         #[structopt(
@@ -359,7 +359,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 num_constraint_haplotypes,
                 output_lp_datavzrd,
                 sample_name,
-                enforce_given_alleles
+                enforce_given_alleles,
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)

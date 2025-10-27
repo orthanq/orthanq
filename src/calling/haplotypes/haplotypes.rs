@@ -442,9 +442,10 @@ impl HaplotypeVariants {
                 let hap_m_str = haplotype_m.to_string();
 
                 // match if this haplotype starts with any of the prefixes,
-                if haplotype_prefixes.iter().any(|prefix| {
-                    hap_m_str == *prefix || hap_m_str.starts_with(&(prefix.clone()))
-                }) {
+                if haplotype_prefixes
+                    .iter()
+                    .any(|prefix| hap_m_str == *prefix || hap_m_str.starts_with(&(prefix.clone())))
+                {
                     new_matrix_map.insert(
                         haplotype_m.clone(),
                         (variant_status.clone(), coverage_status.clone()),
