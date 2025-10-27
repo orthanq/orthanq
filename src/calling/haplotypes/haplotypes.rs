@@ -429,6 +429,37 @@ impl HaplotypeVariants {
         Ok(HaplotypeVariants(new_haplotype_variants))
     }
 
+    // filter for haplotypes that start with given haplotype prefixes
+    // (useful when haplotypes have higher resolution, e.g. 4-field).
+    pub fn filter_for_haplotype_prefixes(&self, haplotype_prefixes: &Vec<String>) -> Result<Self> {
+        let mut new_haplotype_variants: BTreeMap<VariantID, BTreeMap<Haplotype, (bool, bool)>> =
+            BTreeMap::new();
+
+        for (variant, matrix_map) in self.iter() {
+            let mut new_matrix_map = BTreeMap::new();
+
+            for (haplotype_m, (variant_status, coverage_status)) in matrix_map {
+                let hap_m_str = haplotype_m.to_string();
+
+                // match if this haplotype starts with any of the prefixes,
+                if haplotype_prefixes.iter().any(|prefix| {
+                    hap_m_str == *prefix || hap_m_str.starts_with(&(prefix.clone()))
+                }) {
+                    new_matrix_map.insert(
+                        haplotype_m.clone(),
+                        (variant_status.clone(), coverage_status.clone()),
+                    );
+                }
+            }
+
+            if !new_matrix_map.is_empty() {
+                new_haplotype_variants.insert(variant.clone(), new_matrix_map);
+            }
+        }
+
+        Ok(HaplotypeVariants(new_haplotype_variants))
+    }
+
     pub fn find_common_variants(
         &self,
         variant_calls: &VariantCalls,

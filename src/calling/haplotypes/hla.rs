@@ -43,6 +43,7 @@ pub struct Caller {
     num_constraint_haplotypes: i32,
     output_lp_datavzrd: bool,
     sample_name: Option<String>,
+    enforce_given_alleles: Option<Vec<String>>
 }
 
 impl Caller {
@@ -56,7 +57,15 @@ impl Caller {
             output_empty_output(&self.output_folder).unwrap();
             Ok(())
         } else {
-            let haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
+            let mut haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
+            
+            //filter candidates vcf based on optional given input set of alleles (3-field-resolution)
+            if let Some(input_alleles) = &self.enforce_given_alleles {
+                dbg!(&input_alleles);
+                haplotype_variants = haplotype_variants.filter_for_haplotype_prefixes(&input_alleles)?;
+                dbg!(&haplotype_variants);
+            }
+
             let (event_posteriors, all_haplotypes, data) = get_event_posteriors(
                 &self.output_lp_datavzrd,
                 &haplotype_variants,

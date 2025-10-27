@@ -289,6 +289,11 @@ pub enum CallKind {
             help = "Sample to use in case of multisample BCFs. Sample name should match the sample name in the variant calls BCF."
         )]
         sample_name: Option<String>,
+        #[structopt(
+            long,
+            help = "List of HLA alleles to enforce during prediction (e.g. --enforce-given-alleles A*01:01:01 A*02:01:01)."
+        )]
+        enforce_given_alleles: Option<Vec<String>>
     },
     Virus {
         #[structopt(
@@ -354,6 +359,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 num_constraint_haplotypes,
                 output_lp_datavzrd,
                 sample_name,
+                enforce_given_alleles
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
@@ -372,6 +378,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .num_constraint_haplotypes(num_constraint_haplotypes)
                     .output_lp_datavzrd(output_lp_datavzrd)
                     .sample_name(sample_name)
+                    .enforce_given_alleles(enforce_given_alleles)
                     .build()
                     .unwrap();
                 caller.call()?;
