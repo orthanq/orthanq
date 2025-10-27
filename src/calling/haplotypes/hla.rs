@@ -61,9 +61,9 @@ impl Caller {
             
             //filter candidates vcf based on optional given input set of alleles (3-field-resolution)
             if let Some(input_alleles) = &self.enforce_given_alleles {
-                dbg!(&input_alleles);
+                // dbg!(&input_alleles);
                 haplotype_variants = haplotype_variants.filter_for_haplotype_prefixes(&input_alleles)?;
-                dbg!(&haplotype_variants);
+                // dbg!(&haplotype_variants);
             }
 
             let (event_posteriors, all_haplotypes, data) = get_event_posteriors(
@@ -99,7 +99,7 @@ impl Caller {
             //collect haplotype names and fractions separately to be used later twice
             let filtered_haplotypes = nonzero_haplotype_fractions.keys().cloned().collect();
             let filtered_fractions = nonzero_haplotype_fractions.values().cloned().collect();
-            dbg!(&filtered_haplotypes, &filtered_fractions);
+            // dbg!(&filtered_haplotypes, &filtered_fractions);
 
             //filter candidate matrix based on nonzero haplotype fractions
             let filtered_candidate_matrix = CandidateMatrix::new(
