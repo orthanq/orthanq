@@ -871,7 +871,7 @@ pub fn plot_prediction(
 
         if *output_lp_datavzrd {
             println!("Creating datavzrd report for LP solution.");
-            
+
             //write updated config back to a new file (or overwrite the original)
             let filled_config_yaml = output_folder.join("datavzrd_config_filled.yaml");
             let yaml_output = PathBuf::from(&filled_config_yaml);
