@@ -49,18 +49,24 @@ pub struct Haplotype(#[deref] pub String);
 impl Haplotype {
     pub fn get_coordinates_for_haplotype(&self) -> (u32, u32) {
         let h = self.0.as_str();
-        if h.starts_with("DQB1") {
+
+        if h.starts_with("A") {
+            (29940260, 29950572)
+        } else if h.starts_with("B") {
+            (31352872, 31368067)
+        } else if h.starts_with("C") {
+            (31267749, 31273130)
+        } else if h.starts_with("DQA1") {
+            (32627179, 32648062)
+        } else if h.starts_with("DQB1") {
             (32658467, 32669383)
+        } else if h.starts_with("DRB1") {
+            (32576902, 32590848)
         } else {
-            match h.chars().next().unwrap() {
-                'A' => (29940260, 29950572),
-                'B' => (31352872, 31368067),
-                'C' => (31267749, 31273130),
-                other => panic!(
-                    "Unknown haplotype prefix '{}': no coordinate mapping found!",
-                    other
-                ),
-            }
+            panic!(
+                "Unknown haplotype prefix '{}': no coordinate mapping found!",
+                h
+            );
         }
     }
 }
