@@ -859,16 +859,18 @@ pub fn plot_prediction(
         } else {
             eprintln!("Warning: 'datasets' not found in config");
         }
-        //write updated config back to a new file (or overwrite the original)
-        let filled_config_yaml = output_folder.join("datavzrd_config_filled.yaml");
-        let yaml_output = PathBuf::from(&filled_config_yaml);
-        fs::write(&yaml_output, serde_yaml::to_string(&config_yaml)?)?;
 
         //then create datavzrd report
         let datavzrd_output = output_folder.join("datavzrd_report");
 
         if *output_lp_datavzrd {
             println!("Creating datavzrd report for LP solution.");
+            
+            //write updated config back to a new file (or overwrite the original)
+            let filled_config_yaml = output_folder.join("datavzrd_config_filled.yaml");
+            let yaml_output = PathBuf::from(&filled_config_yaml);
+            fs::write(&yaml_output, serde_yaml::to_string(&config_yaml)?)?;
+
             render_report(&filled_config_yaml, &datavzrd_output, "", false, true)?;
         }
         file_name.push_str("lp_solution.json");
