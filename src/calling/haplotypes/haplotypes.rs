@@ -1724,7 +1724,7 @@ pub fn get_event_posteriors(
     if application == "hla" {
         //equivalence graph based optimization is at the developmental phase.
         application_name = "hla";
-    
+
         if enable_equivalence_class_constraint {
             // use the equivalence graph when constraints are enabled
             eq_graph = Some(
@@ -1740,7 +1740,6 @@ pub fn get_event_posteriors(
             // disable graph when constraint is off
             eq_graph = None;
         }
-    
     } else if application == "virus" {
         eq_graph = None;
         application_name = "virus";
