@@ -1721,22 +1721,30 @@ pub fn get_event_posteriors(
     let mut application_name = "none";
 
     //note: graph creation was not tested after the latest improvements.
-    if &application == &"hla" {
+    if application == "hla" {
         //equivalence graph based optimization is at the developmental phase.
-        eq_graph = Some(
-            hap_filt_haplotype_variants
-                .find_equivalence_classes_with_graph(
-                    "hla",
-                    threshold_equivalence_class.unwrap(),
-                    &output_folder,
-                )
-                .unwrap(),
-        );
-        application_name = &"hla";
-    } else if &application == &"virus" {
+        application_name = "hla";
+
+        if enable_equivalence_class_constraint {
+            // use the equivalence graph when constraints are enabled
+            eq_graph = Some(
+                hap_filt_haplotype_variants
+                    .find_equivalence_classes_with_graph(
+                        "hla",
+                        threshold_equivalence_class.unwrap(),
+                        &output_folder,
+                    )
+                    .unwrap(),
+            );
+        } else {
+            // disable graph when constraint is off
+            eq_graph = None;
+        }
+    } else if application == "virus" {
         eq_graph = None;
-        application_name = &"virus";
+        application_name = "virus";
     }
+
     let computed_model = model.compute_from_marginal(
         &Marginal::new(
             reduced_vec.len(),
