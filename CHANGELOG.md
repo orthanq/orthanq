@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.18.1](https://github.com/orthanq/orthanq/compare/v1.18.0...v1.18.1) (2025-11-19)
+
+
+### Bug Fixes
+
+* add coordindates of other loci ([#104](https://github.com/orthanq/orthanq/issues/104)) ([e51f387](https://github.com/orthanq/orthanq/commit/e51f3872066bab83871538bf86f10c071ba434a2))
+* do not create datavzrd config yaml at all times ([#106](https://github.com/orthanq/orthanq/issues/106)) ([3317a54](https://github.com/orthanq/orthanq/commit/3317a5477fe76ca33280a6325e2722d4ca768337))
+* do not output eq graph by default ([#107](https://github.com/orthanq/orthanq/issues/107)) ([02c4c27](https://github.com/orthanq/orthanq/commit/02c4c27e52f12956ba0f3fb31f80f862b4e7c1d8))
+
 ## [1.18.0](https://github.com/orthanq/orthanq/compare/v1.17.0...v1.18.0) (2025-10-23)
 
 
