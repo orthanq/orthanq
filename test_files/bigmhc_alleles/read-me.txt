@@ -1,0 +1,3 @@
+pseudosequences file was downloaded from: https://github.com/KarchinLab/bigmhc/blob/53eb26f/data/pseudoseqs.csv
+and the HLA names are filtered using the following command:
+awk -F',' '$1 ~ /^HLA-[ABC]\*/ { print $1 }' pseudoseqs.csv > valid_hla_alleles.txt
