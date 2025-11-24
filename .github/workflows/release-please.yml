@@ -35,7 +35,10 @@ jobs:
 
       - name: Install fontconfig
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
-  
+
+      - name: Install npm
+        run: sudo apt-get install -y npm
+        
       - name: Publish crate
         if: ${{ steps.release.outputs.release_created }}
         uses: actions-rs/cargo@v1
