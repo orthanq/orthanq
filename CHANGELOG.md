@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0](https://github.com/orthanq/orthanq/compare/v1.18.1...v1.19.0) (2025-11-24)
+
+
+### Features
+
+* add support for alleles DQA1 and DRB1 for candidate variant generation ([#109](https://github.com/orthanq/orthanq/issues/109)) ([690c6b1](https://github.com/orthanq/orthanq/commit/690c6b1a07a83778b1fbf4e652b8c66fed32ef9b))
+
 ## [1.18.1](https://github.com/orthanq/orthanq/compare/v1.18.0...v1.18.1) (2025-11-19)
 
 
