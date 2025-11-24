@@ -523,7 +523,6 @@ pub fn alignment(
 ) -> Result<()> {
     //FOR HLA: separate HLA loci to separate FASTA files. align those to corresponding loci on the genome. merge bam. reheader if necessary.
     if application == "hla" {
-
         //create output path, for hla the output has to be given as a folder, for virus, a BCF or a VCF file.
         fs::create_dir_all(&output)?;
         let sorted_merged_path = output.join("alleles_alignment_sorted.bam");
@@ -655,7 +654,7 @@ pub fn alignment(
                 allele_path = temp_dir.path().join(&"DQA1_alleles.fasta");
                 aligned_file = temp_dir.path().join(&"DQA1_aligned.sam");
                 corrected_file_path = output.join(&"DQA1_aligned_corrected.bam");
-                awk_string = 
+                awk_string =
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+32627179-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:32627179-32648062/SN:6/"#;
                 regex_second = r#"s/LN:20883/LN:170805979/"#;
@@ -675,11 +674,11 @@ pub fn alignment(
                 allele_path = temp_dir.path().join(&"DRB1_alleles.fasta");
                 aligned_file = temp_dir.path().join(&"DRB1_aligned.sam");
                 corrected_file_path = output.join(&"DRB1_aligned_corrected.bam");
-                awk_string = 
+                awk_string =
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+32576902-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:32576902-32590848/SN:6/"#;
                 regex_second = r#"s/LN:13946/LN:170805979/"#;
-            } 
+            }
 
             let faidx = {
                 Command::new("samtools")
