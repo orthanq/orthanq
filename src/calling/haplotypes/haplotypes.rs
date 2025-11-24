@@ -476,7 +476,6 @@ impl HaplotypeVariants {
         &self,
         limit_prediction_vec: &Vec<String>,
     ) -> Result<Self> {
-
         //Iterate over all haplotypes present in the matrix and collect valid haplotypes.
         let mut allowed_haplotypes: Vec<Haplotype> = Vec::new();
 
@@ -492,7 +491,10 @@ impl HaplotypeVariants {
 
                 //Include haplotypes that start with any 2-field name
                 //Example: "A*02:01" matches "A*02:01:01:05"
-                if limit_prediction_vec.iter().any(|prefix| name.starts_with(prefix)) {
+                if limit_prediction_vec
+                    .iter()
+                    .any(|prefix| name.starts_with(prefix))
+                {
                     allowed_haplotypes.push(haplotype.clone());
                 }
             }
