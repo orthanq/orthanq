@@ -289,6 +289,12 @@ pub enum CallKind {
             help = "Sample to use in case of multisample BCFs. Sample name should match the sample name in the variant calls BCF."
         )]
         sample_name: Option<String>,
+        #[structopt(
+            parse(from_os_str),
+            long = "limit-prediction",
+            help = "Limit prediction to given input of HLA alleles e.g. A*01:01"
+        )]
+        limit_prediction: Option<PathBuf>,
     },
     Virus {
         #[structopt(
@@ -354,6 +360,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 num_constraint_haplotypes,
                 output_lp_datavzrd,
                 sample_name,
+                limit_prediction
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
@@ -372,6 +379,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .num_constraint_haplotypes(num_constraint_haplotypes)
                     .output_lp_datavzrd(output_lp_datavzrd)
                     .sample_name(sample_name)
+                    .limit_prediction(limit_prediction)
                     .build()
                     .unwrap();
                 caller.call()?;

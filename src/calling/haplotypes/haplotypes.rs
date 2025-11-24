@@ -471,6 +471,41 @@ impl HaplotypeVariants {
         Ok(haplotype_variants_filtered)
     }
 
+    //this function filters haplotype variants to limit the prediction to provided list of alleles + plus Null alleles
+    pub fn filter_haplotype_variants_for_limited_prediction(
+        &self,
+        limit_prediction_vec: &Vec<String>,
+    ) -> Result<Self> {
+
+        //Iterate over all haplotypes present in the matrix and collect valid haplotypes.
+        let mut allowed_haplotypes: Vec<Haplotype> = Vec::new();
+
+        for matrix_map in self.values() {
+            for haplotype in matrix_map.keys() {
+                //First, convert type to Haplotype.
+                //Second, collect haplotypes ending with "N".
+                let name = haplotype.to_string();
+                if name.ends_with('N') {
+                    allowed_haplotypes.push(haplotype.clone());
+                    continue;
+                }
+
+                //Include haplotypes that start with any 2-field name
+                //Example: "A*02:01" matches "A*02:01:01:05"
+                if limit_prediction_vec.iter().any(|prefix| name.starts_with(prefix)) {
+                    allowed_haplotypes.push(haplotype.clone());
+                }
+            }
+        }
+
+        //Third, de-duplicate just in case the input list contains N alleles as well
+        allowed_haplotypes.sort();
+        allowed_haplotypes.dedup();
+
+        //last, filter haplotype variants using the final list of haplotypes
+        self.filter_for_haplotypes(&allowed_haplotypes)
+    }
+
     pub fn find_equivalence_classes_with_graph(
         &self,
         application: &str,
