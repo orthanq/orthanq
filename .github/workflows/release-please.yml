@@ -32,7 +32,10 @@ jobs:
             sudo apt-get install --yes libgsl0-dev zlib1g-dev coinor-cbc coinor-libcbc-dev
       - uses: Swatinem/rust-cache@v1.3.0
         if: ${{ steps.release.outputs.release_created }}
-      
+
+      - name: Install fontconfig
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
+  
       - name: Publish crate
         if: ${{ steps.release.outputs.release_created }}
         uses: actions-rs/cargo@v1
