@@ -104,8 +104,7 @@ impl Caller {
                     format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]),
                 );
                 //first two
-            }
-            else {
+            } else {
                 allele_digit_table.insert(
                     id.to_string(),
                     format!(
