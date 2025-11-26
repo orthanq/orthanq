@@ -190,8 +190,7 @@ impl Caller {
         //     "DMA", "DQB1", "G", "TAP1", "DMB", "DRA", "HFE", "TAP2", "DOA", "DRB1", "T", "DOB",
         //     "DRB3", "MICA", "U", //all the non-pseudogenes
         // ]
-        // for locus in ["A", "B", "C", "DQA1", "DQB1", "DRB1"] { todo: activate all other genes; include DQA1 and DRB1
-        for locus in ["A", "B", "C", "DQB1"] {
+        for locus in ["A", "B", "C", "DQA1", "DQB1", "DRB1"] {
             let mut locus_columns = vec!["Index".to_string(), "ID".to_string()];
             for column_name in names.iter().skip(2) {
                 let splitted = column_name.split('*').collect::<Vec<&str>>();
@@ -522,7 +521,6 @@ pub fn alignment(
     output: &PathBuf,
 ) -> Result<()> {
     //FOR HLA: separate HLA loci to separate FASTA files. align those to corresponding loci on the genome. merge bam. reheader if necessary.
-    //TODO: implement DQA1 and DRB1.
     if application == "hla" {
         //create output path, for hla the output has to be given as a folder, for virus, a BCF or a VCF file.
         fs::create_dir_all(&output)?;
@@ -536,7 +534,9 @@ pub fn alignment(
         let a_alleles = temp_dir.path().join("A_alleles.fasta");
         let b_alleles = temp_dir.path().join("B_alleles.fasta");
         let c_alleles = temp_dir.path().join("C_alleles.fasta");
+        let dqa1_alleles = temp_dir.path().join("DQA1_alleles.fasta");
         let dqb1_alleles = temp_dir.path().join("DQB1_alleles.fasta");
+        let drb1_alleles = temp_dir.path().join("DRB1_alleles.fasta");
 
         let mut writer_a =
             bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(a_alleles).unwrap()));
@@ -544,8 +544,12 @@ pub fn alignment(
             bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(b_alleles).unwrap()));
         let mut writer_c =
             bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(c_alleles).unwrap()));
+        let mut writer_dqa1 =
+            bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(dqa1_alleles).unwrap()));
         let mut writer_dqb1 =
             bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(dqb1_alleles).unwrap()));
+        let mut writer_drb1 =
+            bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(drb1_alleles).unwrap()));
 
         //read alleles fasta
         let hla_alleles_rdr = bio::io::fasta::Reader::from_file(&alleles)?;
@@ -565,19 +569,25 @@ pub fn alignment(
                 writer_b.write_record(&record)?;
             } else if desc.starts_with(&"C") {
                 writer_c.write_record(&record)?;
+            } else if desc.starts_with(&"DQA1") {
+                writer_dqa1.write_record(&record)?;
             } else if desc.starts_with(&"DQB1") {
                 writer_dqb1.write_record(&record)?;
+            } else if desc.starts_with(&"DRB1") {
+                writer_drb1.write_record(&record)?;
             }
         }
         writer_a.flush()?;
         writer_b.flush()?;
         writer_c.flush()?;
+        writer_dqa1.flush()?;
         writer_dqb1.flush()?;
+        writer_drb1.flush()?;
 
         //2-)align fasta files separately to corresponding genomic regions
         //samtools faidx reference.fasta chr1:100000-200000 > region.fasta
 
-        for locus in &["A", "B", "C", "DQB1"] {
+        for locus in &["A", "B", "C", "DQA1", "DQB1", "DRB1"] {
             println!("Processing {}...", locus);
             //create separate fasta entries for the loci on the genome.
             let mut region = &"";
@@ -595,13 +605,18 @@ pub fn alignment(
             //6:29941260-29949572 -> A, length -> 8313
             //6:31353872-31367067 -> B, length -> 13196
             //6:31268749-31272130 -> C, length -> 3382
+            //6:32628179-32647062 -> DQA1, length -> 18883
             //6:32659467-32668383 -> DQB1, length -> 8917
+            //6:32577902-32589848  -> DRB1, length -> 11946
 
             //updated coordinates:
             //6:29940260-29950572 -> A, adjusted length -> 10313
             //6:31352872-31368067 -> B adjusted length -> 15196
             //6:31267749-31273130 -> C adjusted length -> 5382
+            //6:32627179-32648062 -> DQA1 adjusted length -> 20883
             //6:32658467-32669383 -> DQB1 adjusted length -> 10917
+            //6:32576902-32590848 -> DRB1 adjusted length -> 13946
+
             if locus == &"A" {
                 region = &"6:29940260-29950572";
                 genome_path = temp_dir.path().join(&"A_ref.fasta");
@@ -632,6 +647,16 @@ pub fn alignment(
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+31267749-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:31267749-31273130/SN:6/"#;
                 regex_second = r#"s/LN:5382/LN:170805979/"#;
+            } else if locus == &"DQA1" {
+                region = &"6:32627179-32648062";
+                genome_path = temp_dir.path().join(&"DQA1_ref.fasta");
+                allele_path = temp_dir.path().join(&"DQA1_alleles.fasta");
+                aligned_file = temp_dir.path().join(&"DQA1_aligned.sam");
+                corrected_file_path = output.join(&"DQA1_aligned_corrected.bam");
+                awk_string =
+                    r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+32627179-1; print } /^@/ { print }"#;
+                regex_first = r#"s/SN:6:32627179-32648062/SN:6/"#;
+                regex_second = r#"s/LN:20883/LN:170805979/"#;
             } else if locus == &"DQB1" {
                 region = &"6:32658467-32669383";
                 genome_path = temp_dir.path().join(&"DQB1_ref.fasta");
@@ -642,6 +667,16 @@ pub fn alignment(
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+32658467-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:32658467-32669383/SN:6/"#;
                 regex_second = r#"s/LN:10917/LN:170805979/"#;
+            } else if locus == &"DRB1" {
+                region = &"6:32576902-32590848";
+                genome_path = temp_dir.path().join(&"DRB1_ref.fasta");
+                allele_path = temp_dir.path().join(&"DRB1_alleles.fasta");
+                aligned_file = temp_dir.path().join(&"DRB1_aligned.sam");
+                corrected_file_path = output.join(&"DRB1_aligned_corrected.bam");
+                awk_string =
+                    r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+32576902-1; print } /^@/ { print }"#;
+                regex_first = r#"s/SN:6:32576902-32590848/SN:6/"#;
+                regex_second = r#"s/LN:13946/LN:170805979/"#;
             }
 
             let faidx = {
@@ -734,7 +769,9 @@ pub fn alignment(
                 &output.join("A_aligned_corrected.bam"),
                 &output.join("B_aligned_corrected.bam"),
                 &output.join("C_aligned_corrected.bam"),
+                &output.join("DQA1_aligned_corrected.bam"),
                 &output.join("DQB1_aligned_corrected.bam"),
+                &output.join("DRB1_aligned_corrected.bam"),
             ])
             .arg("-O")
             .arg("BAM")
@@ -768,7 +805,9 @@ pub fn alignment(
         std::fs::remove_file(output.join("A_aligned_corrected.bam"))?;
         std::fs::remove_file(output.join("B_aligned_corrected.bam"))?;
         std::fs::remove_file(output.join("C_aligned_corrected.bam"))?;
+        std::fs::remove_file(output.join("DQA1_aligned_corrected.bam"))?;
         std::fs::remove_file(output.join("DQB1_aligned_corrected.bam"))?;
+        std::fs::remove_file(output.join("DRB1_aligned_corrected.bam"))?;
 
         if !sort.success() {
             panic!(

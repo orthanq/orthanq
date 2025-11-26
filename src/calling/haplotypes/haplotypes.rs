@@ -49,18 +49,24 @@ pub struct Haplotype(#[deref] pub String);
 impl Haplotype {
     pub fn get_coordinates_for_haplotype(&self) -> (u32, u32) {
         let h = self.0.as_str();
-        if h.starts_with("DQB1") {
+
+        if h.starts_with("A") {
+            (29940260, 29950572)
+        } else if h.starts_with("B") {
+            (31352872, 31368067)
+        } else if h.starts_with("C") {
+            (31267749, 31273130)
+        } else if h.starts_with("DQA1") {
+            (32627179, 32648062)
+        } else if h.starts_with("DQB1") {
             (32658467, 32669383)
+        } else if h.starts_with("DRB1") {
+            (32576902, 32590848)
         } else {
-            match h.chars().next().unwrap() {
-                'A' => (29940260, 29950572),
-                'B' => (31352872, 31368067),
-                'C' => (31267749, 31273130),
-                other => panic!(
-                    "Unknown haplotype prefix '{}': no coordinate mapping found!",
-                    other
-                ),
-            }
+            panic!(
+                "Unknown haplotype prefix '{}': no coordinate mapping found!",
+                h
+            );
         }
     }
 }
@@ -859,16 +865,18 @@ pub fn plot_prediction(
         } else {
             eprintln!("Warning: 'datasets' not found in config");
         }
-        //write updated config back to a new file (or overwrite the original)
-        let filled_config_yaml = output_folder.join("datavzrd_config_filled.yaml");
-        let yaml_output = PathBuf::from(&filled_config_yaml);
-        fs::write(&yaml_output, serde_yaml::to_string(&config_yaml)?)?;
 
         //then create datavzrd report
         let datavzrd_output = output_folder.join("datavzrd_report");
 
         if *output_lp_datavzrd {
             println!("Creating datavzrd report for LP solution.");
+
+            //write updated config back to a new file (or overwrite the original)
+            let filled_config_yaml = output_folder.join("datavzrd_config_filled.yaml");
+            let yaml_output = PathBuf::from(&filled_config_yaml);
+            fs::write(&yaml_output, serde_yaml::to_string(&config_yaml)?)?;
+
             render_report(&filled_config_yaml, &datavzrd_output, "", false, true)?;
         }
         file_name.push_str("lp_solution.json");
@@ -1715,22 +1723,30 @@ pub fn get_event_posteriors(
     let mut application_name = "none";
 
     //note: graph creation was not tested after the latest improvements.
-    if &application == &"hla" {
+    if application == "hla" {
         //equivalence graph based optimization is at the developmental phase.
-        eq_graph = Some(
-            hap_filt_haplotype_variants
-                .find_equivalence_classes_with_graph(
-                    "hla",
-                    threshold_equivalence_class.unwrap(),
-                    &output_folder,
-                )
-                .unwrap(),
-        );
-        application_name = &"hla";
-    } else if &application == &"virus" {
+        application_name = "hla";
+
+        if enable_equivalence_class_constraint {
+            // use the equivalence graph when constraints are enabled
+            eq_graph = Some(
+                hap_filt_haplotype_variants
+                    .find_equivalence_classes_with_graph(
+                        "hla",
+                        threshold_equivalence_class.unwrap(),
+                        &output_folder,
+                    )
+                    .unwrap(),
+            );
+        } else {
+            // disable graph when constraint is off
+            eq_graph = None;
+        }
+    } else if application == "virus" {
         eq_graph = None;
-        application_name = &"virus";
+        application_name = "virus";
     }
+
     let computed_model = model.compute_from_marginal(
         &Marginal::new(
             reduced_vec.len(),
