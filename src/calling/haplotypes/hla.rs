@@ -43,8 +43,8 @@ pub struct Caller {
     num_constraint_haplotypes: i32,
     output_lp_datavzrd: bool,
     sample_name: Option<String>,
-    limit_prediction: Option<PathBuf>,
-    enforce_given_alleles: Option<Vec<String>>,
+    limit_prediction_file: Option<PathBuf>,
+    limit_prediction_list: Option<Vec<String>>,
 }
 
 impl Caller {
@@ -61,7 +61,7 @@ impl Caller {
             let mut haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
 
             //if limit_prediction is provided, filter haplotype variants to use only allele names matching in the input file + N alleles.
-            if let Some(alleles_to_limit_file) = &self.limit_prediction {
+            if let Some(alleles_to_limit_file) = &self.limit_prediction_file {
                 let file_content = fs::read_to_string(alleles_to_limit_file)?;
                 let alleles_to_limit_vec: Vec<String> = file_content
                     .lines()
@@ -70,8 +70,9 @@ impl Caller {
 
                 haplotype_variants = haplotype_variants
                     .filter_haplotype_variants_for_limited_prediction(&alleles_to_limit_vec)?;
-            //filter candidates vcf based on optional given input set of alleles (3-field-resolution)
-            if let Some(input_alleles) = &self.enforce_given_alleles {
+            }
+            //filter candidates vcf based on optional given input set of alleles (3-field-resolution can be given)
+            if let Some(input_alleles) = &self.limit_prediction_list {
                 // dbg!(&input_alleles);
                 haplotype_variants =
                     haplotype_variants.filter_for_haplotype_prefixes(&input_alleles)?;
