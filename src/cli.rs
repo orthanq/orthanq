@@ -295,6 +295,10 @@ pub enum CallKind {
             help = "Limit prediction to given input of HLA alleles e.g. A*01:01"
         )]
         limit_prediction: Option<PathBuf>,
+            long,
+            help = "List of HLA alleles to enforce during prediction (e.g. --enforce-given-alleles A*01:01:01 A*02:01:01)."
+        )]
+        enforce_given_alleles: Option<Vec<String>>,
     },
     Virus {
         #[structopt(
@@ -361,6 +365,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 output_lp_datavzrd,
                 sample_name,
                 limit_prediction,
+                enforce_given_alleles,
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
@@ -380,6 +385,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .output_lp_datavzrd(output_lp_datavzrd)
                     .sample_name(sample_name)
                     .limit_prediction(limit_prediction)
+                    .enforce_given_alleles(enforce_given_alleles)
                     .build()
                     .unwrap();
                 caller.call()?;
