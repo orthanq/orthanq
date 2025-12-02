@@ -291,12 +291,12 @@ pub enum CallKind {
         sample_name: Option<String>,
         #[structopt(
             parse(from_os_str),
-            long = "limit-prediction",
+            long = "limit-prediction-file",
             help = "Path to file containing HLA alleles (one per line, e.g., A*01:01) to limit predictions. Alleles are matched using 2-field resolution prefix matching, and null alleles (ending with 'N') are automatically included."
         )]
         limit_prediction_file: Option<PathBuf>,
         #[structopt(
-            long,
+            long = "limit-prediction-list",
             help = "List of HLA alleles to enforce during prediction (e.g. --enforce-given-alleles A*01:01:01 A*02:01:01). Both 3-field and 4-field resolutions can be given as input."
         )]
         limit_prediction_list: Option<Vec<String>>,
