@@ -98,22 +98,21 @@ impl Caller {
                 //some alleles e.g. MICA may not have the full nomenclature, i.e. 6 digits
                 allele_digit_table
                     .insert(id.to_string(), format!("{}:{}", splitted[0], splitted[1]));
-            } else {
+            } else if splitted.len() < 4 {
                 allele_digit_table.insert(
                     id.to_string(),
                     format!("{}:{}:{}", splitted[0], splitted[1], splitted[2]),
                 );
                 //first two
+            } else {
+                allele_digit_table.insert(
+                    id.to_string(),
+                    format!(
+                        "{}:{}:{}:{}",
+                        splitted[0], splitted[1], splitted[2], splitted[3]
+                    ),
+                );
             }
-            // else {
-            //     allele_digit_table.insert(
-            //         id.to_string(),
-            //         format!(
-            //             "{}:{}:{}:{}",
-            //             splitted[0], splitted[1], splitted[2], splitted[3]
-            //         ),
-            //     );
-            // }
             //for two field info
             // else {
             //     allele_digit_table.insert(
