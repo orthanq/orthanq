@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.20.0](https://github.com/orthanq/orthanq/compare/v1.19.0...v1.20.0) (2025-12-02)
+
+
+### Features
+
+* enforce candidate vcf to given list of input alleles for debugging puposes ([#103](https://github.com/orthanq/orthanq/issues/103)) ([d5e3c8a](https://github.com/orthanq/orthanq/commit/d5e3c8a32a3146af452f27854a56f48e50d38dda))
+* output 4-field resolution ([#102](https://github.com/orthanq/orthanq/issues/102)) ([fc7ea28](https://github.com/orthanq/orthanq/commit/fc7ea28ffc22de2c87b87be25a45566c180acb52))
+
 ## [1.19.0](https://github.com/orthanq/orthanq/compare/v1.18.1...v1.19.0) (2025-11-24)
 
 
