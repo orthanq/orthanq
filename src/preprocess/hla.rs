@@ -147,7 +147,7 @@ impl Caller {
                 Command::new("bwa")
                     .arg("mem")
                     .arg("-t")
-                    .arg("10")
+                    .arg(&self.threads)
                     .arg("-R")
                     .arg(&read_group)
                     .arg(linear_genome_index)
