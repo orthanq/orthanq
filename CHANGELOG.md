@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.1](https://github.com/orthanq/orthanq/compare/v1.20.0...v1.20.1) (2025-12-04)
+
+
+### Bug Fixes
+
+* fix bwa thread usage ([#112](https://github.com/orthanq/orthanq/issues/112)) ([fd06b7e](https://github.com/orthanq/orthanq/commit/fd06b7efdae142dac2043deaa80f4771aae22512))
+
 ## [1.20.0](https://github.com/orthanq/orthanq/compare/v1.19.0...v1.20.0) (2025-12-02)
 
 
