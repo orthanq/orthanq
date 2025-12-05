@@ -36,7 +36,7 @@ pub struct Caller {
     num_extend_haplotypes: i64,
     num_constraint_haplotypes: i32,
     output_lp_datavzrd: bool,
-    threshold_posterior_density: i32
+    threshold_posterior_density: i32,
 }
 
 impl Caller {
@@ -65,15 +65,15 @@ impl Caller {
                 self.lp_cutoff,
                 false,
                 None,
-                self.threshold_posterior_density
+                self.threshold_posterior_density,
             )?;
 
             //find best fractions
             let (best_fractions, _) = event_posteriors.iter().next().unwrap();
             let best_fractions = best_fractions
-            .iter()
-            .map(|f| NotNan::into_inner(*f))
-            .collect::<Vec<f64>>();
+                .iter()
+                .map(|f| NotNan::into_inner(*f))
+                .collect::<Vec<f64>>();
 
             //collect candidate matrix
             let candidate_matrix = CandidateMatrix::new(

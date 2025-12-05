@@ -299,7 +299,7 @@ pub enum CallKind {
             default_value = "5",
             help = "Number of decimal places to display (computed for 10^^num)."
         )]
-        threshold_posterior_density: i32
+        threshold_posterior_density: i32,
     },
     Virus {
         #[structopt(
@@ -348,7 +348,7 @@ pub enum CallKind {
             default_value = "5",
             help = "Number of decimal places to display (computed for 10^^num)."
         )]
-        threshold_posterior_density: i32
+        threshold_posterior_density: i32,
     },
 }
 
@@ -373,7 +373,6 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 sample_name,
                 threshold_posterior_density,
                 enforce_given_alleles,
-                
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)

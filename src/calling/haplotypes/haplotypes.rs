@@ -1322,10 +1322,8 @@ pub fn write_results(
     if variant_info {
         event_posteriors.iter().for_each(|(fractions, _)| {
             let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
-            candidate_matrix
-                .iter()
-                .zip(variant_calls.iter())
-                .for_each(|((variant_id, (genotypes, covered)), afd)| {
+            candidate_matrix.iter().zip(variant_calls.iter()).for_each(
+                |((variant_id, (genotypes, covered)), afd)| {
                     let mut denom = NotNan::new(1.0).unwrap();
                     let mut vaf_sum = NotNan::new(0.0).unwrap();
                     let mut counter = 0;
@@ -1348,7 +1346,8 @@ pub fn write_results(
                     } else {
                         ()
                     }
-                });
+                },
+            );
             event_queries.push(vaf_queries);
         });
     }
@@ -1654,7 +1653,7 @@ pub fn get_event_posteriors(
     lp_cutoff: f64,
     enable_equivalence_class_constraint: bool,
     threshold_equivalence_class: Option<usize>,
-    threshold_posterior_density: i32
+    threshold_posterior_density: i32,
 ) -> Result<(Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>)> {
     //FIRST, perform linear program using only nonzero DP variants
     //filter variant calls and haplotype variants
@@ -1822,14 +1821,17 @@ pub fn get_event_posteriors(
     Ok((filtered_posteriors, filtered_haplotypes))
 }
 
-
 pub fn filter_haplotypes_and_events(
     event_posteriors: Vec<(HaplotypeFractions, LogProb)>,
     haplotypes: Vec<Haplotype>,
 ) -> (Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>) {
     // Step 1: Determine which haplotypes are nonzero across all remaining events
     let hap_mask: Vec<bool> = (0..haplotypes.len())
-        .map(|i| event_posteriors.iter().any(|(fractions, _)| fractions[i].into_inner() != 0.0))
+        .map(|i| {
+            event_posteriors
+                .iter()
+                .any(|(fractions, _)| fractions[i].into_inner() != 0.0)
+        })
         .collect();
 
     // Step 2: Filter haplotypes

@@ -44,7 +44,7 @@ pub struct Caller {
     output_lp_datavzrd: bool,
     sample_name: Option<String>,
     enforce_given_alleles: Option<Vec<String>>,
-    threshold_posterior_density: i32
+    threshold_posterior_density: i32,
 }
 
 impl Caller {
@@ -79,7 +79,7 @@ impl Caller {
                 self.lp_cutoff,
                 self.enable_equivalence_class_constraint,
                 Some(self.threshold_equivalence_class),
-                self.threshold_posterior_density
+                self.threshold_posterior_density,
             )?;
 
             //collect best fractions
@@ -110,10 +110,7 @@ impl Caller {
 
             //plot best solution plot and only display variants that are found in one of the haplotypes.
             let (best_solution_matrix, best_solution_variant_calls) =
-                filter_variants_for_best_solution_plot(
-                    &filtered_candidate_matrix,
-                    &variant_calls,
-                );
+                filter_variants_for_best_solution_plot(&filtered_candidate_matrix, &variant_calls);
 
             haplotypes::plot_prediction(
                 &self.output_lp_datavzrd,
