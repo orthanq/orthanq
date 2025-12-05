@@ -294,6 +294,12 @@ pub enum CallKind {
             help = "List of HLA alleles to enforce during prediction (e.g. --enforce-given-alleles A*01:01:01 A*02:01:01)."
         )]
         enforce_given_alleles: Option<Vec<String>>,
+        #[structopt(
+            long,
+            default_value = "5",
+            help = "Number of decimal places to display (computed for 10^^num)."
+        )]
+        threshold_posterior_density: i32,
     },
     Virus {
         #[structopt(
@@ -337,6 +343,12 @@ pub enum CallKind {
         num_constraint_haplotypes: i32,
         #[structopt(long, help = "Output Datavzrd report for LP solution.")]
         output_lp_datavzrd: bool,
+        #[structopt(
+            long,
+            default_value = "5",
+            help = "Number of decimal places to display (computed for 10^^num)."
+        )]
+        threshold_posterior_density: i32,
     },
 }
 
@@ -359,6 +371,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 num_constraint_haplotypes,
                 output_lp_datavzrd,
                 sample_name,
+                threshold_posterior_density,
                 enforce_given_alleles,
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
@@ -378,6 +391,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .num_constraint_haplotypes(num_constraint_haplotypes)
                     .output_lp_datavzrd(output_lp_datavzrd)
                     .sample_name(sample_name)
+                    .threshold_posterior_density(threshold_posterior_density)
                     .enforce_given_alleles(enforce_given_alleles)
                     .build()
                     .unwrap();
@@ -394,6 +408,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 num_extend_haplotypes,
                 num_constraint_haplotypes,
                 output_lp_datavzrd,
+                threshold_posterior_density,
             } => {
                 let mut caller = calling::haplotypes::virus::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
@@ -405,6 +420,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .num_extend_haplotypes(num_extend_haplotypes)
                     .num_constraint_haplotypes(num_constraint_haplotypes)
                     .output_lp_datavzrd(output_lp_datavzrd)
+                    .threshold_posterior_density(threshold_posterior_density)
                     .build()
                     .unwrap();
                 caller.call()?;

@@ -1306,15 +1306,14 @@ pub fn linear_program(
 
 pub fn write_results(
     outcsv: &PathBuf,
-    data: &Data,
+    variant_calls: &VariantCalls,
+    candidate_matrix: &CandidateMatrix,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     final_haplotypes: &Vec<Haplotype>,
-    _prior: String,
     variant_info: bool,
 ) -> Result<()> {
     //firstly add variant query and probabilities to the outout table for each event
-    let variant_calls: Vec<AlleleFreqDist> = data
-        .variant_calls
+    let variant_calls: Vec<AlleleFreqDist> = variant_calls
         .iter()
         .map(|(_, call)| call.afd.clone())
         .collect();
@@ -1323,10 +1322,8 @@ pub fn write_results(
     if variant_info {
         event_posteriors.iter().for_each(|(fractions, _)| {
             let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
-            data.candidate_matrix
-                .iter()
-                .zip(variant_calls.iter())
-                .for_each(|((variant_id, (genotypes, covered)), afd)| {
+            candidate_matrix.iter().zip(variant_calls.iter()).for_each(
+                |((variant_id, (genotypes, covered)), afd)| {
                     let mut denom = NotNan::new(1.0).unwrap();
                     let mut vaf_sum = NotNan::new(0.0).unwrap();
                     let mut counter = 0;
@@ -1349,7 +1346,8 @@ pub fn write_results(
                     } else {
                         ()
                     }
-                });
+                },
+            );
             event_queries.push(vaf_queries);
         });
     }
@@ -1645,7 +1643,7 @@ fn find_similar_haplotypes(
 pub fn get_event_posteriors(
     output_lp_datavzrd: &bool,
     haplotype_variants: &HaplotypeVariants,
-    variant_calls: VariantCalls,
+    variant_calls: &VariantCalls,
     application: &str,
     prior: &String,
     output_folder: &PathBuf,
@@ -1655,7 +1653,8 @@ pub fn get_event_posteriors(
     lp_cutoff: f64,
     enable_equivalence_class_constraint: bool,
     threshold_equivalence_class: Option<usize>,
-) -> Result<(Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>, Data)> {
+    threshold_posterior_density: i32,
+) -> Result<(Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>)> {
     //FIRST, perform linear program using only nonzero DP variants
     //filter variant calls and haplotype variants
     let filtered_calls = variant_calls.without_zero_dp();
@@ -1791,24 +1790,72 @@ pub fn get_event_posteriors(
         &data,
     );
 
-    //remove zero densities from the table
+    // skip rows under the requested singificance level
     let mut event_posteriors = Vec::new();
     computed_model
         .event_posteriors()
-        .for_each(|(fractions, logprob)| {
-            if logprob.exp() != 0.0 {
-                event_posteriors.push((fractions.clone(), logprob.clone()));
+        .for_each(|(fractions, density)| {
+            let threshold = 10f64.powi(-(threshold_posterior_density));
+
+            if density.exp() > threshold {
+                event_posteriors.push((fractions.clone(), density.clone()));
             }
         });
 
-    // Third, extend the table with identical haplotypes
+    // print a message if no significant predictions are made
+    if event_posteriors.is_empty() {
+        println!("no significant predictions, please increase --threshold-posterior-density !")
+    }
+    // extend the table with identical haplotypes
     let (new_event_posteriors, all_haplotypes) = extend_resulting_table(
         &reduced_vec,
         &event_posteriors,
         &prior,
         &identical_haplotypes_map,
     )?;
-    Ok((new_event_posteriors, all_haplotypes, data))
+
+    // simplify the output; keep haplotypes nonzero in at least one event
+    let (filtered_posteriors, filtered_haplotypes) =
+        filter_haplotypes_and_events(new_event_posteriors, all_haplotypes);
+
+    Ok((filtered_posteriors, filtered_haplotypes))
+}
+
+pub fn filter_haplotypes_and_events(
+    event_posteriors: Vec<(HaplotypeFractions, LogProb)>,
+    haplotypes: Vec<Haplotype>,
+) -> (Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>) {
+    // Step 1: Determine which haplotypes are nonzero across all remaining events
+    let hap_mask: Vec<bool> = (0..haplotypes.len())
+        .map(|i| {
+            event_posteriors
+                .iter()
+                .any(|(fractions, _)| fractions[i].into_inner() != 0.0)
+        })
+        .collect();
+
+    // Step 2: Filter haplotypes
+    let filtered_haplotypes: Vec<_> = haplotypes
+        .into_iter()
+        .zip(hap_mask.iter())
+        .filter_map(|(h, &keep)| if keep { Some(h) } else { None })
+        .collect();
+
+    // Step 3: Filter fractions in each event to match filtered haplotypes
+    let filtered_posteriors: Vec<(HaplotypeFractions, LogProb)> = event_posteriors
+        .into_iter()
+        .map(|(fractions, density)| {
+            let new_fractions: Vec<_> = fractions
+                .0
+                .into_iter()
+                .zip(hap_mask.iter())
+                .filter_map(|(f, &keep)| if keep { Some(f) } else { None })
+                .collect();
+            (HaplotypeFractions(new_fractions), density)
+        })
+        .collect();
+
+    (filtered_posteriors, filtered_haplotypes)
 }
 
 fn generate_combinations(
@@ -1984,7 +2031,7 @@ pub fn output_empty_output(output_folder: &PathBuf) -> Result<(), Box<dyn Error>
     wtr.write_record(&headers)?;
 
     // Write blank CSV for 2-field.csv and G_groups.csv
-    for file in ["2-field.csv", "G_groups.csv"] {
+    for file in ["predictions_2_field.csv", "predictions_G_groups.csv"] {
         let output_path = output_folder.join(file);
         let mut wtr = csv::Writer::from_path(output_path)?;
         let headers = ["density", "odds"];
