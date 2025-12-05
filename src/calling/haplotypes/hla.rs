@@ -44,6 +44,7 @@ pub struct Caller {
     output_lp_datavzrd: bool,
     sample_name: Option<String>,
     enforce_given_alleles: Option<Vec<String>>,
+    threshold_posterior_density: i32
 }
 
 impl Caller {
@@ -61,16 +62,14 @@ impl Caller {
 
             //filter candidates vcf based on optional given input set of alleles (3-field-resolution)
             if let Some(input_alleles) = &self.enforce_given_alleles {
-                // dbg!(&input_alleles);
                 haplotype_variants =
                     haplotype_variants.filter_for_haplotype_prefixes(&input_alleles)?;
-                // dbg!(&haplotype_variants);
             }
 
-            let (event_posteriors, all_haplotypes, data) = get_event_posteriors(
+            let (event_posteriors, all_haplotypes) = get_event_posteriors(
                 &self.output_lp_datavzrd,
                 &haplotype_variants,
-                variant_calls,
+                &variant_calls,
                 &"hla",
                 &self.prior,
                 &self.output_folder,
@@ -80,10 +79,10 @@ impl Caller {
                 self.lp_cutoff,
                 self.enable_equivalence_class_constraint,
                 Some(self.threshold_equivalence_class),
+                self.threshold_posterior_density
             )?;
-            // dbg!(&event_posteriors, &all_haplotypes);
 
-            //plot the best solution as final solution plot
+            //collect best fractions
             let best_fractions = event_posteriors
                 .iter()
                 .next()
@@ -100,7 +99,6 @@ impl Caller {
             //collect haplotype names and fractions separately to be used later twice
             let filtered_haplotypes = nonzero_haplotype_fractions.keys().cloned().collect();
             let filtered_fractions = nonzero_haplotype_fractions.values().cloned().collect();
-            // dbg!(&filtered_haplotypes, &filtered_fractions);
 
             //filter candidate matrix based on nonzero haplotype fractions
             let filtered_candidate_matrix = CandidateMatrix::new(
@@ -114,7 +112,7 @@ impl Caller {
             let (best_solution_matrix, best_solution_variant_calls) =
                 filter_variants_for_best_solution_plot(
                     &filtered_candidate_matrix,
-                    &data.variant_calls,
+                    &variant_calls,
                 );
 
             haplotypes::plot_prediction(
@@ -127,13 +125,19 @@ impl Caller {
                 &filtered_fractions,
             )?;
 
-            //write results to tsv
+            //write results to tsv using full haplotype names found in get_event_posteriors()
+            let all_haplotypes_candidate_matrix = CandidateMatrix::new(
+                &haplotype_variants
+                    .filter_for_haplotypes(&all_haplotypes)
+                    .unwrap(),
+            )
+            .unwrap();
             haplotypes::write_results(
                 &self.output_folder.join(&"predictions.csv"),
-                &data,
+                &variant_calls,
+                &all_haplotypes_candidate_matrix,
                 &event_posteriors,
                 &all_haplotypes,
-                self.prior.clone(),
                 false,
             )?;
 
@@ -142,8 +146,7 @@ impl Caller {
             //filter out the variants that are not within the range of the locus.
             let first_haplotype = nonzero_haplotype_fractions.keys().next().unwrap();
             let (locus_start, locus_end) = first_haplotype.get_coordinates_for_haplotype();
-            let (variant_calls_in_locus, candidate_matrix_in_locus) = &data
-                .variant_calls
+            let (variant_calls_in_locus, candidate_matrix_in_locus) = &variant_calls
                 .filter_variants_in_range(&filtered_candidate_matrix, locus_start, locus_end)?;
 
             //the haplotype order is preserved in the keys of nonzero_haplotype_fractions
@@ -161,11 +164,11 @@ impl Caller {
             path_for_two_fields.push("2-field.csv");
             haplotypes::write_results(
                 &path_for_two_fields,
-                &data,
+                &variant_calls,
+                &all_haplotypes_candidate_matrix, //used only when variant_info is true, however 2-field output cannot have it activated. So this only stays there to make the function happy.
                 &two_field_event_posteriors,
                 &two_field_haplotypes,
-                self.prior.clone(),
-                false,
+                false, //can't be activated for 2-field
             )?;
 
             //plot first 10 posteriors of orthanq output
@@ -221,10 +224,10 @@ impl Caller {
             // dbg!(&final_haplotypes_converted);
             haplotypes::write_results(
                 &converted_name,
-                &data,
+                &variant_calls,
+                &all_haplotypes_candidate_matrix,
                 &event_posteriors,
                 &final_haplotypes_converted,
-                self.prior.clone(),
                 false,
             )?;
             Ok(())
