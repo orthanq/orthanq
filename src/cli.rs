@@ -290,10 +290,16 @@ pub enum CallKind {
         )]
         sample_name: Option<String>,
         #[structopt(
-            long,
-            help = "List of HLA alleles to enforce during prediction (e.g. --enforce-given-alleles A*01:01:01 A*02:01:01)."
+            parse(from_os_str),
+            long = "limit-prediction-file",
+            help = "Path to file containing HLA alleles (one per line, e.g., A*01:01) to limit predictions. Alleles are matched using 2-field resolution prefix matching, and null alleles (ending with 'N') are automatically included."
         )]
-        enforce_given_alleles: Option<Vec<String>>,
+        limit_prediction_file: Option<PathBuf>,
+        #[structopt(
+            long = "limit-prediction-list",
+            help = "List of HLA alleles to enforce during prediction (e.g. --enforce-given-alleles A*01:01:01 A*02:01:01). Both 3-field and 4-field resolutions can be given as input."
+        )]
+        limit_prediction_list: Option<Vec<String>>,
     },
     Virus {
         #[structopt(
@@ -359,7 +365,8 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 num_constraint_haplotypes,
                 output_lp_datavzrd,
                 sample_name,
-                enforce_given_alleles,
+                limit_prediction_file,
+                limit_prediction_list,
             } => {
                 let mut caller = calling::haplotypes::hla::CallerBuilder::default()
                     .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
@@ -378,7 +385,8 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .num_constraint_haplotypes(num_constraint_haplotypes)
                     .output_lp_datavzrd(output_lp_datavzrd)
                     .sample_name(sample_name)
-                    .enforce_given_alleles(enforce_given_alleles)
+                    .limit_prediction_file(limit_prediction_file)
+                    .limit_prediction_list(limit_prediction_list)
                     .build()
                     .unwrap();
                 caller.call()?;
