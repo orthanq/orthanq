@@ -1825,7 +1825,7 @@ pub fn filter_haplotypes_and_events(
     event_posteriors: Vec<(HaplotypeFractions, LogProb)>,
     haplotypes: Vec<Haplotype>,
 ) -> (Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>) {
-    // Step 1: Determine which haplotypes are nonzero across all remaining events
+    // Step 1: Determine which haplotypes are nonzero across all remaining events; means at least one fraction should have nonzero fraction for that variant (that's why any() should be used below)
     let hap_mask: Vec<bool> = (0..haplotypes.len())
         .map(|i| {
             event_posteriors
