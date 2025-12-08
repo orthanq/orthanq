@@ -1797,7 +1797,7 @@ pub fn get_event_posteriors(
         .for_each(|(fractions, density)| {
             let threshold = 10f64.powi(-(threshold_posterior_density));
 
-            if density.exp() > threshold {
+            if density.exp() >= threshold {
                 event_posteriors.push((fractions.clone(), density.clone()));
             }
         });
