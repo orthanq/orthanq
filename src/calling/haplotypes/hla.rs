@@ -96,7 +96,7 @@ impl Caller {
             let nonzero_haplotype_fractions: BTreeMap<Haplotype, f64> =
                 get_nonzero_haplotype_fractions(&all_haplotypes, &best_fractions);
 
-            //collect haplotype names and fractions separately to be used later twice
+            //collect haplotype names and fractions
             let filtered_haplotypes = nonzero_haplotype_fractions.keys().cloned().collect();
             let filtered_fractions = nonzero_haplotype_fractions.values().cloned().collect();
 
