@@ -1790,14 +1790,12 @@ pub fn get_event_posteriors(
         &data,
     );
 
-    // skip rows under the requested singificance level
+    // only retain nonzero logprobs
     let mut event_posteriors = Vec::new();
     computed_model
         .event_posteriors()
         .for_each(|(fractions, density)| {
-            let threshold = 10f64.powi(-(threshold_posterior_density));
-
-            if density.exp() >= threshold {
+            if density.exp() != 0.0 {
                 event_posteriors.push((fractions.clone(), density.clone()));
             }
         });
@@ -1806,13 +1804,18 @@ pub fn get_event_posteriors(
     if event_posteriors.is_empty() {
         println!("no significant predictions, please increase --threshold-posterior-density !")
     }
-    // extend the table with identical haplotypes
-    let (new_event_posteriors, all_haplotypes) = extend_resulting_table(
+
+    // extend the table with identical haplotypes (should be done before the significance based filtering because for viruses normalization can break the filtering)
+    let (mut new_event_posteriors, all_haplotypes) = extend_resulting_table(
         &reduced_vec,
         &event_posteriors,
         &prior,
         &identical_haplotypes_map,
     )?;
+
+    // important: only retain rows higher than the requested significance level. This cannot be done above during zero logprob filtering because extension of haplotype list updates (normalizes) densities.
+    let threshold = 10f64.powi(-(threshold_posterior_density));
+    new_event_posteriors.retain(|(_, density)| density.exp() >= threshold);
 
     // simplify the output; keep haplotypes nonzero in at least one event
     let (filtered_posteriors, filtered_haplotypes) =
