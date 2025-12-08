@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.21.0](https://github.com/orthanq/orthanq/compare/v1.20.0...v1.21.0) (2025-12-08)
+
+
+### Features
+
+* skip rows under the requested singificance level using a parameter; simplify the output by keeping haplotypes nonzero in at least one event; fix the bug that leads to data in get_event_posteriors return false haplotypes in Data object, rename output file names ([#115](https://github.com/orthanq/orthanq/issues/115)) ([d587774](https://github.com/orthanq/orthanq/commit/d58777404c20a8ee051c572586093fd0961e46fb))
+
+
+### Bug Fixes
+
+* do not output intermediate files ([#114](https://github.com/orthanq/orthanq/issues/114)) ([c706038](https://github.com/orthanq/orthanq/commit/c706038eb1ff84675af20a56e508a04cf9c25aa1))
+* fix bwa thread usage ([#112](https://github.com/orthanq/orthanq/issues/112)) ([fd06b7e](https://github.com/orthanq/orthanq/commit/fd06b7efdae142dac2043deaa80f4771aae22512))
+
 ## [1.20.0](https://github.com/orthanq/orthanq/compare/v1.19.0...v1.20.0) (2025-12-02)
 
 
