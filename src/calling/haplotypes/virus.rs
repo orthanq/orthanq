@@ -36,6 +36,7 @@ pub struct Caller {
     num_extend_haplotypes: i64,
     num_constraint_haplotypes: i32,
     output_lp_datavzrd: bool,
+    threshold_posterior_density: i32,
 }
 
 impl Caller {
@@ -51,10 +52,10 @@ impl Caller {
             Ok(())
         } else {
             let haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
-            let (event_posteriors, all_haplotypes, data) = get_event_posteriors(
+            let (event_posteriors, all_haplotypes) = get_event_posteriors(
                 &self.output_lp_datavzrd,
                 &haplotype_variants,
-                variant_calls,
+                &variant_calls,
                 &"virus",
                 &self.prior,
                 &self.output_folder,
@@ -64,42 +65,43 @@ impl Caller {
                 self.lp_cutoff,
                 false,
                 None,
+                self.threshold_posterior_density,
             )?;
 
-            //plot the best solution as final solution plot
+            //find best fractions
             let (best_fractions, _) = event_posteriors.iter().next().unwrap();
-            let candidate_matrix = CandidateMatrix::new(
-                &haplotype_variants
-                    .filter_for_haplotypes(&all_haplotypes)
-                    .unwrap(),
-            )
-            .unwrap()
-            .values()
-            .cloned()
-            .collect();
-
             let best_fractions = best_fractions
                 .iter()
                 .map(|f| NotNan::into_inner(*f))
                 .collect::<Vec<f64>>();
 
+            //collect candidate matrix
+            let candidate_matrix = CandidateMatrix::new(
+                &haplotype_variants
+                    .filter_for_haplotypes(&all_haplotypes)
+                    .unwrap(),
+            )
+            .unwrap();
+            let candidate_matrix_values = candidate_matrix.values().cloned().collect();
+
+            //plot best solution
             haplotypes::plot_prediction(
                 &self.output_lp_datavzrd,
                 &self.output_folder,
                 &"final",
-                &candidate_matrix,
+                &candidate_matrix_values,
                 &all_haplotypes,
-                &data.variant_calls,
+                &variant_calls,
                 &best_fractions,
             )?;
 
             //write results to tsv
             haplotypes::write_results(
                 &self.output_folder.join(&"predictions.csv"),
-                &data,
+                &variant_calls,
+                &candidate_matrix,
                 &event_posteriors,
                 &all_haplotypes,
-                self.prior.clone(),
                 false,
             )?;
 

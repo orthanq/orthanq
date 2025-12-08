@@ -21,6 +21,7 @@ fn check_haplotype_fractions_5050() {
         .output_lp_datavzrd(false)
         .sample_name(None)
         .enforce_given_alleles(None)
+        .threshold_posterior_density(3)
         .build()
         .unwrap()
         .call();
