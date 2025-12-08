@@ -297,7 +297,7 @@ pub enum CallKind {
         #[structopt(
             long,
             default_value = "5",
-            help = "Number of decimal places to display (computed for 10^^num)."
+            help = "Number of decimal places to display (computed for 10^^-num)."
         )]
         threshold_posterior_density: i32,
     },
@@ -346,7 +346,7 @@ pub enum CallKind {
         #[structopt(
             long,
             default_value = "5",
-            help = "Number of decimal places to display (computed for 10^^num)."
+            help = "Number of decimal places to display (computed for 10^^-num)."
         )]
         threshold_posterior_density: i32,
     },
