@@ -225,7 +225,7 @@ impl Caller {
         }
 
         println!("chr_naming format: {}", chr_naming);
-        let path_to_regions = parent.join("regions.bed");
+        let path_to_regions = temp_dir.path().join("regions.bed");
         let mut regions_file = std::fs::File::create(&path_to_regions)?;
         if chr_naming == &"ucsc" {
             let regions_ensembl = "\
