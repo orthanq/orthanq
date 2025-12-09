@@ -39,6 +39,9 @@ jobs:
       - name: Install npm
         run: sudo apt-get install -y npm
 
+      - name: Install yarn
+        run: npm install --global yarn
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
