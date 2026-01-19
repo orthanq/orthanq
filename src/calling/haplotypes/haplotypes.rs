@@ -348,6 +348,16 @@ impl VariantCalls {
             CandidateMatrix(filtered_candidates),
         ))
     }
+
+    pub fn filter_by_max_prob(&self, threshold: f64) -> Self {
+        let filtered = self.0.iter()
+            .filter(|(_, call)| *call.max_prob >= threshold)
+            .map(|(id, call)| (id.clone(), call.clone()))
+            .collect();
+        
+        VariantCalls(filtered)
+    }
+
 }
 
 #[derive(Derefable, Debug, Clone, PartialEq, Eq, PartialOrd, DerefMut)]
@@ -656,6 +666,130 @@ impl HaplotypeVariants {
         Ok(DistanceMatrix(distances))
     }
 }
+
+pub fn filter_haplotypes_by_hit_ratio(
+    hv: &HaplotypeVariants,
+    vc: &VariantCalls,
+    threshold: f64,
+) -> HaplotypeVariants {
+    let calls: BTreeSet<VariantID> = vc.keys().copied().collect();
+    // let calls: BTreeSet<VariantID> = vc
+    // .keys()
+    // .copied()
+    // .take(3967) // 👈 testing only 66 okey diil
+    // .collect();
+    // dbg!(&vc);
+    // for (i, vid) in vc.keys().enumerate() {
+    //     if i == 3965 || i == 3966 {
+    //         dbg!("index {} -> {:?}", i, vid);
+    //     }
+    // }
+
+    // dbg!(&hv);
+    // dbg!(&vc);
+    dbg!(hv.len(), calls.len());
+
+    let initial_haplotypes: BTreeSet<Haplotype> = hv
+        .values()
+        .flat_map(|hap_map| hap_map.keys().cloned())
+        .collect();
+
+    let initial_len = initial_haplotypes.len();
+    dbg!(initial_len);
+    dbg!(&initial_haplotypes);
+    // haplotype -> (hits, total)
+    let mut counts: BTreeMap<Haplotype, (usize, usize)> = BTreeMap::new();
+
+    for (vid, hap_map) in hv.iter() {
+        let is_call = calls.contains(vid);
+        for (hap, (genotype, _)) in hap_map.iter() {
+            if !*genotype {
+                continue;
+            }
+            let entry = counts.entry(hap.clone()).or_insert((0, 0));
+            entry.1 += 1; // total
+
+            if is_call {
+                // if hap == &Haplotype("BA.2.1".to_string()) || hap == &Haplotype("BA.2.10".to_string()){
+                //     dbg!(&hap, &vid);
+                // }
+                entry.0 += 1; // hit
+            }
+        }
+    }
+    dbg!(&counts);
+    let keep: Vec<Haplotype> = counts
+        .into_iter()
+        .filter(|(_, (hit, total))| {
+            (*hit as f64) / (*total as f64) >= threshold
+        })
+        .map(|(h, _)| h)
+        .collect();
+
+    //jaccard olmasi icin calls_len de paydada kullanilmasi gerekir; aksi takdirde bu recall hesaplamasi olur
+    // let calls_len = calls.len();
+    // let keep: Vec<Haplotype> = counts
+    //     .into_iter()
+    //     .filter(|(_, (hit, total))| {
+    //         if *total == 0 {
+    //             return false;
+    //         }
+    //         let union = calls_len + *total - *hit;
+    //         (*hit as f64) / (union as f64) >= threshold
+    //     })
+    //     .map(|(h, _)| h)
+    //     .collect();
+    // let keep: Vec<Haplotype> = counts
+    //     .into_iter()
+    //     .filter(|(_, (hit, total))| {
+    //         (*hit as f64) / (*total as f64) >= threshold
+    //     })
+    //     .map(|(h, _)| h)
+    //     .take(10) // testing only
+    //     .collect();
+
+    dbg!(&keep);
+    dbg!(&keep.len());
+    let new_haplotype_variants = hv.filter_for_haplotypes(&keep).unwrap();
+    new_haplotype_variants
+    
+}
+
+// pub fn filter_haplotypes_by_coverage(
+//     hv: &HaplotypeVariants,
+//     vc: &VariantCalls,
+//     threshold: f64,
+// ) -> HaplotypeVariants {
+//     let calls: BTreeSet<VariantID> = vc.keys().copied().collect();
+//     let calls_len = calls.len();
+
+//     let mut hits: BTreeMap<Haplotype, usize> = BTreeMap::new();
+
+//     for vid in calls.iter() {
+//         if let Some(hap_map) = hv.get(vid) {
+//             for (hap, (genotype, _)) in hap_map.iter() {
+//                 if *genotype {
+//                     *hits.entry(hap.clone()).or_insert(0) += 1;
+//                 }
+//             }
+//         }
+//     }
+//     dbg!(&hits);
+//     let keep: Vec<Haplotype> = hits
+//         .into_iter()
+//         .filter(|(_, hit)| (*hit as f64) / (calls_len as f64) >= threshold)
+//         .map(|(h, _)| h)
+//         .collect();
+//     dbg!(&keep.len());
+//     dbg!(&keep);
+
+//     let filtered_hv = hv
+//     .filter_for_haplotypes(&keep)
+//     .expect("filter_for_haplotypes failed");
+
+//     filtered_hv
+// }
+
 
 #[derive(Serialize, Debug)]
 pub(crate) struct DatasetVariants {
@@ -1657,8 +1791,9 @@ pub fn get_event_posteriors(
 ) -> Result<(Vec<(HaplotypeFractions, LogProb)>, Vec<Haplotype>)> {
     //FIRST, perform linear program using only nonzero DP variants
     //filter variant calls and haplotype variants
-    let filtered_calls = variant_calls.without_zero_dp();
-
+    let mut filtered_calls: VariantCalls = variant_calls.without_zero_dp();
+    // let filter = filtered_calls.remove(&VariantID(5083));
+    // dbg!(filter.is_some());
     if filtered_calls.len() == 0 {
         output_empty_output(&output_folder).unwrap();
         println!("No calls to use for LP, exiting with empty output!");
@@ -1667,9 +1802,18 @@ pub fn get_event_posteriors(
     let nonzero_dp_variants: Vec<VariantID> = filtered_calls.keys().cloned().collect();
     let var_filt_haplotype_variants: HaplotypeVariants =
         haplotype_variants.filter_for_variants(&nonzero_dp_variants)?;
+    
+    
+    // performance optimization for long LP runtime
+    // 1-) filter variant calls by the max of the present or absent probabilities. This is only required for jaccard based haplotype filtering below, NOT for the rest of the code.
+    let threshold_prob = 0.95;
+    let prob_filtered_calls = filtered_calls.filter_by_max_prob(threshold_prob);
+
+    // 2-) calculate jaccard index of filtered variants and construct a new haplotype variants using only the haplotypes that pass the jaccard threshold. Note that this only filters var_filt_haplotype_variants by haplotype, NOT by variant.
+    let hr_filtered_haplotype_variants = filter_haplotypes_by_hit_ratio(&var_filt_haplotype_variants, &prob_filtered_calls, 1.0);
 
     //find identical haplotypes using variants and prepare LP inputs
-    let haplotypes: Vec<Haplotype> = var_filt_haplotype_variants
+    let haplotypes: Vec<Haplotype> = hr_filtered_haplotype_variants
         .iter()
         .next()
         .unwrap()
@@ -1677,7 +1821,8 @@ pub fn get_event_posteriors(
         .keys()
         .cloned()
         .collect();
-    let candidate_matrix = CandidateMatrix::new(&var_filt_haplotype_variants).unwrap();
+
+    let candidate_matrix = CandidateMatrix::new(&hr_filtered_haplotype_variants).unwrap();
 
     //generate one map with representative haplotypes as key (required for lp) and one map with all haplotypes as key (required for extension of resulting table)
     let (identical_haplotypes_map_rep, identical_haplotypes_map) =

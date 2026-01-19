@@ -51,7 +51,40 @@ impl Caller {
             self.output_empty_files()?;
             Ok(())
         } else {
-            let haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
+            let mut haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
+            // let first_150: BTreeSet<Haplotype> = haplotype_variants
+            // .values()
+            // .flat_map(|m| m.keys())
+            // .cloned()
+            // .take(600)
+            // .collect();
+
+            // let unique_haplotypes: Vec<Haplotype> = haplotype_variants
+            // .values()
+            // .flat_map(|m| m.keys())
+            // .cloned()
+            // .collect::<BTreeSet<_>>() // deduplicate + sort
+            // .into_iter()
+            // .collect();
+        
+            // if let Some(h) = unique_haplotypes.get(599) {
+            //     println!("600th unique haplotype: {:?}", h);
+            // } else {
+            //     println!("Less than 600 unique haplotypes");
+            // }
+
+            // for (_variant, matrix_map) in haplotype_variants.iter_mut() {
+            //     matrix_map.retain(|hap, _| first_150.contains(hap));
+            // }
+
+            // let remaining: BTreeSet<_> = haplotype_variants
+            //     .values()
+            //     .flat_map(|m| m.keys())
+            //     .collect();
+
+            // dbg!(remaining.len());
+            // dbg!(&remaining);
+
             let (event_posteriors, all_haplotypes) = get_event_posteriors(
                 &self.output_lp_datavzrd,
                 &haplotype_variants,
