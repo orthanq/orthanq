@@ -241,7 +241,7 @@ impl VariantCalls {
             dbg!(&variant_id);
 
             // calculate the probability of the variant being present or not according to the steps below:
-        
+
             // 1-) find the probability of the variant being absent or artifact
 
             // parse probability of the variant being absent OR artifact (this is based on the assumption that PROB_ABSENT always exists in varlociraptor records.)
