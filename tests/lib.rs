@@ -20,7 +20,7 @@ fn check_haplotype_fractions_5050() {
         .num_constraint_haplotypes(6)
         .output_lp_datavzrd(false)
         .sample(None)
-        .events(events)
+        .events(vec!["present".to_string()])
         .enforce_given_alleles(None)
         .threshold_posterior_density(3)
         .build()
