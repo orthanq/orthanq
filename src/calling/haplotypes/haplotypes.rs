@@ -268,46 +268,36 @@ impl VariantCalls {
             // 2-) find the probability of the variant given event definitions
             let mut prob_events_present = NotNan::new(0.0).unwrap();
 
-            if (events.len()) == 1 && (events[0] == "present".to_string()) {
-                let mut parsed_prob_present = record.info(b"PROB_PRESENT").float()?.unwrap()[0];
-                if !parsed_prob_present.is_nan() {
-                    prob_events_present =
-                        NotNan::new(*Prob::from(PHREDProb(parsed_prob_present.into()))).unwrap();
-                }
-            } else if events.len() > 1 {
-                for event in events.iter() {
-                    //initialize the prob of event
-                    let mut prob_event = NotNan::new(0.0).unwrap();
+            for event in events.iter() {
+                //initialize the prob of event
+                let mut prob_event = NotNan::new(0.0).unwrap();
 
-                    // formulize the string to be parsed from the bcf
-                    let event_name = format!("PROB_{}", event.to_uppercase());
-                    let event_name_bytes = event_name.as_bytes();
+                // formulize the string to be parsed from the bcf
+                let event_name = format!("PROB_{}", event.to_uppercase());
+                let event_name_bytes = event_name.as_bytes();
 
-                    //check if the field is there; if `maybe_values` is None, the tag isn't present
+                //check if the field is there; if `maybe_values` is None, the tag isn't present
 
-                    let maybe_values = record.info(event_name_bytes).float()?;
+                let maybe_values = record.info(event_name_bytes).float()?;
 
-                    let parsed_prob_event = match maybe_values {
-                        Some(values) => values[0],
-                        None => anyhow::bail!(
-                            "This scenario doesn't contain the event '{}'",
-                            event_name
-                        ),
-                    };
-
-                    if !parsed_prob_event.is_nan() {
-                        prob_event =
-                            NotNan::new(*Prob::from(PHREDProb(parsed_prob_event.into()))).unwrap();
-                    } else {
-                        println!("Parsed event is NaN!")
+                let parsed_prob_event = match maybe_values {
+                    Some(values) => values[0],
+                    None => {
+                        anyhow::bail!("This scenario doesn't contain the event '{}'", event_name)
                     }
+                };
 
-                    dbg!(&event, &parsed_prob_event, &prob_event);
-                    prob_events_present += prob_event
+                if !parsed_prob_event.is_nan() {
+                    prob_event =
+                        NotNan::new(*Prob::from(PHREDProb(parsed_prob_event.into()))).unwrap();
+                } else {
+                    println!("Parsed event is NaN!")
                 }
-            } else {
-                println!("Please use a valid set of events!")
+
+                dbg!(&event, &parsed_prob_event, &prob_event);
+                prob_events_present += prob_event
             }
+
             dbg!(&prob_events_present);
 
             // 3-) get max of the variant being not present and sum of the provided events to use for weighting in linear program
