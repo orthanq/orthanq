@@ -8,7 +8,6 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tempfile::tempdir;
-use tempfile::NamedTempFile;
 
 #[derive(Builder, Clone)]
 pub struct Caller {

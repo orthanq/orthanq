@@ -1,7 +1,6 @@
 use anyhow::Result;
 
 use bio_types::genome::AbstractInterval;
-use csv::Reader as CsvReader;
 use derive_builder::Builder;
 use ndarray::Array2;
 use ordered_float::NotNan;
@@ -14,14 +13,13 @@ use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::io::BufWriter;
-use std::io::Seek;
 use std::io::Write;
 use std::process::Stdio;
 
 use std::iter::FromIterator;
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use tempfile::tempdir;
 
@@ -361,7 +359,7 @@ fn get_unconfirmed_alleles(xml_path: &PathBuf) -> Result<Vec<String>> {
     let mut alleles: Vec<String> = Vec::new();
     let mut allele_names: Vec<String> = Vec::new();
     let mut confirmed: Vec<String> = Vec::new();
-    let mut hla_g_groups: HashMap<i32, String> = HashMap::new(); //some hla alleles dont have g groups information in the xml file.
+    let _hla_g_groups: HashMap<i32, String> = HashMap::new(); //some hla alleles dont have g groups information in the xml file.
     loop {
         match reader.read_event_into(&mut buf) {
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
@@ -445,7 +443,7 @@ fn get_unconfirmed_alleles(xml_path: &PathBuf) -> Result<Vec<String>> {
         .map(|((id, name), _c)| (format!("HLA:{}", id.clone()), name.clone()))
         .collect::<HashMap<String, String>>();
     //write confirmed alleles to file
-    let confirmed_alleles = alleles
+    let _confirmed_alleles = alleles
         .iter()
         .zip(allele_names.iter())
         .filter(|(id, _name)| !unconfirmed_alleles.contains_key(&format!("HLA:{}", id)))
@@ -501,7 +499,7 @@ fn get_unconfirmed_alleles(xml_path: &PathBuf) -> Result<Vec<String>> {
     // // dbg!(&below_criterium.len());
     // unconfirmed_alleles.extend(below_criterium);
 
-    let mut unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
+    let unconfirmed_alleles = unconfirmed_alleles.keys().cloned().collect::<Vec<String>>();
     // let confirmed_alleles = confirmed_alleles.keys().cloned().collect::<Vec<String>>();
 
     // dbg!(&unconfirmed_alleles.len());
@@ -558,7 +556,7 @@ pub fn alignment(
             let record = record.unwrap();
 
             //gets the HLA starting name (HLA:HLA12121)
-            let id = record.id();
+            let _id = record.id();
 
             //gets the locus strating name (e.g. B*01:01)
             let desc = record.desc().unwrap();
