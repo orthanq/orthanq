@@ -25,7 +25,6 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.8.3
         with:
           pixi-version: latest
-          cache: true
 
       - name: Install dependencies
         if: ${{ steps.release.outputs.release_created }}

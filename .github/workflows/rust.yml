@@ -16,7 +16,6 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.8.3
         with:
           pixi-version: latest
-          cache: true
 
       - name: Install dependencies
         run: pixi install
@@ -33,7 +32,6 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.8.3
         with:
           pixi-version: latest
-          cache: true
 
       - name: Install dependencies
         run: pixi install
@@ -51,7 +49,6 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.8.3
         with:
           pixi-version: latest
-          cache: true
 
       - name: Install dependencies
         run: pixi install
