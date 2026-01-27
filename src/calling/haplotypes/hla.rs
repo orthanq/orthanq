@@ -22,7 +22,6 @@ use rust_htslib::bcf::{self};
 
 use std::collections::{BTreeMap, HashMap};
 
-
 use std::{path::PathBuf, str};
 
 #[derive(Builder)]
