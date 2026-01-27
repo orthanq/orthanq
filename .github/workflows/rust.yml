@@ -10,88 +10,51 @@ jobs:
   Formatting:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Install Pixi
+        uses: prefix-dev/setup-pixi@v0.8.3
         with:
-          toolchain: stable
-          override: true
-          components: rustfmt
-      
-      - name: Check format
-        run: cargo fmt -- --check
-     
+          pixi-version: latest
+          cache: true
+
+      - name: Install dependencies
+        run: pixi install
+
+      - name: Check formatting
+        run: pixi run fmt
+
   Linting:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Install Pixi
+        uses: prefix-dev/setup-pixi@v0.8.3
         with:
-          toolchain: stable
-          override: true
-          components: clippy
+          pixi-version: latest
+          cache: true
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libgsl0-dev zlib1g-dev samtools libhdf5-dev fontconfig libfontconfig1-dev
-      - name: Install yte
-        run: pip install yte
+      - name: Install dependencies
+        run: pixi install
 
-      - name: Install pnpm
-        run: npm install -g pnpm
-        
-      - uses: Swatinem/rust-cache@v1.3.0
-
-      - name: Lint with clippy
-        uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Clippy
+        run: pixi run clippy
   Testing:
     needs:
       - Formatting
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Install Pixi
+        uses: prefix-dev/setup-pixi@v0.8.3
         with:
-          toolchain: stable
-          override: true
+          pixi-version: latest
+          cache: true
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libgsl0-dev zlib1g-dev samtools libhdf5-dev coinor-cbc coinor-libcbc-dev fontconfig libfontconfig1-dev
-      #datavzrd requires yte and pnpm
-      - name: Install yte
-        run: pip install yte
+      - name: Install dependencies
+        run: pixi install
 
-      - name: Install pnpm
-        run: npm install -g pnpm
-        
-      - uses: Swatinem/rust-cache@v1.3.0
-
-      - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-
-#      - name: Run cargo-tarpaulin
-#        uses: actions-rs/tarpaulin@v0.1
-#        with:
-#          args: '--features gslv2 -- --test-threads 1'
-
-#      - name: Upload to codecov.io
-#        if: ${{ success() }}
-#        uses: codecov/codecov-action@v1.0.2
-#        with:
-#          token: ${{secrets.CODECOV_TOKEN}}
-
+      - name: Run tests
+        run: pixi run test
