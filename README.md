@@ -23,22 +23,10 @@ Instructions to perform virus lineage quantification is documented here: https:/
 
 ## Building for development and manual installation
 
-The easiest way to build Orthanq is via Conda/Mamba.
-First, create the environment given by the `environment.yml` in this repository.
+The easiest way to build Orthanq is via its [pixi](https://pixi.sh) workspace:
 
-    mamba env create -n orthanq-dev -f environment.yml
-
-Second, activate the environment with
-
-    mamba activate orthanq-dev
-
-Third, conda lib location is set via
-
-    export LD_LIBRARY_PATH=$CONDA_PREFIX/lib
-    
-Last, Orthanq can be built with:
-
-    cargo build    
-or
-
-    cargo build --release
+```bash
+pixi install
+pixi run cargo build
+pixi run cargo run
+```

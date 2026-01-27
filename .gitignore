@@ -1,4 +1,4 @@
 /target
-/candidates
 /test_files
-/alignment_sorted.sam 
+.pixi/*
+!.pixi/config.toml
