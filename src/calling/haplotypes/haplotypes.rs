@@ -249,7 +249,7 @@ impl VariantCalls {
             let mut prob_artifact = NotNan::new(0.0).unwrap();
 
             let parsed_prob_absent = record.info(b"PROB_ABSENT").float()?.unwrap()[0];
-            let parsed_prob_present = record.info(b"PROB_PRESENT").float()?.unwrap()[0];
+            let parsed_prob_artifact = record.info(b"PROB_ARTIFACT").float()?.unwrap()[0];
 
             if !parsed_prob_absent.is_nan() {
                 prob_absent =
