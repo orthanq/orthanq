@@ -22,7 +22,6 @@ use rust_htslib::bcf::{self};
 
 use std::collections::{BTreeMap, HashMap};
 
-use std::fs;
 
 use std::{path::PathBuf, str};
 
@@ -236,9 +235,9 @@ impl Caller {
         reader.trim_text(true);
         let mut buf = Vec::new();
         let mut allele_names: Vec<String> = Vec::new();
-        let mut confirmed: Vec<String> = Vec::new();
+        let _confirmed: Vec<String> = Vec::new();
         let mut hla_g_groups: HashMap<i32, String> = HashMap::new(); //some hla alleles dont have g groups information in the xml file.
-        let mut groups_indices: Vec<i32> = Vec::new();
+        let _groups_indices: Vec<i32> = Vec::new();
         //we keep track of each allele-g group pair with a counter to be used as index
         let mut counter = 0;
         loop {
@@ -262,7 +261,7 @@ impl Caller {
                             }
                         }
                         match (id_value, name_value) {
-                            (Some(id), Some(name)) => {
+                            (Some(_id), Some(name)) => {
                                 //clean up the allele name by removing the "HLA-" prefix if present
                                 let cleaned_name = if name.contains('-') {
                                     name.split('-').nth(1).unwrap_or(&name).to_string()

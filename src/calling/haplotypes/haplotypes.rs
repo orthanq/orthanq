@@ -15,7 +15,7 @@ use ordered_float::NotNan;
 
 use good_lp::IntoAffineExpression;
 use good_lp::*;
-use good_lp::{constraint, variable, variables, Expression, ResolutionError, SolverModel};
+use good_lp::{constraint, variable, Expression, ResolutionError, SolverModel};
 use rust_htslib::bcf::record::Numeric;
 use rust_htslib::bcf::{
     self,
@@ -24,7 +24,6 @@ use rust_htslib::bcf::{
 };
 use std::cmp;
 use std::error::Error;
-use std::path::Path;
 
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
@@ -240,8 +239,8 @@ impl VariantCalls {
             let mut prob_absent = NotNan::new(0.0).unwrap();
             let mut prob_present = NotNan::new(0.0).unwrap();
 
-            let mut parsed_prob_absent = record.info(b"PROB_ABSENT").float()?.unwrap()[0];
-            let mut parsed_prob_present = record.info(b"PROB_PRESENT").float()?.unwrap()[0];
+            let parsed_prob_absent = record.info(b"PROB_ABSENT").float()?.unwrap()[0];
+            let parsed_prob_present = record.info(b"PROB_PRESENT").float()?.unwrap()[0];
 
             if !parsed_prob_absent.is_nan() {
                 prob_absent =
@@ -715,7 +714,7 @@ pub fn plot_prediction(
 
         //filter haplotypes based on any variant they contain has nonzero AF
         let mut contributing_haplotypes = std::collections::HashSet::new();
-        for ((genotype_matrix, coverage_matrix), (_, call)) in
+        for ((genotype_matrix, _coverage_matrix), (_, call)) in
             candidate_matrix_values.iter().zip(variant_calls.iter())
         {
             if call.af > 0.0 {
@@ -791,7 +790,7 @@ pub fn plot_prediction(
         headers.extend(sorted_haplotypes.clone());
         wtr_lp.write_record(&headers)?;
 
-        for ((genotype_matrix, coverage_matrix), (variant_id, call)) in
+        for ((genotype_matrix, coverage_matrix), (_variant_id, call)) in
             filtered_candidate_matrix_values
                 .iter()
                 .zip(variant_calls.iter())
@@ -917,7 +916,7 @@ pub fn plot_prediction(
         candidate_matrix_values
             .iter()
             .zip(variant_calls.iter())
-            .for_each(|((genotypes, covered), (variant_id, call))| {
+            .for_each(|((genotypes, covered), (_variant_id, call))| {
                 let mut b_check = false;
                 let mut b_fraction = 0.0;
                 best_variables
@@ -1054,7 +1053,7 @@ pub fn get_arrow_plot(
     let mut arrow_plot_records = Vec::new();
 
     candidate_matrix.iter().zip(variant_calls.iter()).for_each(
-        |((variant_id, (genotypes, _covered)), (_id, call))| {
+        |((_variant_id, (genotypes, _covered)), (_id, call))| {
             //do not include zero af variants
             if call.af == 0.0 {
                 return;
@@ -1062,7 +1061,7 @@ pub fn get_arrow_plot(
 
             let mut containing_haplotypes = Vec::new();
             nonzero_haplotype_fractions.iter().enumerate().for_each(
-                |(i, (haplotype, fraction))| {
+                |(i, (haplotype, _fraction))| {
                     if genotypes[i as u64] {
                         containing_haplotypes.push(haplotype.to_string());
                     }
@@ -1236,7 +1235,7 @@ pub fn linear_program(
                 ));
                 continue;
             }
-            Err(e) => panic!("Unexpected LP error: {e}"),
+            Err(_e) => panic!("{}", "Unexpected LP error: {e}"),
         }
     }
 
@@ -1244,7 +1243,7 @@ pub fn linear_program(
         let mut best_variables = Vec::new();
         //finally, print the variables and the sum
         let mut lp_haplotypes = BTreeMap::new();
-        for (i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
+        for (_i, (var, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
             best_variables.push(sol.value(var.clone()).clone());
             if sol.value(*var) > lp_cutoff {
                 //the speed of fraction exploration is managable in case of diploid priors
