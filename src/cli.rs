@@ -93,6 +93,11 @@ pub enum PreprocessKind {
             help = "Output BAM file used for variant calling (debugging purposes)."
         )]
         output_bam: bool,
+        #[structopt(
+            long,
+            help = "Disable homopolymer bias detection. Can be used for libraries prepared without PCR amplification (check Varlociraptor docs for more information)."
+        )]
+        omit_homopolymer_artifact_detection: bool,
     },
     Virus {
         #[structopt(
@@ -492,6 +497,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 output,
                 threads,
                 output_bam,
+                omit_homopolymer_artifact_detection,
             } => {
                 preprocess::hla::CallerBuilder::default()
                     .genome(genome)
@@ -503,6 +509,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .output(output)
                     .threads(threads)
                     .output_bam(output_bam)
+                    .omit_homopolymer_artifact_detection(omit_homopolymer_artifact_detection)
                     .build()
                     .unwrap()
                     .call()?;
