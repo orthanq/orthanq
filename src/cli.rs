@@ -489,7 +489,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 output,
                 threads,
                 output_bam,
-                omit_homopolymer_artifact_detection
+                omit_homopolymer_artifact_detection,
             } => {
                 preprocess::hla::CallerBuilder::default()
                     .genome(genome)

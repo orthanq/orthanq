@@ -20,7 +20,7 @@ pub struct Caller {
     output: PathBuf,
     threads: String,
     output_bam: bool,
-    omit_homopolymer_artifact_detection: bool
+    omit_homopolymer_artifact_detection: bool,
 }
 
 impl Caller {
@@ -600,19 +600,18 @@ chr6\t31353872\t31367067";
         // omit homopolymer bias detection if parameter is given
         let mut cmd: Command = Command::new("varlociraptor");
 
-        cmd.arg("call")
-           .arg("variants");
-        
+        cmd.arg("call").arg("variants");
+
         if self.omit_homopolymer_artifact_detection {
             cmd.arg("--omit-homopolymer-artifact-detection");
         }
-        
+
         cmd.arg("generic")
-           .arg("--obs")
-           .arg(format!("sample={}", varlociraptor_prep_dir.display()))
-           .arg("--scenario")
-           .arg(&scenario_path);
-        
+            .arg("--obs")
+            .arg(format!("sample={}", varlociraptor_prep_dir.display()))
+            .arg("--scenario")
+            .arg(&scenario_path);
+
         let varlociraptor_call = cmd
             .stdout(Stdio::piped())
             .spawn()
