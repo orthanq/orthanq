@@ -20,6 +20,7 @@ pub struct Caller {
     output: PathBuf,
     threads: String,
     output_bam: bool,
+    omit_homopolymer_artifact_detection: bool
 }
 
 impl Caller {
@@ -596,25 +597,27 @@ chr6\t31353872\t31367067";
             format!("sample={}", &varlociraptor_prep_dir.display())
         );
 
-        let varlociraptor_call = {
-            Command::new("varlociraptor")
-                .arg("call")
-                .arg("variants")
-                .arg("--omit-strand-bias")
-                .arg("--omit-read-position-bias")
-                .arg("--omit-read-orientation-bias")
-                .arg("--omit-softclip-bias")
-                .arg("--omit-homopolymer-artifact-detection")
-                .arg("--omit-alt-locus-bias")
-                .arg("generic")
-                .arg("--obs")
-                .arg(format!("sample={}", varlociraptor_prep_dir.display()))
-                .arg("--scenario")
-                .arg(&scenario_path)
-                .stdout(Stdio::piped())
-                .spawn()
-                .expect("failed to execute the varlociraptor calling process")
-        };
+        // omit homopolymer bias detection if parameter is given
+        let mut cmd: Command = Command::new("varlociraptor");
+
+        cmd.arg("call")
+           .arg("variants");
+        
+        if self.omit_homopolymer_artifact_detection {
+            cmd.arg("--omit-homopolymer-artifact-detection");
+        }
+        
+        cmd.arg("generic")
+           .arg("--obs")
+           .arg(format!("sample={}", varlociraptor_prep_dir.display()))
+           .arg("--scenario")
+           .arg(&scenario_path);
+        
+        let varlociraptor_call = cmd
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("failed to execute the varlociraptor calling process");
+
         println!(
             "The varlociraptor calling was exited with: {:?}",
             varlociraptor_call
