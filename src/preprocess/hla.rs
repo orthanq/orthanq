@@ -319,7 +319,7 @@ chr6\t31353872\t31367067";
 
         //delete sorted bam file
         fs::remove_file(&file_aligned_sorted)?;
-        let file_aligned_sorted_bai = file_aligned_sorted.with_extension("csi");
+        let file_aligned_sorted_bai = file_aligned_sorted.with_extension("bam.csi");
         if file_aligned_sorted_bai.exists() {
             fs::remove_file(&file_aligned_sorted_bai)?;
         }
