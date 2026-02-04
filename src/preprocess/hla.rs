@@ -301,11 +301,6 @@ chr6\t31353872\t31367067";
                 .expect("failed to execute the varlociraptor estimate alignment properties")
         };
 
-        println!(
-            "The varlociraptor estimate alignment properties was exited with: {:?}",
-            varlociraptor_estimate
-        );
-
         let varlociraptor_estimate_output = varlociraptor_estimate
             .wait_with_output()
             .expect("Failed to read stdout");
