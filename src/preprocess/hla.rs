@@ -96,9 +96,7 @@ impl Caller {
             return Err(anyhow::anyhow!("Please provide either fastq reads with --reads or BWA aligned BAM input with --bam-input !"));
         }
 
-        //create the output file name for sorting
-        // let file_aligned_sorted: PathBuf =
-        //     temp_dir.path().join(format!("{}_sorted.bam", sample_name));
+        //initialize the output file name for sorting
         let file_aligned_sorted = parent.join(format!("{}_sorted.bam", sample_name));
 
         // use bwa-aligned bam input if provided.
@@ -155,8 +153,6 @@ impl Caller {
                     .arg(&reads[1])
                     .arg("-o")
                     .arg(&file_aligned)
-                    // .arg("2>")
-                    // .arg("log.txt")
                     .status()
                     .expect("failed to execute the alignment process")
             };
@@ -286,9 +282,47 @@ chr6\t31353872\t31367067";
 
         println!("The extraction was exited with: {}", extract);
 
-        //delete sorted bam file
-        fs::remove_file(file_aligned_sorted)?;
+        //estimate alignment properties of all reads (on the BWA-aligned BAM)
+        let alignment_props_path = temp_dir.path().join(format!("{}.json", sample_name));
+        println!(
+            "estimating alignment properties at: {}",
+            alignment_props_path.display()
+        );
 
+        let varlociraptor_estimate = {
+            Command::new("varlociraptor")
+                .arg("estimate")
+                .arg("alignment-properties")
+                .arg(&self.genome)
+                .arg("bams")
+                .arg(&file_aligned_sorted)
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("failed to execute the varlociraptor estimate alignment properties")
+        };
+
+        let varlociraptor_estimate_output = varlociraptor_estimate
+            .wait_with_output()
+            .expect("Failed to read stdout");
+
+        if !varlociraptor_estimate_output.status.success() {
+            panic!(
+                "Estimating alignment properties with varlociraptor failed with exit code: {:?}, Error: {}",
+                varlociraptor_estimate_output.status.code(),
+                String::from_utf8_lossy(&varlociraptor_estimate_output.stderr)
+            );
+        }
+
+        let mut alignment_props_file = std::fs::File::create(alignment_props_path.clone())?;
+        alignment_props_file.write_all(&varlociraptor_estimate_output.stdout)?; //write with bam writer
+        alignment_props_file.flush()?;
+
+        //delete sorted bam file
+        fs::remove_file(&file_aligned_sorted)?;
+        let file_aligned_sorted_bai = file_aligned_sorted.with_extension("bam.csi");
+        if file_aligned_sorted_bai.exists() {
+            fs::remove_file(&file_aligned_sorted_bai)?;
+        }
         //convert the alignment file to fq
 
         //create the output file name in temp directory
@@ -550,6 +584,8 @@ chr6\t31353872\t31367067";
                 .arg("--atomic-candidate-variants")
                 .arg("--candidates")
                 .arg(&self.haplotype_variants)
+                .arg("--alignment-properties")
+                .arg(&alignment_props_path)
                 .arg(&self.genome)
                 .arg("--bam")
                 .arg(&final_bam)
