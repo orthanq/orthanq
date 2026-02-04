@@ -312,7 +312,7 @@ chr6\t31353872\t31367067";
 
         if !varlociraptor_estimate_output.status.success() {
             panic!(
-                "Esimating alignment properties with varlociraptor failed with exit code: {:?}, Error: {}",
+                "Estimating alignment properties with varlociraptor failed with exit code: {:?}, Error: {}",
                 varlociraptor_estimate_output.status.code(),
                 String::from_utf8_lossy(&varlociraptor_estimate_output.stderr)
             );
