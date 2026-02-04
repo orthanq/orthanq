@@ -318,8 +318,11 @@ chr6\t31353872\t31367067";
         alignment_props_file.flush()?;
 
         //delete sorted bam file
-        fs::remove_file(file_aligned_sorted)?;
-
+        fs::remove_file(&file_aligned_sorted)?;
+        let file_aligned_sorted_bai = file_aligned_sorted.with_extension("csi");
+        if file_aligned_sorted_bai.exists() {
+            fs::remove_file(&file_aligned_sorted_bai)?;
+        }
         //convert the alignment file to fq
 
         //create the output file name in temp directory
