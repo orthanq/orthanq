@@ -288,7 +288,7 @@ chr6\t31353872\t31367067";
             "estimating alignment properties at: {}",
             alignment_props_path.display()
         );
-        
+
         let varlociraptor_estimate = {
             Command::new("varlociraptor")
                 .arg("estimate")
