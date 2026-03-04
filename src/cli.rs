@@ -305,6 +305,11 @@ pub enum CallKind {
             help = "Number of decimal places to display (computed for 10^^-num)."
         )]
         threshold_posterior_density: i32,
+        #[structopt(
+            long,
+            help = "Use fast HLA caller (recursive LP mode without posterior estimation)."
+        )]
+        fast: bool,
     },
     Virus {
         #[structopt(
@@ -367,7 +372,6 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 xml,
                 output,
                 prior,
-                // common_variants,
                 lp_cutoff,
                 enable_equivalence_class_constraint,
                 extend_haplotypes,
@@ -378,29 +382,45 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 sample_name,
                 threshold_posterior_density,
                 enforce_given_alleles,
+                fast
             } => {
-                let mut caller = calling::haplotypes::hla::CallerBuilder::default()
-                    .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
-                    .variant_calls(bcf::Reader::from_path(variant_calls)?)
-                    .xml(xml)
-                    // .max_haplotypes(max_haplotypes)
-                    // .min_norm_counts(min_norm_counts)
-                    .output_folder(output)
-                    .prior(prior)
-                    // .common_variants(common_variants)
-                    .lp_cutoff(lp_cutoff)
-                    .enable_equivalence_class_constraint(enable_equivalence_class_constraint)
-                    .extend_haplotypes(extend_haplotypes)
-                    .threshold_equivalence_class(threshold_equivalence_class)
-                    .num_extend_haplotypes(num_extend_haplotypes)
-                    .num_constraint_haplotypes(num_constraint_haplotypes)
-                    .output_lp_datavzrd(output_lp_datavzrd)
-                    .sample_name(sample_name)
-                    .threshold_posterior_density(threshold_posterior_density)
-                    .enforce_given_alleles(enforce_given_alleles)
-                    .build()
-                    .unwrap();
-                caller.call()?;
+                if fast {
+                    let mut caller = calling::haplotypes::hla::FastCallerBuilder::default()
+                        .haplotype_variants(bcf::Reader::from_path(&haplotype_variants)?)
+                        .variant_calls(bcf::Reader::from_path(&variant_calls)?)
+                        .xml(xml)
+                        .output_folder(output)
+                        .prior(prior)
+                        .lp_cutoff(lp_cutoff)
+                        .num_constraint_haplotypes(num_constraint_haplotypes)
+                        .sample_name(sample_name)
+                        .enforce_given_alleles(enforce_given_alleles)
+                        .output_lp_datavzrd(output_lp_datavzrd)
+                        .build()
+                        .unwrap();
+                    caller.call()?;
+                } else {
+                    let mut caller = calling::haplotypes::hla::CallerBuilder::default()
+                        .haplotype_variants(bcf::Reader::from_path(haplotype_variants)?)
+                        .variant_calls(bcf::Reader::from_path(variant_calls)?)
+                        .xml(xml)
+                        .output_folder(output)
+                        .prior(prior)
+                        .lp_cutoff(lp_cutoff)
+                        .enable_equivalence_class_constraint(enable_equivalence_class_constraint)
+                        .extend_haplotypes(extend_haplotypes)
+                        .threshold_equivalence_class(threshold_equivalence_class)
+                        .num_extend_haplotypes(num_extend_haplotypes)
+                        .num_constraint_haplotypes(num_constraint_haplotypes)
+                        .output_lp_datavzrd(output_lp_datavzrd)
+                        .sample_name(sample_name)
+                        .threshold_posterior_density(threshold_posterior_density)
+                        .enforce_given_alleles(enforce_given_alleles)
+                        .build()
+                        .unwrap();
+            
+                    caller.call()?;
+                }
                 Ok(())
             }
             CallKind::Virus {

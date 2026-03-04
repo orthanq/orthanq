@@ -2,12 +2,21 @@ use crate::calling::haplotypes::haplotypes;
 use crate::calling::haplotypes::haplotypes::filter_variants_for_best_solution_plot;
 use crate::calling::haplotypes::haplotypes::get_event_posteriors;
 use crate::calling::haplotypes::haplotypes::output_empty_output;
+use crate::calling::haplotypes::haplotypes::write_results_fast_mode;
+use crate::calling::haplotypes::haplotypes::{explore_haplotype_tree, prepare_representative_haplotypes};
 use crate::calling::haplotypes::haplotypes::{
     CandidateMatrix, Haplotype, HaplotypeVariants, VariantCalls,
 };
 use crate::model::HaplotypeFractions;
+use crate::model::Data;
+use crate::model::AlleleFreq;
+use crate::model::{Likelihood, Posterior, Prior, Cache};
+use crate::calling::haplotypes::haplotypes::PriorTypes;
+
+use bio::stats::bayesian::model::Likelihood as BayesianLikelihood;
 use anyhow::Result;
 use bio::stats::probs::LogProb;
+use polars::export::arrow::compute::boolean::all;
 
 use core::cmp::Ordering;
 
@@ -21,6 +30,7 @@ use quick_xml::reader::Reader as xml_reader;
 use rust_htslib::bcf::{self};
 
 use std::collections::{BTreeMap, HashMap};
+use std::str::FromStr;
 
 use std::{path::PathBuf, str};
 
@@ -47,6 +57,8 @@ pub struct Caller {
 
 impl Caller {
     pub fn call(&mut self) -> Result<()> {
+        println!("Entering main mode");
+
         //Step 1: Prepare data and compute the model
         //initially prepare haplotype_variants and variant_calls
         let variant_calls = VariantCalls::new(&mut self.variant_calls, &self.sample_name)?;
@@ -320,6 +332,96 @@ impl Caller {
         }
         // dbg!(&allele_to_g)
         Ok(allele_to_g)
+    }
+}
+
+#[derive(Builder)]
+#[builder(pattern = "owned")]
+pub struct FastCaller {
+    haplotype_variants: bcf::Reader,
+    variant_calls: bcf::Reader,
+    xml: PathBuf,
+    output_folder: PathBuf,
+    prior: String,
+    lp_cutoff: f64,
+    num_constraint_haplotypes: i32,
+    sample_name: Option<String>,
+    enforce_given_alleles: Option<Vec<String>>,
+    output_lp_datavzrd: bool,
+}
+
+impl FastCaller {
+    pub fn call(&mut self) -> Result<()> {
+        println!("Entering fast mode");
+
+        //Step 1: Prepare data and compute the model
+        //initially prepare haplotype_variants and variant_calls
+        let variant_calls = VariantCalls::new(&mut self.variant_calls, &self.sample_name)?;
+
+        //write blank plots and tsv table if no variants are available.
+        if variant_calls.len() == 0 {
+            output_empty_output(&self.output_folder).unwrap();
+            Ok(())
+        } else {
+            let mut haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
+
+            //filter candidates vcf based on optional given input set of alleles (3-field-resolution)
+            if let Some(input_alleles) = &self.enforce_given_alleles {
+                haplotype_variants =
+                    haplotype_variants.filter_for_haplotype_prefixes(&input_alleles)?;
+            }
+
+            //Step 1: use only the nonzero DP variant calls
+            let filtered_calls = variant_calls.without_zero_dp();
+
+            if filtered_calls.is_empty() {
+                anyhow::bail!("No calls with nonzero DP available for LP.");
+            }
+            
+            // // test:
+            // let test_haplotypes = vec![
+            //     Haplotype("A*11:01:01:01".to_string()),
+            //     Haplotype("A*24:07:01".to_string()),
+            //     Haplotype("A*24:02:01:01".to_string()),
+            //     Haplotype("A*24:29".to_string()),
+            //     Haplotype("A*01:01:38L".to_string()),
+            //     Haplotype("A*01:03:01:01".to_string()),
+            // ];
+            // let test_hv =
+            // haplotype_variants
+            //     .filter_for_haplotypes(&test_haplotypes)?;
+                
+
+
+            // Step 2: Step explore the haplotype tree using representative haplotypes (Avoid duplicate entries in the resulting vector)
+            //todo: include members of the same representative group in the likelihood computation
+            //todo: consider adding prior in the likelihood computation
+
+            let representative_h = prepare_representative_haplotypes(&haplotype_variants, &filtered_calls)?;
+            
+            let prior = PriorTypes::from_str(&self.prior).unwrap();
+
+            let constraint_values = match prior {
+                PriorTypes::Diploid => vec![2],
+                PriorTypes::DiploidSubclonal => vec![1,2,3],
+                _ => vec![self.num_constraint_haplotypes],
+            };
+            
+            let mut all_results = Vec::new();
+            
+            for constraint in constraint_values {
+            
+                let tree = explore_haplotype_tree(&haplotype_variants, &filtered_calls, &representative_h, &self.output_lp_datavzrd, &self.output_folder, self.lp_cutoff, constraint)?;
+            
+                all_results.push((constraint, tree));
+            }
+
+            // Step3: Write results
+            std::fs::create_dir_all(&self.output_folder)?;
+            write_results_fast_mode(&all_results, &self.output_folder.join(&"predictions.csv"))?;
+            dbg!(&all_results);
+            Ok(())
+        }
     }
 }
 

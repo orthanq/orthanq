@@ -6,6 +6,8 @@ use bio::stats::{probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
 use datavzrd::render_report;
 use serde_yaml::Value;
+use crate::model::Cache;
+use bio::stats::bayesian::model::Likelihood as BayesianLikelihood;
 
 use derefable::Derefable;
 
@@ -38,6 +40,7 @@ use std::fs;
 use std::io::Write;
 use std::str::FromStr;
 use std::{path::PathBuf, str};
+use std::collections::HashSet;
 
 #[derive(Derefable, Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize)]
 pub struct VariantID(#[deref] pub i32);
@@ -1141,7 +1144,7 @@ pub(crate) struct ArrowRecord {
     status: String,
 }
 
-pub fn linear_program(
+pub fn linear_program_main_mode(
     output_lp_datavzrd: &bool,
     output_folder: &PathBuf,
     candidate_matrix: &CandidateMatrix,
@@ -1303,6 +1306,133 @@ pub fn linear_program(
     }
 }
 
+pub fn linear_program_fast_mode(
+    output_lp_datavzrd: &bool,
+    output_folder: &PathBuf,
+    candidate_matrix: &CandidateMatrix,
+    haplotypes: &Vec<Haplotype>,
+    variant_calls: &VariantCalls,
+    lp_cutoff: f64,
+    constraint_value: i32,
+) -> Result<BTreeMap<Haplotype, f64>, anyhow::Error> {
+
+    // 1. Create problem and variables
+    let mut problem = ProblemVariables::new();
+    let variables: Vec<Variable> =
+        problem.add_vector(variable().min(0.0).max(1.0), haplotypes.len());
+    let mut constraints: Vec<Expression> = Vec::new();
+
+    let _haplotype_dict = collect_constraints_and_variants(
+        candidate_matrix,
+        haplotypes,
+        variant_calls,
+        &variables,
+        &mut constraints,
+    )?;
+
+    let t_vars: Vec<Variable> =
+        problem.add_vector(variable().min(0.0).max(1.0), constraints.len());
+
+    // 2. Binary selection variables for sparsity
+    let select: Vec<Variable> = problem.add_vector(variable().binary(), haplotypes.len());
+
+    // 3. Binary fraction variables
+    let (z0, z1, z2) = match constraint_value {
+        1 => {
+            let z0 = problem.add_vector(variable().binary(), haplotypes.len());
+            let z1 = problem.add_vector(variable().binary(), haplotypes.len());
+            (Some(z0), Some(z1), None)
+        }
+        2 => {
+            let z0 = problem.add_vector(variable().binary(), haplotypes.len());
+            let z1 = problem.add_vector(variable().binary(), haplotypes.len());
+            let z2 = problem.add_vector(variable().binary(), haplotypes.len());
+            (Some(z0), Some(z1), Some(z2))
+        }
+        _ => (None, None, None), // subclonal continuous
+    };
+
+    // 4. Build model
+    let mut sum_tvars = Expression::from_other_affine(0.);
+    for t_var in t_vars.iter() { sum_tvars += t_var.into_expression(); }
+    let mut model = problem.minimise(sum_tvars.clone()).using(default_solver);
+
+    // 5. Add fraction constraints
+    for i in 0..haplotypes.len() {
+        match constraint_value {
+            1 => { // haploid
+                let z0 = z0.as_ref().unwrap();
+                let z1 = z1.as_ref().unwrap();
+                model = model.with(constraint!(z0[i] + z1[i] == 1));
+                model = model.with(constraint!(variables[i] == z1[i]));
+                model = model.with(constraint!(variables[i] <= select[i]));
+            }
+            2 => { // diploid
+                let z0 = z0.as_ref().unwrap();
+                let z1 = z1.as_ref().unwrap();
+                let z2 = z2.as_ref().unwrap();
+                model = model.with(constraint!(z0[i] + z1[i] + z2[i] == 1));
+                model = model.with(constraint!(variables[i] == 0.0*z0[i] + 0.5*z1[i] + 1.0*z2[i]));
+                model = model.with(constraint!(variables[i] <= select[i]));
+            }
+            3 => { // subclonal continuous
+                model = model.with(constraint!(variables[i] <= select[i]));
+            }
+            _ => {}
+        }
+    }
+
+    // 6. Limit number of nonzero haplotypes
+    let mut select_sum = Expression::from_other_affine(0.);
+    for s in select.iter() { select_sum += Expression::from_other_affine(*s); }
+    model = model.with(constraint!(select_sum <= constraint_value));
+
+    // 7. Sum of fractions = 1
+    let mut sum = Expression::from_other_affine(0.);
+    for var in variables.iter() { sum += Expression::from_other_affine(*var); }
+    model = model.with(constraint!(sum == 1.0));
+
+    // 8. Variant matrix constraints
+    for (c, t_var) in constraints.iter().zip(t_vars.iter()) {
+        model = model.with(constraint!(t_var >= c.clone()));
+        model = model.with(constraint!(t_var >= -c.clone()));
+    }
+
+    // 9. Solve LP
+    match model.solve() {
+        Ok(sol) => {
+            let mut lp_haplotypes = BTreeMap::new();
+            let best_variables: Vec<f64> = variables.iter().map(|v| sol.value(*v)).collect();
+
+            for (val, haplotype) in best_variables.iter().zip(haplotypes.iter()) {
+                if *val > lp_cutoff {
+                    lp_haplotypes.insert(haplotype.clone(), *val);
+                }
+            }
+
+            // Plot
+            let candidate_matrix_values: Vec<(BitVec, BitVec)> = candidate_matrix.values().cloned().collect();
+            plot_prediction(
+                output_lp_datavzrd,
+                output_folder,
+                &"lp",
+                &candidate_matrix_values,
+                haplotypes,
+                variant_calls,
+                &best_variables,
+            )?;
+
+            Ok(lp_haplotypes)
+        }
+        Err(ResolutionError::Infeasible) => {
+            dbg!(format!("LP infeasible for constraint {}", constraint_value));
+            output_empty_output(&output_folder).unwrap();
+            Ok(BTreeMap::new())
+        }
+        Err(e) => panic!("Unexpected LP error: {e}"),
+    }
+}
+
 pub fn write_results(
     outcsv: &PathBuf,
     variant_calls: &VariantCalls,
@@ -1455,6 +1585,47 @@ pub fn write_results(
 
                 wtr.write_record(records).unwrap();
             });
+    }
+
+    Ok(())
+}
+
+pub fn write_results_fast_mode(
+    results: &Vec<(i32, Vec<(Vec<Haplotype>, BTreeMap<Haplotype, f64>, LogProb)>)>,
+    outcsv: &PathBuf,
+) -> Result<(), anyhow::Error> {
+
+    let mut wtr = csv::WriterBuilder::new()
+    .delimiter(b'\t')
+    .from_path(outcsv)?;
+
+    let headers = ["constraint_n", "haplotypes", "fractions", "log_likelihood", "norm_likelihood"];
+    wtr.write_record(&headers)?;
+
+    for (constraint_value, tree_results) in results {
+
+        for (_hap_vec, hap_map, logprob) in tree_results {
+
+            let haplotypes = hap_map
+                .keys()
+                .map(|h| h.0.clone())
+                .collect::<Vec<_>>()
+                .join(",");
+
+            let fractions = hap_map
+                .values()
+                .map(|f| format!("{:.6}", f))
+                .collect::<Vec<_>>()
+                .join(",");
+
+            wtr.write_record(&[
+                constraint_value.to_string(),
+                haplotypes,
+                fractions,
+                logprob.0.to_string(),
+                logprob.exp().to_string(),
+            ])?;
+        }
     }
 
     Ok(())
@@ -1691,7 +1862,7 @@ pub fn get_event_posteriors(
         var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
     let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
     //employ the linear program
-    let lp_haplotypes = linear_program(
+    let lp_haplotypes = linear_program_main_mode(
         output_lp_datavzrd,
         &output_folder,
         &repr_candidate_matrix,
@@ -2082,4 +2253,256 @@ fn parse_position(change: &str) -> Option<u32> {
         .take_while(|c| c.is_ascii_digit())
         .collect::<String>();
     pos_str.parse::<u32>().ok()
+}
+
+
+// Entry point: explore LP tree and gather events
+
+pub fn explore_haplotype_tree(
+    all_haplotype_variants: &HaplotypeVariants,
+    all_variant_calls: &VariantCalls,
+    repr_haplotypes: &Vec<Haplotype>,
+    output_lp_datavzrd: &bool,
+    output_folder: &PathBuf,
+    lp_cutoff: f64,
+    constraint_value: i32,
+) -> Result<Vec<(Vec<Haplotype>, BTreeMap<Haplotype, f64>, LogProb)>, anyhow::Error> {
+
+    let repr_haplotype_variants = all_haplotype_variants.filter_for_haplotypes(repr_haplotypes)?;
+    let repr_candidate_matrix =
+        CandidateMatrix::new(&repr_haplotype_variants)?;
+
+    // Run LP on full haplotype set (root)
+    let root_solution = linear_program_fast_mode(
+        output_lp_datavzrd,
+        output_folder,
+        &repr_candidate_matrix,
+        repr_haplotypes,
+        all_variant_calls,
+        lp_cutoff,
+        constraint_value,
+    )?;
+
+    if root_solution.is_empty() {
+        println!("Root LP solution empty. Exiting.");
+        return Ok(vec![]);
+    }
+
+    //collect LP haplotypes
+    let lp_haplotypes: Vec<Haplotype> = root_solution.keys().cloned().collect();
+
+    //define the joint_prob closure
+    let mut joint_prob = |event: &BTreeMap<Haplotype, f64>, data: &Data| -> LogProb {
+        let fractions: Vec<AlleleFreq> = event
+            .values()
+            .cloned()
+            .map(|f| NotNan::new(f).unwrap())
+            .collect();
+    
+        let hap_event = HaplotypeFractions(fractions);
+    
+        let likelihood = Likelihood::new();
+        let mut cache = Cache::default();
+    
+        likelihood.compute(&hap_event, data, &mut cache)
+    };
+
+    //filter for lp haplotypes and create Data object
+    let lp_hv = all_haplotype_variants.filter_for_haplotypes(&lp_haplotypes)?;
+    let lp_cm = CandidateMatrix::new(&lp_hv)?;
+    let lp_data = Data::new(lp_cm.clone(), all_variant_calls.clone());
+
+    // Compute likelihood for root
+    let root_likelihood = joint_prob(&root_solution, &lp_data);
+    dbg!(&root_solution, &root_likelihood, &root_likelihood.exp());
+
+
+    // Keep a set of canonical keys to avoid duplicate solutions
+    let mut seen: HashSet<String> = HashSet::new();
+    
+    // Canonical key for root
+    let root_entries = format!(
+        "{}|{:.6}",
+        root_solution
+            .iter()
+            .map(|(h, f)| format!("{}:{:.2}", h.0, f))
+            .collect::<Vec<_>>()
+            .join(","),
+            root_likelihood.0
+    );
+
+    seen.insert(root_entries);
+
+    // Initialize results with root event
+    let mut results = vec![(
+        lp_haplotypes,
+        root_solution,
+        root_likelihood,
+    )];
+
+    //TODO: also compute the identical haplotypes
+
+
+    // Start recursion: remove one haplotype at a time from the full haplotype list
+    recursive_lp_search(
+        repr_haplotypes,
+        root_likelihood,
+        output_lp_datavzrd,
+        output_folder,
+        all_haplotype_variants,
+        all_variant_calls,
+        lp_cutoff,
+        constraint_value,
+        &mut results,
+        &mut seen,
+    )?;
+
+    Ok(results)
+}
+
+// Recursive LP search with likelihood pruning and uniqueness tracking
+fn recursive_lp_search(
+    current_candidates: &Vec<Haplotype>,
+    root_likelihood: LogProb,
+    output_lp_datavzrd: &bool,
+    output_folder: &PathBuf,
+    all_haplotype_variants: &HaplotypeVariants,
+    all_variant_calls: &VariantCalls,
+    lp_cutoff: f64,
+    constraint_value: i32,
+    results: &mut Vec<(Vec<Haplotype>, BTreeMap<Haplotype, f64>, LogProb)>,
+    seen: &mut HashSet<String>
+) -> Result<(), anyhow::Error> {
+
+    // Immediately start by removing one haplotype
+    for i in 0..current_candidates.len() {
+        let mut reduced = current_candidates.clone();
+        reduced.remove(i);
+
+        //do not solve for vector lengths smaller than the constraint
+        if reduced.len() < constraint_value as usize {
+            continue;
+        }
+
+        // Recompute candidate matrix 
+        let filtered_hv = all_haplotype_variants.filter_for_haplotypes(&reduced)?;
+        let candidate_matrix = CandidateMatrix::new(&filtered_hv)?;
+        dbg!(&reduced.len());
+
+        // Solve LP for the reduced haplotype set
+        let lp_solution = linear_program_fast_mode(
+            output_lp_datavzrd,
+            output_folder,
+            &candidate_matrix,
+            &reduced,
+            all_variant_calls,
+            lp_cutoff,
+            constraint_value,
+        )?;
+        //find lp haplotypes
+        let lp_haplotypes: Vec<Haplotype> = lp_solution.keys().cloned().collect();
+
+        // Compute likelihood on full variant set for this subset
+        let hap_event = HaplotypeFractions(
+            lp_solution.values()
+                .cloned()
+                .map(|f| NotNan::new(f).unwrap())
+                .collect()
+        );
+        let likelihood = Likelihood::new();
+        let mut cache = Cache::default();
+
+        //create candidate matrix again for the selected haplotypes
+        let lp_hv = all_haplotype_variants.filter_for_haplotypes(&lp_haplotypes)?;
+        let lp_cm = CandidateMatrix::new(&lp_hv)?;
+
+        //construct Data object 
+        let data = Data::new(lp_cm.clone(), all_variant_calls.clone());
+
+        //compute the likelihood
+        let current_likelihood = likelihood.compute(&hap_event, &data, &mut cache);
+
+        // Prune low-likelihood nodes
+        dbg!(&lp_solution);
+
+        let ln_half = LogProb::from(Prob(0.5));
+        dbg!(&current_likelihood, root_likelihood);
+        if current_likelihood < root_likelihood + ln_half {
+            dbg!(&current_likelihood, root_likelihood);
+            dbg!(&current_likelihood.exp(), root_likelihood.exp());
+            continue; // prune this branch
+        }
+
+        // Build canonical key for keeping only unique entries
+        let canonical_key = format!(
+            "{}|{:.6}",
+            lp_solution
+                .iter()
+                .map(|(h, f)| format!("{}:{:.2}", h.0, f))
+                .collect::<Vec<_>>()
+                .join(","),
+            current_likelihood.0
+        );
+
+        //Only store if the solution is unique
+        if !seen.contains(&canonical_key) {
+            seen.insert(canonical_key);
+            results.push((lp_haplotypes.clone(), lp_solution.clone(), current_likelihood));
+        }
+
+        // Recurse on this reduced set
+        recursive_lp_search(
+            &reduced,
+            root_likelihood,
+            output_lp_datavzrd,
+            output_folder,
+            all_haplotype_variants,
+            all_variant_calls,
+            lp_cutoff,
+            constraint_value,
+            results,
+            seen
+        )?;
+    
+
+    }
+
+    Ok(())
+}
+
+pub fn prepare_representative_haplotypes(
+    haplotype_variants: &HaplotypeVariants,
+    variant_calls: &VariantCalls,
+) -> Result<Vec<Haplotype>, anyhow::Error> {
+
+    // Keep only variants with nonzero DP
+    let nonzero_dp_variants: Vec<VariantID> =
+    variant_calls.keys().cloned().collect();
+
+    let var_filt_haplotype_variants: HaplotypeVariants =
+        haplotype_variants.filter_for_variants(&nonzero_dp_variants)?;
+
+    // Extract haplotypes
+    let haplotypes: Vec<Haplotype> =
+        var_filt_haplotype_variants
+            .iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("No haplotypes found"))?
+            .1
+            .keys()
+            .cloned()
+            .collect();
+
+    // Build candidate matrix
+    let candidate_matrix =
+        CandidateMatrix::new(&var_filt_haplotype_variants)?;
+
+    // Collapse identical haplotypes
+    let (identical_haplotypes_map_rep, _identical_haplotypes_map) =
+        candidate_matrix.find_identical_haplotypes(haplotypes);
+    // dbg!(&identical_haplotypes_map_rep);
+    let representatives: Vec<Haplotype> =
+        identical_haplotypes_map_rep.keys().cloned().collect();
+
+    Ok(representatives)
 }
