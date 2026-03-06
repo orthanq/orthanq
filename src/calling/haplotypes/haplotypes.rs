@@ -6,6 +6,7 @@ use bio::stats::{probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
 use datavzrd::render_report;
 use serde_yaml::Value;
+use statrs::distribution::Uniform;
 use crate::model::Cache;
 use bio::stats::bayesian::model::Likelihood as BayesianLikelihood;
 
@@ -1314,6 +1315,7 @@ pub fn linear_program_fast_mode(
     variant_calls: &VariantCalls,
     lp_cutoff: f64,
     constraint_value: i32,
+    prior: &PriorTypes
 ) -> Result<BTreeMap<Haplotype, f64>, anyhow::Error> {
 
     // 1. Create problem and variables
@@ -1333,72 +1335,45 @@ pub fn linear_program_fast_mode(
     let t_vars: Vec<Variable> =
         problem.add_vector(variable().min(0.0).max(1.0), constraints.len());
 
-    // 2. Binary selection variables for sparsity
-    let select: Vec<Variable> = problem.add_vector(variable().binary(), haplotypes.len());
+    // 2. Binary fraction variables; these are required for 1) ensuring the number of selected haplotypes are equal to constraint_Value and 2) if it's 2 and diploid is chosen, only 0.5 is allowed in addition to 0.0 and 1.0.
+    let z: Vec<Variable> = problem.add_vector(variable().binary(), haplotypes.len());
 
-    // 3. Binary fraction variables
-    let (z0, z1, z2) = match constraint_value {
-        1 => {
-            let z0 = problem.add_vector(variable().binary(), haplotypes.len());
-            let z1 = problem.add_vector(variable().binary(), haplotypes.len());
-            (Some(z0), Some(z1), None)
-        }
-        2 => {
-            let z0 = problem.add_vector(variable().binary(), haplotypes.len());
-            let z1 = problem.add_vector(variable().binary(), haplotypes.len());
-            let z2 = problem.add_vector(variable().binary(), haplotypes.len());
-            (Some(z0), Some(z1), Some(z2))
-        }
-        _ => (None, None, None), // subclonal continuous
-    };
-
-    // 4. Build model
+    // 3. Build model
     let mut sum_tvars = Expression::from_other_affine(0.);
     for t_var in t_vars.iter() { sum_tvars += t_var.into_expression(); }
     let mut model = problem.minimise(sum_tvars.clone()).using(default_solver);
 
-    // 5. Add fraction constraints
+    // 4. Add fraction constraint for the diploid case to allow 0.5
     for i in 0..haplotypes.len() {
-        match constraint_value {
-            1 => { // haploid
-                let z0 = z0.as_ref().unwrap();
-                let z1 = z1.as_ref().unwrap();
-                model = model.with(constraint!(z0[i] + z1[i] == 1));
-                model = model.with(constraint!(variables[i] == z1[i]));
-                model = model.with(constraint!(variables[i] <= select[i]));
-            }
-            2 => { // diploid
-                let z0 = z0.as_ref().unwrap();
-                let z1 = z1.as_ref().unwrap();
-                let z2 = z2.as_ref().unwrap();
-                model = model.with(constraint!(z0[i] + z1[i] + z2[i] == 1));
-                model = model.with(constraint!(variables[i] == 0.0*z0[i] + 0.5*z1[i] + 1.0*z2[i]));
-                model = model.with(constraint!(variables[i] <= select[i]));
-            }
-            3 => { // subclonal continuous
-                model = model.with(constraint!(variables[i] <= select[i]));
-            }
-            _ => {}
+
+        // link main variables with fraction variables
+        model = model.with(constraint!(variables[i] <= z[i]));
+
+        if constraint_value == 2 && *prior == PriorTypes::Diploid {
+            model = model.with(constraint!(variables[i] == 0.5 * z[i])); 
         }
+        // all other constraints and prior types (Diploid and DiploidSubclonal) should have the continuous space.
     }
 
-    // 6. Limit number of nonzero haplotypes
-    let mut select_sum = Expression::from_other_affine(0.);
-    for s in select.iter() { select_sum += Expression::from_other_affine(*s); }
-    model = model.with(constraint!(select_sum <= constraint_value));
+    // 5. Enforce total number of haplotypes selected equals constraint_value
+    let mut sum_z = Expression::from_other_affine(0.);
+    for z_var in z.iter() {
+        sum_z += Expression::from_other_affine(*z_var);
+    }
+    model = model.with(constraint!(sum_z == constraint_value));
 
-    // 7. Sum of fractions = 1
+    // 6. Sum of fractions = 1
     let mut sum = Expression::from_other_affine(0.);
     for var in variables.iter() { sum += Expression::from_other_affine(*var); }
     model = model.with(constraint!(sum == 1.0));
 
-    // 8. Variant matrix constraints
+    // 7. Variant matrix constraints
     for (c, t_var) in constraints.iter().zip(t_vars.iter()) {
         model = model.with(constraint!(t_var >= c.clone()));
         model = model.with(constraint!(t_var >= -c.clone()));
     }
 
-    // 9. Solve LP
+    // 8. Solve LP
     match model.solve() {
         Ok(sol) => {
             let mut lp_haplotypes = BTreeMap::new();
@@ -2266,6 +2241,7 @@ pub fn explore_haplotype_tree(
     output_folder: &PathBuf,
     lp_cutoff: f64,
     constraint_value: i32,
+    prior: &PriorTypes
 ) -> Result<Vec<(Vec<Haplotype>, BTreeMap<Haplotype, f64>, LogProb)>, anyhow::Error> {
 
     let repr_haplotype_variants = all_haplotype_variants.filter_for_haplotypes(repr_haplotypes)?;
@@ -2281,6 +2257,7 @@ pub fn explore_haplotype_tree(
         all_variant_calls,
         lp_cutoff,
         constraint_value,
+        prior
     )?;
 
     if root_solution.is_empty() {
@@ -2333,6 +2310,9 @@ pub fn explore_haplotype_tree(
 
     seen.insert(root_entries);
 
+    //find the selected haplotypes in the root solution to be used in the recursion function
+    let root_haplotypes = root_solution.keys().cloned().collect();
+
     // Initialize results with root event
     let mut results = vec![(
         lp_haplotypes,
@@ -2342,11 +2322,13 @@ pub fn explore_haplotype_tree(
 
     //TODO: also compute the identical haplotypes
 
+    // Start recursion: remove one haplotype at a time from the list of selected haplotypes
 
-    // Start recursion: remove one haplotype at a time from the full haplotype list
+    let mut mut_repr_haplotypes = repr_haplotypes.clone();
     recursive_lp_search(
-        repr_haplotypes,
         root_likelihood,
+        &root_haplotypes,
+        &mut mut_repr_haplotypes,
         output_lp_datavzrd,
         output_folder,
         all_haplotype_variants,
@@ -2355,15 +2337,19 @@ pub fn explore_haplotype_tree(
         constraint_value,
         &mut results,
         &mut seen,
+        prior
     )?;
+
+
 
     Ok(results)
 }
 
 // Recursive LP search with likelihood pruning and uniqueness tracking
 fn recursive_lp_search(
-    current_candidates: &Vec<Haplotype>,
     root_likelihood: LogProb,
+    prev_selected_haplotypes: &Vec<Haplotype>,
+    prev_input_haplotypes: &mut Vec<Haplotype>,
     output_lp_datavzrd: &bool,
     output_folder: &PathBuf,
     all_haplotype_variants: &HaplotypeVariants,
@@ -2371,13 +2357,20 @@ fn recursive_lp_search(
     lp_cutoff: f64,
     constraint_value: i32,
     results: &mut Vec<(Vec<Haplotype>, BTreeMap<Haplotype, f64>, LogProb)>,
-    seen: &mut HashSet<String>
+    seen: &mut HashSet<String>,
+    prior: &PriorTypes
 ) -> Result<(), anyhow::Error> {
 
     // Immediately start by removing one haplotype
-    for i in 0..current_candidates.len() {
-        let mut reduced = current_candidates.clone();
-        reduced.remove(i);
+    for i in 0..prev_selected_haplotypes.len() {
+
+        let mut reduced = prev_input_haplotypes.clone();
+        dbg!(&reduced.len());
+        if let Some(pos) = prev_input_haplotypes.iter().position(|h| *h == prev_selected_haplotypes[i]) {
+            reduced.remove(pos);
+        }
+        dbg!(&prev_selected_haplotypes[i]);
+        dbg!(&reduced.len());
 
         //do not solve for vector lengths smaller than the constraint
         if reduced.len() < constraint_value as usize {
@@ -2398,6 +2391,7 @@ fn recursive_lp_search(
             all_variant_calls,
             lp_cutoff,
             constraint_value,
+            prior
         )?;
         //find lp haplotypes
         let lp_haplotypes: Vec<Haplotype> = lp_solution.keys().cloned().collect();
@@ -2425,14 +2419,6 @@ fn recursive_lp_search(
         // Prune low-likelihood nodes
         dbg!(&lp_solution);
 
-        let ln_half = LogProb::from(Prob(0.5));
-        dbg!(&current_likelihood, root_likelihood);
-        if current_likelihood < root_likelihood + ln_half {
-            dbg!(&current_likelihood, root_likelihood);
-            dbg!(&current_likelihood.exp(), root_likelihood.exp());
-            continue; // prune this branch
-        }
-
         // Build canonical key for keeping only unique entries
         let canonical_key = format!(
             "{}|{:.6}",
@@ -2448,12 +2434,22 @@ fn recursive_lp_search(
         if !seen.contains(&canonical_key) {
             seen.insert(canonical_key);
             results.push((lp_haplotypes.clone(), lp_solution.clone(), current_likelihood));
+                }
+
+        let ln_half = LogProb::from(Prob(0.5));
+        dbg!(&current_likelihood, root_likelihood);
+        if current_likelihood < root_likelihood + ln_half {
+            dbg!(&current_likelihood, root_likelihood);
+            dbg!(&current_likelihood.exp(), root_likelihood.exp());
+            continue; // prune this branch
         }
+
 
         // Recurse on this reduced set
         recursive_lp_search(
-            &reduced,
             root_likelihood,
+            &lp_haplotypes,
+            &mut reduced,
             output_lp_datavzrd,
             output_folder,
             all_haplotype_variants,
@@ -2461,7 +2457,8 @@ fn recursive_lp_search(
             lp_cutoff,
             constraint_value,
             results,
-            seen
+            seen,
+            prior
         )?;
     
 

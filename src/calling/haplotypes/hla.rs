@@ -402,7 +402,7 @@ impl FastCaller {
             let prior = PriorTypes::from_str(&self.prior).unwrap();
 
             let constraint_values = match prior {
-                PriorTypes::Diploid => vec![2],
+                PriorTypes::Diploid => vec![1,2],
                 PriorTypes::DiploidSubclonal => vec![1,2,3],
                 _ => vec![self.num_constraint_haplotypes],
             };
@@ -411,7 +411,7 @@ impl FastCaller {
             
             for constraint in constraint_values {
             
-                let tree = explore_haplotype_tree(&haplotype_variants, &filtered_calls, &representative_h, &self.output_lp_datavzrd, &self.output_folder, self.lp_cutoff, constraint)?;
+                let tree = explore_haplotype_tree(&haplotype_variants, &filtered_calls, &representative_h, &self.output_lp_datavzrd, &self.output_folder, self.lp_cutoff, constraint, &prior)?;
             
                 all_results.push((constraint, tree));
             }
