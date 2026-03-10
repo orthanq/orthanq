@@ -310,6 +310,24 @@ pub enum CallKind {
             help = "Use fast HLA caller (recursive LP mode without posterior estimation)."
         )]
         fast: bool,
+        #[structopt(
+            parse(from_os_str),
+            long = "parent",
+            help = "HLA types of the parent sample."
+        )]
+        parent: Option<PathBuf>,
+        #[structopt(
+            default_value = "0.1",
+            long,
+            help = "Change rate of haplotypes compared to HLA types in parent.tsv (used with --parent)"
+        )]
+        change_rate: f64,
+        #[structopt(
+            default_value = "0.01",
+            long,
+            help = "De-novo rate of haplotypes compared to HLA types in parent.tsv (used with --parent)"
+        )]
+        denovo_rate: f64,
     },
     Virus {
         #[structopt(
@@ -382,7 +400,10 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 sample_name,
                 threshold_posterior_density,
                 enforce_given_alleles,
-                fast
+                fast,
+                parent,
+                change_rate,
+                denovo_rate
             } => {
                 if fast {
                     let mut caller = calling::haplotypes::hla::FastCallerBuilder::default()
@@ -396,6 +417,9 @@ pub fn run(opt: Orthanq) -> Result<()> {
                         .sample_name(sample_name)
                         .enforce_given_alleles(enforce_given_alleles)
                         .output_lp_datavzrd(output_lp_datavzrd)
+                        .parent(parent)
+                        .change_rate(change_rate)
+                        .denovo_rate(denovo_rate)
                         .build()
                         .unwrap();
                     caller.call()?;

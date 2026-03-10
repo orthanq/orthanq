@@ -2,8 +2,9 @@ use crate::calling::haplotypes::haplotypes;
 use crate::calling::haplotypes::haplotypes::filter_variants_for_best_solution_plot;
 use crate::calling::haplotypes::haplotypes::get_event_posteriors;
 use crate::calling::haplotypes::haplotypes::output_empty_output;
+use crate::calling::haplotypes::haplotypes::write_results;
 use crate::calling::haplotypes::haplotypes::write_results_fast_mode;
-use crate::calling::haplotypes::haplotypes::{explore_haplotype_tree, prepare_representative_haplotypes};
+use crate::calling::haplotypes::haplotypes::{explore_haplotype_tree, prepare_representative_haplotypes, collect_haplotypes_and_fractions_from_fast_mode};
 use crate::calling::haplotypes::haplotypes::{
     CandidateMatrix, Haplotype, HaplotypeVariants, VariantCalls,
 };
@@ -15,11 +16,12 @@ use crate::calling::haplotypes::haplotypes::PriorTypes;
 
 use bio::stats::bayesian::model::Likelihood as BayesianLikelihood;
 use anyhow::Result;
-use bio::stats::probs::LogProb;
+use bio::stats::{probs::LogProb, Prob};
+use itertools::sorted;
 use polars::export::arrow::compute::boolean::all;
 
 use core::cmp::Ordering;
-
+use csv::Reader;
 use derive_builder::Builder;
 
 use ordered_float::NotNan;
@@ -146,6 +148,7 @@ impl Caller {
                 &event_posteriors,
                 &all_haplotypes,
                 false,
+                true
             )?;
 
             // arrow plot
@@ -176,6 +179,7 @@ impl Caller {
                 &two_field_event_posteriors,
                 &two_field_haplotypes,
                 false, //can't be activated for 2-field
+                true
             )?;
 
             //plot first 10 posteriors of orthanq output
@@ -236,6 +240,7 @@ impl Caller {
                 &event_posteriors,
                 &final_haplotypes_converted,
                 false,
+                true
             )?;
             Ok(())
         }
@@ -348,6 +353,9 @@ pub struct FastCaller {
     sample_name: Option<String>,
     enforce_given_alleles: Option<Vec<String>>,
     output_lp_datavzrd: bool,
+    parent: Option<PathBuf>,
+    change_rate: f64,
+    denovo_rate: f64
 }
 
 impl FastCaller {
@@ -415,11 +423,96 @@ impl FastCaller {
             
                 all_results.push((constraint, tree));
             }
-
-            // Step3: Write results
-            std::fs::create_dir_all(&self.output_folder)?;
-            write_results_fast_mode(&all_results, &self.output_folder.join(&"predictions.csv"))?;
             dbg!(&all_results);
+            // Step3: Write results with and without haplotypes as headers
+
+            //without headers and with constraints
+            std::fs::create_dir_all(&self.output_folder)?;
+            write_results_fast_mode(&all_results, &self.output_folder.join(&"predictions_alt_output.csv"))?;
+
+            //with headers as haplotypes
+            let (haplotypes, event_likelihoods) = collect_haplotypes_and_fractions_from_fast_mode(&all_results);
+            let cm = CandidateMatrix::new(
+                &haplotype_variants
+                    .filter_for_haplotypes(&haplotypes)
+                    .unwrap(),
+            )
+            .unwrap();
+
+            let sorted_event_likelihoods: Vec<(HaplotypeFractions, LogProb)> = {
+                let mut v = event_likelihoods.clone();
+                v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+                v
+            };
+
+            dbg!(&haplotypes, &sorted_event_likelihoods);
+            write_results(&self.output_folder.join(&"predictions_unmodified.csv"),
+            &variant_calls, 
+            &cm, 
+            &sorted_event_likelihoods, 
+            &haplotypes, 
+            false,
+            false);
+            
+            //todo: plots
+
+            //use parent.csv and apply weakly informative priors
+            if let Some(parent_path) = &self.parent {
+                let mut rdr = Reader::from_path(&parent_path)?;
+
+                // read header row
+                let headers = rdr.headers()?.clone();
+                
+                // find "odds"
+                let odds_idx = headers
+                    .iter()
+                    .position(|h| h == "odds")
+                    .expect("odds column not found");
+
+                // collect haplotype headers
+                let haplotype_headers: Vec<String> = headers
+                    .iter()
+                    .skip(odds_idx + 1)
+                    .map(|s| s.to_string())
+                    .collect();
+                dbg!(&haplotype_headers);
+                let hap_start = odds_idx + 1;
+
+                // collect events
+                let mut parent_event_likelihoods: Vec<(HaplotypeFractions, LogProb)> = Vec::new();
+                
+                for result in rdr.records() {
+                    let record = result?;
+                
+                    // density column -> LogProb
+                    let density: f64 = record[0].parse()?;
+                    let logprob = LogProb(density);
+                
+                    // collect haplotype fractions
+                    let mut fractions = Vec::with_capacity(record.len() - hap_start);
+                
+                    for field in record.iter().skip(hap_start) {
+                        let val: f64 = field.parse()?;
+                        fractions.push(NotNan::new(val)?);
+                    }
+                
+                    parent_event_likelihoods.push((HaplotypeFractions(fractions), logprob));
+                }
+                dbg!(&parent_event_likelihoods);
+
+                let updated_event_likelihoods = adjust_event_likelihoods(&parent_event_likelihoods,&sorted_event_likelihoods,self.change_rate, self.denovo_rate);
+                write_results(&self.output_folder.join(&"predictions_updated.csv"),
+                &variant_calls, 
+                &cm, 
+                &updated_event_likelihoods, 
+                &haplotypes, 
+                false,
+                false);
+
+
+            }
+
+
             Ok(())
         }
     }
@@ -512,4 +605,59 @@ fn get_nonzero_haplotype_fractions(
             }
         })
         .collect()
+}
+
+fn adjust_event_likelihoods(
+    parent: &Vec<(HaplotypeFractions, LogProb)>,
+    current: &Vec<(HaplotypeFractions, LogProb)>,
+    change_rate: f64,
+    de_novo_rate: f64,
+) -> Vec<(HaplotypeFractions, LogProb)> {
+
+    let de_novo_rate_lp = LogProb::from(Prob(de_novo_rate));
+    let change_rate_lp = LogProb::from(Prob(change_rate));
+
+    // if haplotype dimensions differ, everything is de-novo
+    if parent.first().map(|(f, _)| f.len()) != current.first().map(|(f, _)| f.len()) {
+        return current
+            .into_iter()
+            .map(|(frac, lp)| (frac.clone(), lp + de_novo_rate_lp))
+            .collect();
+    }
+
+    fn composition(frac: &HaplotypeFractions) -> Vec<usize> {
+        frac.iter()
+            .enumerate()
+            .filter(|(_, v)| v.into_inner() > 0.0)
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    let mut result = Vec::with_capacity(current.len());
+
+    for (current_frac, current_lp) in current {
+        let current_comp = composition(&current_frac);
+        let mut adjusted = current_lp.clone();
+        let mut matched = false;
+
+        for (parent_frac, _) in parent {
+            let parent_comp = composition(parent_frac);
+
+            if parent_comp == current_comp {
+                matched = true;
+                if parent_frac != current_frac {
+                    adjusted = adjusted + change_rate_lp;
+                }
+                break;
+            }
+        }
+
+        if !matched {
+            adjusted = adjusted + de_novo_rate_lp;
+        }
+
+        result.push((current_frac.clone(), adjusted));
+    }
+
+    result
 }

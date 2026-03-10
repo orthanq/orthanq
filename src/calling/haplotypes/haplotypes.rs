@@ -1415,6 +1415,7 @@ pub fn write_results(
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     final_haplotypes: &Vec<Haplotype>,
     variant_info: bool,
+    convert_logprob: bool
 ) -> Result<()> {
     //firstly add variant query and probabilities to the outout table for each event
     let variant_calls: Vec<AlleleFreqDist> = variant_calls
@@ -1422,7 +1423,7 @@ pub fn write_results(
         .map(|(_, call)| call.afd.clone())
         .collect();
     let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
-    // let event_posteriors = computed_model.event_posteriors();
+
     if variant_info {
         event_posteriors.iter().for_each(|(fractions, _)| {
             let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
@@ -1475,19 +1476,24 @@ pub fn write_results(
     }
     wtr.write_record(&headers)?;
 
-    //write best record on top
+    //write best record on top; assuming event_posteriors is always sorted
     let mut records = Vec::new();
-    // let mut event_posteriors = computed_model.event_posteriors(); //compute a second time because event_posteriors can't be cloned from above.
     let (haplotype_frequencies, best_density) = event_posteriors.iter().next().unwrap();
     let best_odds: f64 = 1.00;
     let format_f64 = |number: f64, records: &mut Vec<String>| {
-        if number <= 0.01 {
+        if number <= 0.01 && convert_logprob { //very low logprobs are common in fast mode
             records.push(format!("{:+.2e}", number))
         } else {
             records.push(format!("{:.2}", number))
         }
     };
-    format_f64(best_density.exp(), &mut records);
+
+    if convert_logprob {
+        format_f64(best_density.exp(), &mut records);
+    } else{
+        format_f64(f64::from(*best_density), &mut records);
+    }
+
     records.push(format!("{:.2}", best_odds));
     let format_freqs = |frequency: NotNan<f64>, records: &mut Vec<String>| {
         if frequency <= NotNan::new(0.01).unwrap() {
@@ -1548,16 +1554,23 @@ pub fn write_results(
     } else {
         event_posteriors
             .iter()
-            .skip(1)
             .for_each(|(haplotype_frequencies, density)| {
                 let mut records = Vec::new();
-                let odds = (density - best_density).exp();
-                format_f64(density.exp(), &mut records);
+                let mut odds: f64 = (density - best_density).exp();
+
+                if !convert_logprob {
+                    odds = f64::from(*density)/f64::from(*best_density);
+                    format_f64(f64::from(*density), &mut records);
+                } else{
+                    format_f64(density.exp(), &mut records);
+                }
+                
                 format_f64(odds, &mut records);
                 haplotype_frequencies
                     .iter()
                     .for_each(|frequency| format_freqs(*frequency, &mut records));
 
+                dbg!(&records);
                 wtr.write_record(records).unwrap();
             });
     }
@@ -1566,7 +1579,7 @@ pub fn write_results(
 }
 
 pub fn write_results_fast_mode(
-    results: &Vec<(i32, Vec<(Vec<Haplotype>, BTreeMap<Haplotype, f64>, LogProb)>)>,
+    results: &Vec<(i32, Vec<(BTreeMap<Haplotype, f64>, LogProb)>)>,
     outcsv: &PathBuf,
 ) -> Result<(), anyhow::Error> {
 
@@ -1579,7 +1592,7 @@ pub fn write_results_fast_mode(
 
     for (constraint_value, tree_results) in results {
 
-        for (_hap_vec, hap_map, logprob) in tree_results {
+        for (hap_map, logprob) in tree_results {
 
             let haplotypes = hap_map
                 .keys()
@@ -2242,7 +2255,7 @@ pub fn explore_haplotype_tree(
     lp_cutoff: f64,
     constraint_value: i32,
     prior: &PriorTypes
-) -> Result<Vec<(Vec<Haplotype>, BTreeMap<Haplotype, f64>, LogProb)>, anyhow::Error> {
+) -> Result<Vec<(BTreeMap<Haplotype, f64>, LogProb)>, anyhow::Error> {
 
     let repr_haplotype_variants = all_haplotype_variants.filter_for_haplotypes(repr_haplotypes)?;
     let repr_candidate_matrix =
@@ -2315,7 +2328,6 @@ pub fn explore_haplotype_tree(
 
     // Initialize results with root event
     let mut results = vec![(
-        lp_haplotypes,
         root_solution,
         root_likelihood,
     )];
@@ -2356,7 +2368,7 @@ fn recursive_lp_search(
     all_variant_calls: &VariantCalls,
     lp_cutoff: f64,
     constraint_value: i32,
-    results: &mut Vec<(Vec<Haplotype>, BTreeMap<Haplotype, f64>, LogProb)>,
+    results: &mut Vec<(BTreeMap<Haplotype, f64>, LogProb)>,
     seen: &mut HashSet<String>,
     prior: &PriorTypes
 ) -> Result<(), anyhow::Error> {
@@ -2433,7 +2445,7 @@ fn recursive_lp_search(
         //Only store if the solution is unique
         if !seen.contains(&canonical_key) {
             seen.insert(canonical_key);
-            results.push((lp_haplotypes.clone(), lp_solution.clone(), current_likelihood));
+            results.push((lp_solution.clone(), current_likelihood));
                 }
 
         let ln_half = LogProb::from(Prob(0.5));
@@ -2502,4 +2514,38 @@ pub fn prepare_representative_haplotypes(
         identical_haplotypes_map_rep.keys().cloned().collect();
 
     Ok(representatives)
+}
+pub fn collect_haplotypes_and_fractions_from_fast_mode(
+    results: &Vec<(i32, Vec<(BTreeMap<Haplotype, f64>, LogProb)>)>,
+) -> (Vec<Haplotype>, Vec<(HaplotypeFractions, LogProb)>) {
+
+    // 1. collect unique haplotypes (deterministic order)
+    let mut hap_set = BTreeSet::new();
+
+    for (_, events) in results {
+        for (hap_map, _) in events {
+            for hap in hap_map.keys() {
+                hap_set.insert(hap.clone());
+            }
+        }
+    }
+
+    let haplotypes: Vec<Haplotype> = hap_set.into_iter().collect();
+
+    // 2. build fractions
+    let mut events_out = Vec::new();
+
+    for (_, events) in results {
+        for (hap_map, logprob) in events {
+            let mut row = Vec::with_capacity(haplotypes.len());
+
+            for hap in &haplotypes {
+                let val = hap_map.get(hap).copied().unwrap_or(0.0);
+                row.push(NotNan::new(val).expect("fraction must not be NaN"));
+            }
+            events_out.push((HaplotypeFractions(row), logprob.clone()));
+        }
+    }
+
+    (haplotypes, events_out)
 }

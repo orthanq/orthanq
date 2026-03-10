@@ -103,6 +103,7 @@ impl Caller {
                 &event_posteriors,
                 &all_haplotypes,
                 false,
+                true
             )?;
 
             //plot first 10 posteriors of orthanq output
