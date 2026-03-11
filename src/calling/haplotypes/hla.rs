@@ -117,10 +117,10 @@ impl Caller {
             //write 2-field and G group output tables
             
             // 1-) 2-field
-            write_two_field_results(&self.output_folder, &event_posteriors, &all_haplotypes, &variant_calls, &all_haplotypes_candidate_matrix)?;
+            write_two_field_results(&self.output_folder, &event_posteriors, &all_haplotypes, &variant_calls, &all_haplotypes_candidate_matrix, true)?;
 
             // 2-) G groups
-            write_g_group_results(&self.output_folder, &self.xml, &all_haplotypes, &variant_calls, &all_haplotypes_candidate_matrix, &event_posteriors)?;
+            write_g_group_results(&self.output_folder, &self.xml, &all_haplotypes, &variant_calls, &all_haplotypes_candidate_matrix, &event_posteriors, true)?;
         
             Ok(())
         }
@@ -309,10 +309,10 @@ impl FastCaller {
             //write 2-field and G group output tables
 
             // 1-) 2-field
-            write_two_field_results(&self.output_folder, &final_event_likelihoods, &haplotypes, &variant_calls, &cm)?;
+            write_two_field_results(&self.output_folder, &final_event_likelihoods, &haplotypes, &variant_calls, &cm, false)?;
 
             // 2-) G groups
-            write_g_group_results(&self.output_folder, &self.xml, &haplotypes, &variant_calls, &cm, &final_event_likelihoods)?;
+            write_g_group_results(&self.output_folder, &self.xml, &haplotypes, &variant_calls, &cm, &final_event_likelihoods, false)?;
 
             Ok(())
         }
@@ -655,6 +655,7 @@ fn write_g_group_results(
     variant_calls: &VariantCalls,
     candidate_matrix: &CandidateMatrix,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
+    convert_logprob: bool
 ) -> Result<()> {
 
     //write table for G groups of HLA alleles, for HLA alleles with None G group in the XML table, we write the haplotype name back.
@@ -711,6 +712,7 @@ fn write_two_field_results(
     all_haplotypes: &Vec<Haplotype>,
     variant_calls: &VariantCalls,
     candidate_matrix: &CandidateMatrix,
+    convert_logprob: bool
 ) -> Result<()> {
 
     let (two_field_haplotypes, two_field_event_posteriors) =
@@ -725,7 +727,7 @@ fn write_two_field_results(
         candidate_matrix,
         &two_field_event_posteriors,
         &two_field_haplotypes,
-        false,
+        convert_logprob,
     )?;
 
     Ok(())
