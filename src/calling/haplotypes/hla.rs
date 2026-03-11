@@ -94,6 +94,22 @@ impl Caller {
                 self.threshold_posterior_density,
             )?;
 
+            //write results to csv using full haplotype names found in get_event_posteriors()
+            let all_haplotypes_candidate_matrix = CandidateMatrix::new(
+                &haplotype_variants
+                    .filter_for_haplotypes(&all_haplotypes)
+                    .unwrap(),
+            )
+            .unwrap();
+            haplotypes::write_results(
+                &self.output_folder.join(&"predictions.csv"),
+                &variant_calls,
+                &all_haplotypes_candidate_matrix,
+                &event_posteriors,
+                &all_haplotypes,
+                true
+            )?;
+
             // draw plots
 
             plot_all_hla(&self.output_folder, &haplotype_variants, &variant_calls, &all_haplotypes, &event_posteriors, self.output_lp_datavzrd);
@@ -101,12 +117,6 @@ impl Caller {
             //write 2-field and G group output tables
             
             // 1-) 2-field
-            let all_haplotypes_candidate_matrix = CandidateMatrix::new(
-                &haplotype_variants
-                    .filter_for_haplotypes(&all_haplotypes)
-                    .unwrap(),
-            )
-            .unwrap();
             write_two_field_results(&self.output_folder, &event_posteriors, &all_haplotypes, &variant_calls, &all_haplotypes_candidate_matrix)?;
 
             // 2-) G groups
