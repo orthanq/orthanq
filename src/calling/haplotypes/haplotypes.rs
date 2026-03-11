@@ -1573,7 +1573,6 @@ pub fn write_results(
                 .iter()
                 .for_each(|frequency| format_freqs(*frequency, &mut records));
 
-            dbg!(&records);
             wtr.write_record(records).unwrap();
         });
     // }
