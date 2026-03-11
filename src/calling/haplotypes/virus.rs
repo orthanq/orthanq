@@ -102,7 +102,6 @@ impl Caller {
                 &candidate_matrix,
                 &event_posteriors,
                 &all_haplotypes,
-                false,
                 true
             )?;
 

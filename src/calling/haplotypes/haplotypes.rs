@@ -1414,7 +1414,7 @@ pub fn write_results(
     candidate_matrix: &CandidateMatrix,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     final_haplotypes: &Vec<Haplotype>,
-    variant_info: bool,
+    // variant_info: bool,
     convert_logprob: bool
 ) -> Result<()> {
     //firstly add variant query and probabilities to the outout table for each event
@@ -1424,38 +1424,40 @@ pub fn write_results(
         .collect();
     let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
 
-    if variant_info {
-        event_posteriors.iter().for_each(|(fractions, _)| {
-            let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
-            candidate_matrix.iter().zip(variant_calls.iter()).for_each(
-                |((variant_id, (genotypes, covered)), afd)| {
-                    let mut denom = NotNan::new(1.0).unwrap();
-                    let mut vaf_sum = NotNan::new(0.0).unwrap();
-                    let mut counter = 0;
-                    fractions.iter().enumerate().for_each(|(i, fraction)| {
-                        if genotypes[i as u64] && covered[i as u64] {
-                            vaf_sum += *fraction;
-                            counter += 1;
-                        } else if genotypes[i as u64] == false && covered[i as u64] == false {
-                            denom -= *fraction;
-                        }
-                    });
-                    if denom > NotNan::new(0.0).unwrap() {
-                        vaf_sum /= denom;
-                    }
-                    vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
-                        / NotNan::new(100.0).unwrap();
-                    if !afd.is_empty() && counter > 0 {
-                        let answer = afd.vaf_query(&vaf_sum);
-                        vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
-                    } else {
-                        ()
-                    }
-                },
-            );
-            event_queries.push(vaf_queries);
-        });
-    }
+    // todo: unused since the plots are already used for the same purpose; reactivate this parameter when needed again
+
+    // if variant_info {
+    //     event_posteriors.iter().for_each(|(fractions, _)| {
+    //         let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
+    //         candidate_matrix.iter().zip(variant_calls.iter()).for_each(
+    //             |((variant_id, (genotypes, covered)), afd)| {
+    //                 let mut denom = NotNan::new(1.0).unwrap();
+    //                 let mut vaf_sum = NotNan::new(0.0).unwrap();
+    //                 let mut counter = 0;
+    //                 fractions.iter().enumerate().for_each(|(i, fraction)| {
+    //                     if genotypes[i as u64] && covered[i as u64] {
+    //                         vaf_sum += *fraction;
+    //                         counter += 1;
+    //                     } else if genotypes[i as u64] == false && covered[i as u64] == false {
+    //                         denom -= *fraction;
+    //                     }
+    //                 });
+    //                 if denom > NotNan::new(0.0).unwrap() {
+    //                     vaf_sum /= denom;
+    //                 }
+    //                 vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
+    //                     / NotNan::new(100.0).unwrap();
+    //                 if !afd.is_empty() && counter > 0 {
+    //                     let answer = afd.vaf_query(&vaf_sum);
+    //                     vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
+    //                 } else {
+    //                     ()
+    //                 }
+    //             },
+    //         );
+    //         event_queries.push(vaf_queries);
+    //     });
+    // }
     // Then,print TSV table with results
     // Columns: posterior_prob, haplotype_a, haplotype_b, haplotype_c, ...
     // with each column after the first showing the fraction of the respective haplotype
@@ -1467,13 +1469,13 @@ pub fn write_results(
         .map(|h| h.to_string())
         .collect();
     headers.extend(haplotypes_str);
-    if variant_info {
-        let variant_names = event_queries[0]
-            .keys()
-            .map(|key| format!("{:?}", key))
-            .collect::<Vec<String>>();
-        headers.extend(variant_names); //add variant names as separate columns
-    }
+    // if variant_info {
+    //     let variant_names = event_queries[0]
+    //         .keys()
+    //         .map(|key| format!("{:?}", key))
+    //         .collect::<Vec<String>>();
+    //     headers.extend(variant_names); //add variant names as separate columns
+    // }
     wtr.write_record(&headers)?;
 
     //write best record on top; assuming event_posteriors is always sorted
@@ -1506,74 +1508,75 @@ pub fn write_results(
         .iter()
         .for_each(|frequency| format_freqs(*frequency, &mut records));
 
-    if variant_info {
-        //add vaf queries and probabilities for the first event to the output table
-        let queries: Vec<(AlleleFreq, LogProb)> = event_queries
-            .iter()
-            .next()
-            .unwrap()
-            .values()
-            .cloned()
-            .collect();
-        queries.iter().for_each(|(query, answer)| {
-            let prob = f64::from(Prob::from(*answer));
-            if prob <= 0.01 {
-                records.push(format!("{}{}{:+.2e}", query, ":", prob));
-            } else {
-                records.push(format!("{}{}{:.2}", query, ":", prob));
-            }
-        });
-    }
+    // if variant_info {
+    //     //add vaf queries and probabilities for the first event to the output table
+    //     let queries: Vec<(AlleleFreq, LogProb)> = event_queries
+    //         .iter()
+    //         .next()
+    //         .unwrap()
+    //         .values()
+    //         .cloned()
+    //         .collect();
+    //     queries.iter().for_each(|(query, answer)| {
+    //         let prob = f64::from(Prob::from(*answer));
+    //         if prob <= 0.01 {
+    //             records.push(format!("{}{}{:+.2e}", query, ":", prob));
+    //         } else {
+    //             records.push(format!("{}{}{:.2}", query, ":", prob));
+    //         }
+    //     });
+    // }
 
     wtr.write_record(records)?;
 
-    if variant_info {
-        event_posteriors
-            .iter()
-            .skip(1)
-            .zip(event_queries.iter().skip(1))
-            .for_each(|((haplotype_frequencies, density), queries)| {
-                let mut records = Vec::new();
-                let odds = (density - best_density).exp();
+    // todo: unused since the plots are already used for the same purpose; reactivate this parameter when needed again
+    // if variant_info {
+    //     event_posteriors
+    //         .iter()
+    //         .skip(1)
+    //         .zip(event_queries.iter().skip(1))
+    //         .for_each(|((haplotype_frequencies, density), queries)| {
+    //             let mut records = Vec::new();
+    //             let odds = (density - best_density).exp();
+    //             format_f64(density.exp(), &mut records);
+    //             format_f64(odds, &mut records);
+    //             haplotype_frequencies
+    //                 .iter()
+    //                 .for_each(|frequency| format_freqs(*frequency, &mut records));
+
+    //             queries.iter().for_each(|(_, (query, answer))| {
+    //                 let prob = f64::from(Prob::from(*answer));
+    //                 if prob <= 0.01 {
+    //                     records.push(format!("{}{}{:+.2e}", query, ":", prob));
+    //                 } else {
+    //                     records.push(format!("{}{}{:.2}", query, ":", prob));
+    //                 }
+    //             });
+    //             wtr.write_record(records).unwrap();
+    //         });
+    // } else {
+    event_posteriors
+        .iter()
+        .for_each(|(haplotype_frequencies, density)| {
+            let mut records = Vec::new();
+            let mut odds: f64 = (density - best_density).exp();
+
+            if !convert_logprob {
+                odds = f64::from(*density)/f64::from(*best_density);
+                format_f64(f64::from(*density), &mut records);
+            } else{
                 format_f64(density.exp(), &mut records);
-                format_f64(odds, &mut records);
-                haplotype_frequencies
-                    .iter()
-                    .for_each(|frequency| format_freqs(*frequency, &mut records));
+            }
+            
+            format_f64(odds, &mut records);
+            haplotype_frequencies
+                .iter()
+                .for_each(|frequency| format_freqs(*frequency, &mut records));
 
-                queries.iter().for_each(|(_, (query, answer))| {
-                    let prob = f64::from(Prob::from(*answer));
-                    if prob <= 0.01 {
-                        records.push(format!("{}{}{:+.2e}", query, ":", prob));
-                    } else {
-                        records.push(format!("{}{}{:.2}", query, ":", prob));
-                    }
-                });
-                wtr.write_record(records).unwrap();
-            });
-    } else {
-        event_posteriors
-            .iter()
-            .for_each(|(haplotype_frequencies, density)| {
-                let mut records = Vec::new();
-                let mut odds: f64 = (density - best_density).exp();
-
-                if !convert_logprob {
-                    odds = f64::from(*density)/f64::from(*best_density);
-                    format_f64(f64::from(*density), &mut records);
-                } else{
-                    format_f64(density.exp(), &mut records);
-                }
-                
-                format_f64(odds, &mut records);
-                haplotype_frequencies
-                    .iter()
-                    .for_each(|frequency| format_freqs(*frequency, &mut records));
-
-                dbg!(&records);
-                wtr.write_record(records).unwrap();
-            });
-    }
+            dbg!(&records);
+            wtr.write_record(records).unwrap();
+        });
+    // }
 
     Ok(())
 }

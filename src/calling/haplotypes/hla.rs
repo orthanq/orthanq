@@ -147,7 +147,6 @@ impl Caller {
                 &all_haplotypes_candidate_matrix,
                 &event_posteriors,
                 &all_haplotypes,
-                false,
                 true
             )?;
 
@@ -178,7 +177,6 @@ impl Caller {
                 &all_haplotypes_candidate_matrix, //used only when variant_info is true, however 2-field output cannot have it activated. So this only stays there to make the function happy.
                 &two_field_event_posteriors,
                 &two_field_haplotypes,
-                false, //can't be activated for 2-field
                 true
             )?;
 
@@ -239,7 +237,6 @@ impl Caller {
                 &all_haplotypes_candidate_matrix,
                 &event_posteriors,
                 &final_haplotypes_converted,
-                false,
                 true
             )?;
             Ok(())
@@ -451,7 +448,6 @@ impl FastCaller {
             &cm, 
             &sorted_event_likelihoods, 
             &haplotypes, 
-            false,
             false);
             
             //todo: plots
@@ -506,7 +502,6 @@ impl FastCaller {
                 &cm, 
                 &updated_event_likelihoods, 
                 &haplotypes, 
-                false,
                 false);
 
 
