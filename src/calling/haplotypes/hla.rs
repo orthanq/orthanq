@@ -107,13 +107,11 @@ impl Caller {
                     .unwrap(),
             )
             .unwrap();
-        
-            write_g_group_results(&self.output_folder, &self.xml, &all_haplotypes, &variant_calls, &all_haplotypes_candidate_matrix, &event_posteriors)?;
+            write_two_field_results(&self.output_folder, &event_posteriors, &all_haplotypes, &variant_calls, &all_haplotypes_candidate_matrix)?;
 
             // 2-) G groups
             write_g_group_results(&self.output_folder, &self.xml, &all_haplotypes, &variant_calls, &all_haplotypes_candidate_matrix, &event_posteriors)?;
         
-
             Ok(())
         }
     }
@@ -301,21 +299,6 @@ impl FastCaller {
             //write 2-field and G group output tables
 
             // 1-) 2-field
-            let (two_field_haplotypes, two_field_event_posteriors) =
-            convert_to_two_field(&final_event_likelihoods, &haplotypes)?;
-
-            let mut path_for_two_fields = self.output_folder.clone();
-            path_for_two_fields.push("2-field.csv");
-
-            haplotypes::write_results(
-                &path_for_two_fields,
-                &variant_calls,
-                &cm,
-                &two_field_event_posteriors,
-                &two_field_haplotypes,
-                true,
-            )?;
-
             write_two_field_results(&self.output_folder, &final_event_likelihoods, &haplotypes, &variant_calls, &cm)?;
 
             // 2-) G groups
@@ -732,7 +715,7 @@ fn write_two_field_results(
         candidate_matrix,
         &two_field_event_posteriors,
         &two_field_haplotypes,
-        true,
+        false,
     )?;
 
     Ok(())
