@@ -94,247 +94,30 @@ impl Caller {
                 self.threshold_posterior_density,
             )?;
 
-            //collect best fractions
-            let best_fractions = event_posteriors
-                .iter()
-                .next()
-                .unwrap()
-                .0
-                .iter()
-                .map(|f| NotNan::into_inner(*f))
-                .collect::<Vec<f64>>();
+            // draw plots
 
-            //output best solution plot for only nonzero fraction haplotypes
-            let nonzero_haplotype_fractions: BTreeMap<Haplotype, f64> =
-                get_nonzero_haplotype_fractions(&all_haplotypes, &best_fractions);
-
-            //collect haplotype names and fractions
-            let filtered_haplotypes = nonzero_haplotype_fractions.keys().cloned().collect();
-            let filtered_fractions = nonzero_haplotype_fractions.values().cloned().collect();
-
-            //filter candidate matrix based on nonzero haplotype fractions
-            let filtered_candidate_matrix = CandidateMatrix::new(
-                &haplotype_variants
-                    .filter_for_haplotypes(&filtered_haplotypes)
-                    .unwrap(),
-            )
-            .unwrap();
-
-            //plot best solution plot and only display variants that are found in one of the haplotypes.
-            let (best_solution_matrix, best_solution_variant_calls) =
-                filter_variants_for_best_solution_plot(&filtered_candidate_matrix, &variant_calls);
-
-            haplotypes::plot_prediction(
-                &self.output_lp_datavzrd,
-                &self.output_folder,
-                &"final",
-                &best_solution_matrix,
-                &filtered_haplotypes,
-                &best_solution_variant_calls,
-                &filtered_fractions,
-            )?;
-
-            //write results to tsv using full haplotype names found in get_event_posteriors()
+            plot_all_hla(&self.output_folder, &haplotype_variants, &variant_calls, &all_haplotypes, &event_posteriors, self.output_lp_datavzrd);
+           
+            //write 2-field and G group output tables
+            
+            // 1-) 2-field
             let all_haplotypes_candidate_matrix = CandidateMatrix::new(
                 &haplotype_variants
                     .filter_for_haplotypes(&all_haplotypes)
                     .unwrap(),
             )
             .unwrap();
-            haplotypes::write_results(
-                &self.output_folder.join(&"predictions.csv"),
-                &variant_calls,
-                &all_haplotypes_candidate_matrix,
-                &event_posteriors,
-                &all_haplotypes,
-                true
-            )?;
+        
+            write_g_group_results(&self.output_folder, &self.xml, &all_haplotypes, &variant_calls, &all_haplotypes_candidate_matrix, &event_posteriors)?;
 
-            // arrow plot
+            // 2-) G groups
+            write_g_group_results(&self.output_folder, &self.xml, &all_haplotypes, &variant_calls, &all_haplotypes_candidate_matrix, &event_posteriors)?;
+        
 
-            //filter out the variants that are not within the range of the locus.
-            let first_haplotype = nonzero_haplotype_fractions.keys().next().unwrap();
-            let (locus_start, locus_end) = first_haplotype.get_coordinates_for_haplotype();
-            let (variant_calls_in_locus, candidate_matrix_in_locus) = &variant_calls
-                .filter_variants_in_range(&filtered_candidate_matrix, locus_start, locus_end)?;
-
-            //the haplotype order is preserved in the keys of nonzero_haplotype_fractions
-            haplotypes::get_arrow_plot(
-                &self.output_folder,
-                candidate_matrix_in_locus,
-                &nonzero_haplotype_fractions,
-                variant_calls_in_locus,
-            );
-
-            //second: 2-field
-            let (two_field_haplotypes, two_field_event_posteriors) =
-                convert_to_two_field(&event_posteriors, &all_haplotypes)?;
-            let mut path_for_two_fields = PathBuf::from(&self.output_folder);
-            path_for_two_fields.push("2-field.csv");
-            haplotypes::write_results(
-                &path_for_two_fields,
-                &variant_calls,
-                &all_haplotypes_candidate_matrix, //used only when variant_info is true, however 2-field output cannot have it activated. So this only stays there to make the function happy.
-                &two_field_event_posteriors,
-                &two_field_haplotypes,
-                true
-            )?;
-
-            //plot first 10 posteriors of orthanq output
-            haplotypes::plot_densities(
-                &self.output_folder,
-                &event_posteriors,
-                &all_haplotypes,
-                "3_field",
-            )?;
-            haplotypes::plot_densities(
-                &self.output_folder,
-                &two_field_event_posteriors,
-                &two_field_haplotypes,
-                "2_field",
-            )?;
-
-            //write table for G groups of HLA alleles, for HLA alleles with None G group in the XML table, we write the haplotype name back.
-            //as a hint, successfuly converted G groups will have G in the end, while the ones with no G group will not have one.
-            let mut converted_name = PathBuf::from(&self.output_folder);
-            converted_name.push("G_groups.csv");
-            let allele_to_g_groups = self.convert_to_g().unwrap();
-            // dbg!(&allele_to_g_groups);
-            // dbg!(&all_haplotypes);
-            let mut final_haplotypes_converted: Vec<Haplotype> = Vec::new();
-
-            //the haplotype can either be found with the same name in the xml file or it can start with it.
-            //this is because we only use 3-field resolution of the haplotypes. This means, some haplotypes can
-            // directly match, e.g. 24:436 while some e.g. A*24:03:01 have longer names in the xml.
-            for haplotype in &all_haplotypes {
-                let mut found_match = false;
-
-                for (allele, g_group) in &allele_to_g_groups {
-                    if allele == &haplotype.to_string()
-                        || allele.starts_with(&haplotype.to_string())
-                    {
-                        if g_group == "None" {
-                            //in case the allele has "None" in the g group field in the xml.
-                            final_haplotypes_converted.push(haplotype.clone());
-                        } else {
-                            final_haplotypes_converted.push(Haplotype(g_group.to_string()));
-                        }
-                        found_match = true;
-                        break;
-                    }
-                }
-
-                if !found_match {
-                    //in case the allele does not have a corresponding g group field in the xml.
-                    final_haplotypes_converted.push(Haplotype(haplotype.to_string()));
-                }
-            }
-
-            // dbg!(&final_haplotypes_converted);
-            haplotypes::write_results(
-                &converted_name,
-                &variant_calls,
-                &all_haplotypes_candidate_matrix,
-                &event_posteriors,
-                &final_haplotypes_converted,
-                true
-            )?;
             Ok(())
         }
     }
 
-    pub fn convert_to_g(&self) -> Result<BTreeMap<String, String>> {
-        let mut reader = xml_reader::from_file(&self.xml)?;
-        reader.trim_text(true);
-        let mut buf = Vec::new();
-        let mut allele_names: Vec<String> = Vec::new();
-        let _confirmed: Vec<String> = Vec::new();
-        let mut hla_g_groups: HashMap<i32, String> = HashMap::new(); //some hla alleles dont have g groups information in the xml file.
-        let _groups_indices: Vec<i32> = Vec::new();
-        //we keep track of each allele-g group pair with a counter to be used as index
-        let mut counter = 0;
-        loop {
-            match reader.read_event_into(&mut buf) {
-                Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
-                Ok(Event::Eof) => break,
-                Ok(Event::Start(e)) => match e.name().as_ref() {
-                    b"allele" => {
-                        let mut id_value: Option<String> = None;
-                        let mut name_value: Option<String> = None;
-
-                        for attr in e.attributes().flatten() {
-                            if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
-                                if let Ok(val) = std::str::from_utf8(&attr.value) {
-                                    match key {
-                                        "id" => id_value = Some(val.to_string()),
-                                        "name" => name_value = Some(val.to_string()),
-                                        _ => {}
-                                    }
-                                }
-                            }
-                        }
-                        match (id_value, name_value) {
-                            (Some(_id), Some(name)) => {
-                                //clean up the allele name by removing the "HLA-" prefix if present
-                                let cleaned_name = if name.contains('-') {
-                                    name.split('-').nth(1).unwrap_or(&name).to_string()
-                                } else {
-                                    name
-                                };
-                                allele_names.push(cleaned_name);
-
-                                counter += 1;
-                            }
-                            (id_opt, name_opt) => {
-                                eprintln!(
-                                    "Warning: missing attribute{}{} in <allele> element",
-                                    if id_opt.is_none() { " 'id'" } else { "" },
-                                    if name_opt.is_none() { " 'name'" } else { "" }
-                                );
-                            }
-                        }
-                    }
-                    _ => (),
-                },
-                Ok(Event::Empty(e)) => match e.name().as_ref() {
-                    b"hla_g_group" => {
-                        let mut status_value: Option<String> = None;
-
-                        for attr in e.attributes().flatten() {
-                            if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
-                                if key == "status" {
-                                    if let Ok(val) = std::str::from_utf8(&attr.value) {
-                                        status_value = Some(val.to_string());
-                                    }
-                                }
-                            }
-                        }
-
-                        if let Some(status) = status_value {
-                            hla_g_groups.insert(counter, status);
-                        } else {
-                            eprintln!(
-                                "Warning: No 'status' attribute found for hla_g_group at index {}",
-                                counter
-                            );
-                        }
-                    }
-                    _ => (),
-                },
-                _ => (),
-            }
-            buf.clear();
-        }
-
-        let mut allele_to_g: BTreeMap<String, String> = BTreeMap::new();
-        for (idx, g_group) in &hla_g_groups {
-            if let Some(allele) = allele_names.get((*idx as usize) - 1) {
-                allele_to_g.insert(allele.clone(), g_group.clone());
-            }
-        }
-        // dbg!(&allele_to_g)
-        Ok(allele_to_g)
-    }
 }
 
 #[derive(Builder)]
@@ -450,7 +233,8 @@ impl FastCaller {
             &haplotypes, 
             false);
             
-            //todo: plots
+            // 
+            let mut final_event_likelihoods = sorted_event_likelihoods.clone();
 
             //use parent.csv and apply weakly informative priors
             if let Some(parent_path) = &self.parent {
@@ -504,9 +288,38 @@ impl FastCaller {
                 &haplotypes, 
                 false);
 
+                final_event_likelihoods = updated_event_likelihoods;
 
-            }
+                }
 
+            //draw plots
+
+            let best_fractions: Vec<f64> = final_event_likelihoods.iter().next().unwrap().0.iter().map(|x| x.into_inner()).collect();
+
+            plot_all_hla(&self.output_folder, &haplotype_variants, &variant_calls, &haplotypes, &final_event_likelihoods, self.output_lp_datavzrd);
+
+            //write 2-field and G group output tables
+
+            // 1-) 2-field
+            let (two_field_haplotypes, two_field_event_posteriors) =
+            convert_to_two_field(&final_event_likelihoods, &haplotypes)?;
+
+            let mut path_for_two_fields = self.output_folder.clone();
+            path_for_two_fields.push("2-field.csv");
+
+            haplotypes::write_results(
+                &path_for_two_fields,
+                &variant_calls,
+                &cm,
+                &two_field_event_posteriors,
+                &two_field_haplotypes,
+                true,
+            )?;
+
+            write_two_field_results(&self.output_folder, &final_event_likelihoods, &haplotypes, &variant_calls, &cm)?;
+
+            // 2-) G groups
+            write_g_group_results(&self.output_folder, &self.xml, &haplotypes, &variant_calls, &cm, &final_event_likelihoods)?;
 
             Ok(())
         }
@@ -655,4 +468,272 @@ fn adjust_event_likelihoods(
     }
 
     result
+}
+
+pub fn convert_to_g(path_to_xml: &PathBuf) -> Result<BTreeMap<String, String>> {
+    let mut reader = xml_reader::from_file(path_to_xml)?;
+    reader.trim_text(true);
+    let mut buf = Vec::new();
+    let mut allele_names: Vec<String> = Vec::new();
+    let _confirmed: Vec<String> = Vec::new();
+    let mut hla_g_groups: HashMap<i32, String> = HashMap::new(); //some hla alleles dont have g groups information in the xml file.
+    let _groups_indices: Vec<i32> = Vec::new();
+    //we keep track of each allele-g group pair with a counter to be used as index
+    let mut counter = 0;
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
+            Ok(Event::Eof) => break,
+            Ok(Event::Start(e)) => match e.name().as_ref() {
+                b"allele" => {
+                    let mut id_value: Option<String> = None;
+                    let mut name_value: Option<String> = None;
+
+                    for attr in e.attributes().flatten() {
+                        if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
+                            if let Ok(val) = std::str::from_utf8(&attr.value) {
+                                match key {
+                                    "id" => id_value = Some(val.to_string()),
+                                    "name" => name_value = Some(val.to_string()),
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                    match (id_value, name_value) {
+                        (Some(_id), Some(name)) => {
+                            //clean up the allele name by removing the "HLA-" prefix if present
+                            let cleaned_name = if name.contains('-') {
+                                name.split('-').nth(1).unwrap_or(&name).to_string()
+                            } else {
+                                name
+                            };
+                            allele_names.push(cleaned_name);
+
+                            counter += 1;
+                        }
+                        (id_opt, name_opt) => {
+                            eprintln!(
+                                "Warning: missing attribute{}{} in <allele> element",
+                                if id_opt.is_none() { " 'id'" } else { "" },
+                                if name_opt.is_none() { " 'name'" } else { "" }
+                            );
+                        }
+                    }
+                }
+                _ => (),
+            },
+            Ok(Event::Empty(e)) => match e.name().as_ref() {
+                b"hla_g_group" => {
+                    let mut status_value: Option<String> = None;
+
+                    for attr in e.attributes().flatten() {
+                        if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
+                            if key == "status" {
+                                if let Ok(val) = std::str::from_utf8(&attr.value) {
+                                    status_value = Some(val.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(status) = status_value {
+                        hla_g_groups.insert(counter, status);
+                    } else {
+                        eprintln!(
+                            "Warning: No 'status' attribute found for hla_g_group at index {}",
+                            counter
+                        );
+                    }
+                }
+                _ => (),
+            },
+            _ => (),
+        }
+        buf.clear();
+    }
+
+    let mut allele_to_g: BTreeMap<String, String> = BTreeMap::new();
+    for (idx, g_group) in &hla_g_groups {
+        if let Some(allele) = allele_names.get((*idx as usize) - 1) {
+            allele_to_g.insert(allele.clone(), g_group.clone());
+        }
+    }
+    // dbg!(&allele_to_g)
+    Ok(allele_to_g)
+}
+
+fn plot_all_hla(
+    outdir: &PathBuf,
+    haplotype_variants: &HaplotypeVariants,
+    variant_calls: &VariantCalls,
+    all_haplotypes: &Vec<Haplotype>,
+    event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
+    output_lp_datavzrd: bool
+) -> Result<()> {
+
+    // collect best fractions
+    let best_fractions = event_posteriors
+        .first()
+        .unwrap()
+        .0
+        .iter()
+        .map(|f| NotNan::into_inner(*f))
+        .collect::<Vec<f64>>();
+
+    // collect nonzero haplotypes
+    let nonzero_haplotype_fractions: BTreeMap<Haplotype, f64> =
+        get_nonzero_haplotype_fractions(all_haplotypes, &best_fractions);
+
+    let filtered_haplotypes: Vec<Haplotype> =
+        nonzero_haplotype_fractions.keys().cloned().collect();
+
+    let filtered_fractions: Vec<f64> =
+        nonzero_haplotype_fractions.values().cloned().collect();
+
+    //  filter candidate matrix for best solution
+    let filtered_candidate_matrix = CandidateMatrix::new(
+        &haplotype_variants
+            .filter_for_haplotypes(&filtered_haplotypes)
+            .unwrap(),
+    )?;
+
+    let (best_solution_matrix, best_solution_variant_calls) =
+        filter_variants_for_best_solution_plot(
+            &filtered_candidate_matrix,
+            variant_calls,
+        );
+
+    // best solution plot
+    haplotypes::plot_prediction(
+        &output_lp_datavzrd,
+        &outdir,
+        "final",
+        &best_solution_matrix,
+        &filtered_haplotypes,
+        &best_solution_variant_calls,
+        &filtered_fractions,
+    )?;
+
+    // arrow plot
+    let first_haplotype = nonzero_haplotype_fractions.keys().next().unwrap();
+    let (locus_start, locus_end) = first_haplotype.get_coordinates_for_haplotype();
+
+    let (variant_calls_in_locus, candidate_matrix_in_locus) =
+        &variant_calls.filter_variants_in_range(
+            &filtered_candidate_matrix,
+            locus_start,
+            locus_end,
+        )?;
+
+    haplotypes::get_arrow_plot(
+        &outdir,
+        candidate_matrix_in_locus,
+        &nonzero_haplotype_fractions,
+        variant_calls_in_locus,
+    );
+
+    // convert to 2-field resolution
+    let (two_field_haplotypes, two_field_event_posteriors) =
+        convert_to_two_field(event_posteriors, all_haplotypes)?;
+
+    // solution plots
+    haplotypes::plot_densities(
+        &outdir,
+        event_posteriors,
+        all_haplotypes,
+        "3_field",
+    )?;
+
+    haplotypes::plot_densities(
+        &outdir,
+        &two_field_event_posteriors,
+        &two_field_haplotypes,
+        "2_field",
+    )?;
+
+    Ok(())
+}
+
+fn write_g_group_results(
+    outdir: &PathBuf,
+    xml_path: &PathBuf,
+    all_haplotypes: &Vec<Haplotype>,
+    variant_calls: &VariantCalls,
+    candidate_matrix: &CandidateMatrix,
+    event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
+) -> Result<()> {
+
+    //write table for G groups of HLA alleles, for HLA alleles with None G group in the XML table, we write the haplotype name back.
+    //as a hint, successfuly converted G groups will have G in the end, while the ones with no G group will not have one.
+    let mut converted_name = PathBuf::from(&outdir);
+    converted_name.push("G_groups.csv");
+
+    let allele_to_g_groups = convert_to_g(xml_path).unwrap();
+
+    let mut final_haplotypes_converted: Vec<Haplotype> = Vec::new();
+
+    //the haplotype can either be found with the same name in the xml file or it can start with it.
+    //this is because we only use 3-field resolution of the haplotypes. This means, some haplotypes can
+    // directly match, e.g. 24:436 while some e.g. A*24:03:01 have longer names in the xml.
+    for haplotype in all_haplotypes {
+        let mut found_match = false;
+
+        for (allele, g_group) in &allele_to_g_groups {
+            if allele == &haplotype.to_string()
+                || allele.starts_with(&haplotype.to_string())
+            {
+                if g_group == "None" {
+                    //in case the allele has "None" in the g group field in the xml.
+                    final_haplotypes_converted.push(haplotype.clone());
+                } else {
+                    final_haplotypes_converted.push(Haplotype(g_group.to_string()));
+                }
+                found_match = true;
+                break;
+            }
+        }
+
+        if !found_match {
+            //in case the allele does not have a corresponding g group field in the xml.
+            final_haplotypes_converted.push(Haplotype(haplotype.to_string()));
+        }
+    }
+
+    haplotypes::write_results(
+        &converted_name,
+        variant_calls,
+        candidate_matrix,
+        event_posteriors,
+        &final_haplotypes_converted,
+        false
+    )?;
+
+    Ok(())
+}
+
+fn write_two_field_results(
+    outdir: &PathBuf,
+    event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
+    all_haplotypes: &Vec<Haplotype>,
+    variant_calls: &VariantCalls,
+    candidate_matrix: &CandidateMatrix,
+) -> Result<()> {
+
+    let (two_field_haplotypes, two_field_event_posteriors) =
+        convert_to_two_field(event_posteriors, all_haplotypes)?;
+
+    let mut path_for_two_fields = PathBuf::from(outdir);
+    path_for_two_fields.push("2-field.csv");
+
+    haplotypes::write_results(
+        &path_for_two_fields,
+        variant_calls,
+        candidate_matrix,
+        &two_field_event_posteriors,
+        &two_field_haplotypes,
+        true,
+    )?;
+
+    Ok(())
 }
