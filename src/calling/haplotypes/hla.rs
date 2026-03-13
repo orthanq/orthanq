@@ -6,7 +6,7 @@ use crate::calling::haplotypes::haplotypes::write_results;
 use crate::calling::haplotypes::haplotypes::write_results_fast_mode;
 use crate::calling::haplotypes::haplotypes::{explore_haplotype_tree, prepare_representative_haplotypes, collect_haplotypes_and_fractions_from_fast_mode};
 use crate::calling::haplotypes::haplotypes::{
-    CandidateMatrix, Haplotype, HaplotypeVariants, VariantCalls,
+    CandidateMatrix, Haplotype, HaplotypeVariants, VariantCalls, VariantID
 };
 use crate::model::HaplotypeFractions;
 use crate::model::Data;
@@ -174,27 +174,17 @@ impl FastCaller {
                 anyhow::bail!("No calls with nonzero DP available for LP.");
             }
             
-            // // test:
-            // let test_haplotypes = vec![
-            //     Haplotype("A*11:01:01:01".to_string()),
-            //     Haplotype("A*24:07:01".to_string()),
-            //     Haplotype("A*24:02:01:01".to_string()),
-            //     Haplotype("A*24:29".to_string()),
-            //     Haplotype("A*01:01:38L".to_string()),
-            //     Haplotype("A*01:03:01:01".to_string()),
-            // ];
-            // let test_hv =
-            // haplotype_variants
-            //     .filter_for_haplotypes(&test_haplotypes)?;
                 
-
-
-            // Step 2: Step explore the haplotype tree using representative haplotypes (Avoid duplicate entries in the resulting vector)
-            //todo: include members of the same representative group in the likelihood computation
+            // Step 2: Step explore the haplotype tree using all haplotypes
             //todo: consider adding prior in the likelihood computation
 
-            let representative_h = prepare_representative_haplotypes(&haplotype_variants, &filtered_calls)?;
-            
+            // Keep only variants with nonzero DP
+            let nonzero_dp_variants: Vec<VariantID> =
+            filtered_calls.keys().cloned().collect();
+
+            let var_filt_haplotype_variants: HaplotypeVariants =
+                haplotype_variants.filter_for_variants(&nonzero_dp_variants)?;
+
             let prior = PriorTypes::from_str(&self.prior).unwrap();
 
             let constraint_values = match prior {
@@ -207,11 +197,12 @@ impl FastCaller {
             
             for constraint in constraint_values {
             
-                let tree = explore_haplotype_tree(&haplotype_variants, &filtered_calls, &representative_h, &self.output_lp_datavzrd, &self.output_folder, self.lp_cutoff, constraint, &prior)?;
+                let tree = explore_haplotype_tree(&var_filt_haplotype_variants, &filtered_calls, &self.output_lp_datavzrd, &self.output_folder, self.lp_cutoff, constraint, &prior)?;
             
                 all_results.push((constraint, tree));
             }
             dbg!(&all_results);
+            
             // Step3: Write results with and without haplotypes as headers
 
             //without headers and with constraints
@@ -221,7 +212,7 @@ impl FastCaller {
             //with headers as haplotypes
             let (haplotypes, event_likelihoods) = collect_haplotypes_and_fractions_from_fast_mode(&all_results);
             let cm = CandidateMatrix::new(
-                &haplotype_variants
+                &var_filt_haplotype_variants
                     .filter_for_haplotypes(&haplotypes)
                     .unwrap(),
             )
@@ -304,7 +295,7 @@ impl FastCaller {
 
             let best_fractions: Vec<f64> = final_event_likelihoods.iter().next().unwrap().0.iter().map(|x| x.into_inner()).collect();
 
-            plot_all_hla(&self.output_folder, &haplotype_variants, &variant_calls, &haplotypes, &final_event_likelihoods, self.output_lp_datavzrd);
+            plot_all_hla(&self.output_folder, &var_filt_haplotype_variants, &variant_calls, &haplotypes, &final_event_likelihoods, self.output_lp_datavzrd);
 
             //write 2-field and G group output tables
 

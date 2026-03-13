@@ -125,7 +125,7 @@ impl CandidateMatrix {
         });
         Ok(CandidateMatrix(candidate_matrix))
     }
-    pub fn find_identical_haplotypes(
+    pub fn find_identical_haplotypes_all_variants(
         &self,
         haplotypes: Vec<Haplotype>,
     ) -> (
@@ -1480,7 +1480,10 @@ pub fn write_results(
 
     //write best record on top; assuming event_posteriors is always sorted
     let mut records = Vec::new();
+    dbg!(&event_posteriors);
     let (haplotype_frequencies, best_density) = event_posteriors.iter().next().unwrap();
+    dbg!(&event_posteriors);
+
     let best_odds: f64 = 1.00;
     let format_f64 = |number: f64, records: &mut Vec<String>| {
         if number <= 0.01 && convert_logprob { //very low logprobs are common in fast mode
@@ -1557,6 +1560,7 @@ pub fn write_results(
     // } else {
     event_posteriors
         .iter()
+        .skip(1)
         .for_each(|(haplotype_frequencies, density)| {
             let mut records = Vec::new();
             let mut odds: f64 = (density - best_density).exp();
@@ -1759,7 +1763,7 @@ fn haplotype_positive_variants(
         .collect()
 }
 
-fn find_similar_haplotypes(
+fn find_identical_haplotypes_lp_variants(
     hap_var: &HaplotypeVariants,
     queried_haplotypes: &[Haplotype],
 ) -> BTreeMap<Haplotype, Vec<Haplotype>> {
@@ -1841,7 +1845,7 @@ pub fn get_event_posteriors(
 
     //generate one map with representative haplotypes as key (required for lp) and one map with all haplotypes as key (required for extension of resulting table)
     let (identical_haplotypes_map_rep, identical_haplotypes_map) =
-        candidate_matrix.find_identical_haplotypes(haplotypes);
+        candidate_matrix.find_identical_haplotypes_all_variants(haplotypes);
 
     // Print the result
     // for (representative, group) in &identical_haplotypes_map {
@@ -1867,7 +1871,7 @@ pub fn get_event_posteriors(
     //add haplotypes that are the same considering all covered variants used in the LP.
     //first, find all variants where ALL haplotypes have coverage=true
     //then, for a haplotype, get its genotype map restricted to those variants
-    let similar_lp_haplotypes = find_similar_haplotypes(&repr_haplotype_variants, &lp_haplotypes);
+    let similar_lp_haplotypes = find_identical_haplotypes_lp_variants(&repr_haplotype_variants, &lp_haplotypes);
 
     //collect all haplotypes (some haplotypes with the same genotype matrix set migt have been chosen twice in the lp solution)
     let mut lp_haplotypes_extended_set = BTreeSet::new();
@@ -2251,7 +2255,6 @@ fn parse_position(change: &str) -> Option<u32> {
 pub fn explore_haplotype_tree(
     all_haplotype_variants: &HaplotypeVariants,
     all_variant_calls: &VariantCalls,
-    repr_haplotypes: &Vec<Haplotype>,
     output_lp_datavzrd: &bool,
     output_folder: &PathBuf,
     lp_cutoff: f64,
@@ -2259,16 +2262,27 @@ pub fn explore_haplotype_tree(
     prior: &PriorTypes
 ) -> Result<Vec<(BTreeMap<Haplotype, f64>, LogProb)>, anyhow::Error> {
 
-    let repr_haplotype_variants = all_haplotype_variants.filter_for_haplotypes(repr_haplotypes)?;
-    let repr_candidate_matrix =
-        CandidateMatrix::new(&repr_haplotype_variants)?;
+    //find the list of haplotypes to be used for LP
+    let all_haplotypes: Vec<Haplotype> =
+            all_haplotype_variants
+            .iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("No haplotypes found"))?
+            .1
+            .keys()
+            .cloned()
+            .collect();
+
+    //compute candidate matrix
+    let all_candidate_matrix =
+    CandidateMatrix::new(&all_haplotype_variants)?;
 
     // Run LP on full haplotype set (root)
     let root_solution = linear_program_fast_mode(
         output_lp_datavzrd,
         output_folder,
-        &repr_candidate_matrix,
-        repr_haplotypes,
+        &all_candidate_matrix,
+        &all_haplotypes,
         all_variant_calls,
         lp_cutoff,
         constraint_value,
@@ -2283,32 +2297,11 @@ pub fn explore_haplotype_tree(
     //collect LP haplotypes
     let lp_haplotypes: Vec<Haplotype> = root_solution.keys().cloned().collect();
 
-    //define the joint_prob closure
-    let mut joint_prob = |event: &BTreeMap<Haplotype, f64>, data: &Data| -> LogProb {
-        let fractions: Vec<AlleleFreq> = event
-            .values()
-            .cloned()
-            .map(|f| NotNan::new(f).unwrap())
-            .collect();
-    
-        let hap_event = HaplotypeFractions(fractions);
-    
-        let likelihood = Likelihood::new();
-        let mut cache = Cache::default();
-    
-        likelihood.compute(&hap_event, data, &mut cache)
-    };
+    //collect fractions of the LP event
+    let event_fractions = get_fractions_from_solution(&root_solution);
 
-    //filter for lp haplotypes and create Data object
-    let lp_hv = all_haplotype_variants.filter_for_haplotypes(&lp_haplotypes)?;
-    let lp_cm = CandidateMatrix::new(&lp_hv)?;
-    let lp_data = Data::new(lp_cm.clone(), all_variant_calls.clone());
-
-    // Compute likelihood for root
-    let root_likelihood = joint_prob(&root_solution, &lp_data);
-    dbg!(&root_solution, &root_likelihood, &root_likelihood.exp());
-
-
+    let root_likelihood = compute_lp_likelihood(all_haplotype_variants, &lp_haplotypes, all_variant_calls, &event_fractions).unwrap();
+    dbg!(&root_solution, &root_likelihood);
     // Keep a set of canonical keys to avoid duplicate solutions
     let mut seen: HashSet<String> = HashSet::new();
     
@@ -2334,15 +2327,13 @@ pub fn explore_haplotype_tree(
         root_likelihood,
     )];
 
-    //TODO: also compute the identical haplotypes
-
     // Start recursion: remove one haplotype at a time from the list of selected haplotypes
 
-    let mut mut_repr_haplotypes = repr_haplotypes.clone();
+    let mut mut_all_haplotypes = all_haplotypes.clone();
     recursive_lp_search(
         root_likelihood,
         &root_haplotypes,
-        &mut mut_repr_haplotypes,
+        &mut mut_all_haplotypes,
         output_lp_datavzrd,
         output_folder,
         all_haplotype_variants,
@@ -2379,12 +2370,9 @@ fn recursive_lp_search(
     for i in 0..prev_selected_haplotypes.len() {
 
         let mut reduced = prev_input_haplotypes.clone();
-        dbg!(&reduced.len());
         if let Some(pos) = prev_input_haplotypes.iter().position(|h| *h == prev_selected_haplotypes[i]) {
             reduced.remove(pos);
         }
-        dbg!(&prev_selected_haplotypes[i]);
-        dbg!(&reduced.len());
 
         //do not solve for vector lengths smaller than the constraint
         if reduced.len() < constraint_value as usize {
@@ -2407,57 +2395,104 @@ fn recursive_lp_search(
             constraint_value,
             prior
         )?;
-        //find lp haplotypes
-        let lp_haplotypes: Vec<Haplotype> = lp_solution.keys().cloned().collect();
-
-        // Compute likelihood on full variant set for this subset
-        let hap_event = HaplotypeFractions(
-            lp_solution.values()
-                .cloned()
-                .map(|f| NotNan::new(f).unwrap())
-                .collect()
-        );
-        let likelihood = Likelihood::new();
-        let mut cache = Cache::default();
-
-        //create candidate matrix again for the selected haplotypes
-        let lp_hv = all_haplotype_variants.filter_for_haplotypes(&lp_haplotypes)?;
-        let lp_cm = CandidateMatrix::new(&lp_hv)?;
-
-        //construct Data object 
-        let data = Data::new(lp_cm.clone(), all_variant_calls.clone());
-
-        //compute the likelihood
-        let current_likelihood = likelihood.compute(&hap_event, &data, &mut cache);
-
-        // Prune low-likelihood nodes
         dbg!(&lp_solution);
 
-        // Build canonical key for keeping only unique entries
-        let canonical_key = format!(
-            "{}|{:.6}",
-            lp_solution
-                .iter()
-                .map(|(h, f)| format!("{}:{:.2}", h.0, f))
-                .collect::<Vec<_>>()
-                .join(","),
-            current_likelihood.0
-        );
+        // Find lp haplotypes
+        let lp_haplotypes: Vec<Haplotype> = lp_solution.keys().cloned().collect();
 
-        //Only store if the solution is unique
-        if !seen.contains(&canonical_key) {
-            seen.insert(canonical_key);
-            results.push((lp_solution.clone(), current_likelihood));
+        // Check for LP-identical haplotypes and as a corner case, check if there are reciprocal entries.
+        // The latter is necessary to not include combinations that may arise from LP hitting two LP-identical haplotypes and find_identical_haplotypes_lp_variants() may result in each of these haplotypes pointing to each other, this then results in a double representation of the same haplotype.
+        //the homozygous case is already supposed to be covered with constraint_n=1, so we don't want to have the case with the reciprocal combination. Example: Haplotype("A*68:03:01"): [Haplotype("A*68:31")], Haplotype("A*68:31"): [Haplotype("A*68:03:01")]
+        let lp_identical_haps = find_identical_haplotypes_lp_variants(&filtered_hv, &lp_haplotypes);
+        dbg!(&lp_identical_haps);
+
+        let check_for_reciprocal_entries = has_any_reciprocal(&lp_identical_haps);
+        if !check_for_reciprocal_entries {
+    
+            // Compute likelihood on full variant set for this subset
+            let event_fractions = get_fractions_from_solution(&lp_solution);
+        
+            let current_likelihood = compute_lp_likelihood(all_haplotype_variants, &lp_haplotypes, all_variant_calls, &event_fractions).unwrap();
+
+            // Push original LP solution to results (with uniqueness check)
+            push_unique_solution(&lp_solution, current_likelihood, results, seen);
+            
+            //Generate alternative haplotype combinations (LP-identical)
+    
+            //check if there are LP-identical haplotypes of any haplotype and if yes then proceed to finding the alternatives.
+            let has_nonempty = lp_identical_haps.values().any(|v| !v.is_empty());
+            
+    
+            //only search for alternative combinations if any haplotype in the solution has at least an LP-identical haplotype
+    
+            if has_nonempty {
+                //collect each haplotype into a vector; one vector contains all alternative haplotypes
+                //e.g. if each selected haplotype in lp_selected haplotypes of length 2 have one identical haplotypes each, then the vector will contain two vectors each containing two haplotypes (together with the original haplotypes).
+                let mut replacement_options: Vec<Vec<Haplotype>> = Vec::new();
+    
+                for hap in &lp_haplotypes {
+    
+                    let mut options: Vec<Haplotype> = vec![hap.clone()];
+    
+                    if let Some(similar) = lp_identical_haps.get(hap) {
+                        if !similar.is_empty() {
+                            eprintln!(
+                                "LP-identical haplotypes detected for {}: {:?}",
+                                hap.0, similar
+                            );
+                            options.extend(similar.clone());
+                        } 
+                    }
+    
+                    replacement_options.push(options);
                 }
+                dbg!(&replacement_options);
 
-        let ln_half = LogProb::from(Prob(0.5));
-        dbg!(&current_likelihood, root_likelihood);
-        if current_likelihood < root_likelihood + ln_half {
+                // now generate all haplotype combinations with the cartesian product 
+                let haplotype_combinations = cartesian_product(&replacement_options);
+                dbg!(&haplotype_combinations);
+                for combo in haplotype_combinations {
+                    // Build alternative solution based on this combination
+                    let mut alt_solution = BTreeMap::new();
+    
+                    // it's assumed here that cartesian product returns haplotype combinations in the same order as lp_solution keys
+                    // so if lp_solution has ["A*03:01", "A*24:02"] and the haplotpye_combinations might have e.g. [["A*03:01", "A*24:02"], ["A*03:02", "A*24:03"]]
+                    for (orig_hap, new_hap) in lp_haplotypes.iter().zip(combo.iter()) {
+                        if let Some(frac) = lp_solution.get(orig_hap) {
+                            alt_solution.insert(new_hap.clone(), *frac);
+                        }
+                    }
+    
+                    // Only print when the combination differs from the original LP solution
+                    if &combo != &lp_haplotypes {
+                        eprintln!(
+                            "Alternative LP-identical haplotype combination detected: {}",
+                            combo.iter().map(|h| h.0.as_str()).collect::<Vec<_>>().join(",")
+                        );
+                    }
+    
+                    // Compute likelihood for alternative solution
+                    let alt_haps: Vec<Haplotype> = alt_solution.keys().cloned().collect();
+                    let alt_likelihood = compute_lp_likelihood(all_haplotype_variants, &alt_haps, all_variant_calls, &event_fractions).unwrap();
+    
+                    // push the event with uniqueness checking
+                    push_unique_solution(&alt_solution, alt_likelihood, results, seen);
+
+                }
+            }
+           
+    
+            //Prune recursion if original LP solution is too low
+            let ln_half = LogProb::from(Prob(0.5));
             dbg!(&current_likelihood, root_likelihood);
-            dbg!(&current_likelihood.exp(), root_likelihood.exp());
-            continue; // prune this branch
+            if current_likelihood < root_likelihood + ln_half {
+                dbg!(&current_likelihood, root_likelihood);
+                dbg!(&current_likelihood.exp(), root_likelihood.exp());
+                continue; 
+            }
+        } else {
+            eprintln!("Warning: reciprocal entries found. This is because the solutions contain LP-identical haplotypes. No further combination of will be searched. The original solution will not be added to the results as this (homozygous case) is already covered by constraint value 1. Here is the responsible solution: {:?}", lp_solution);
         }
-
 
         // Recurse on this reduced set
         recursive_lp_search(
@@ -2509,9 +2544,9 @@ pub fn prepare_representative_haplotypes(
         CandidateMatrix::new(&var_filt_haplotype_variants)?;
 
     // Collapse identical haplotypes
-    let (identical_haplotypes_map_rep, _identical_haplotypes_map) =
-        candidate_matrix.find_identical_haplotypes(haplotypes);
-    // dbg!(&identical_haplotypes_map_rep);
+    let (identical_haplotypes_map_rep, identical_haplotypes_map) =
+        candidate_matrix.find_identical_haplotypes_all_variants(haplotypes);
+    dbg!(&identical_haplotypes_map);
     let representatives: Vec<Haplotype> =
         identical_haplotypes_map_rep.keys().cloned().collect();
 
@@ -2550,4 +2585,90 @@ pub fn collect_haplotypes_and_fractions_from_fast_mode(
     }
 
     (haplotypes, events_out)
+}
+
+fn cartesian_product(alt_haps: &Vec<Vec<Haplotype>>) -> Vec<Vec<Haplotype>> {
+    let mut result: Vec<Vec<Haplotype>> = vec![vec![]];
+
+    for options in alt_haps {
+        let mut new_result: Vec<Vec<Haplotype>> = Vec::new();
+
+        for prefix in &result {
+            for item in options {
+                let mut new_prefix = prefix.clone();
+
+                new_prefix.push(item.clone());
+                new_result.push(new_prefix);
+
+            }
+        }
+
+        result = new_result;
+    }
+
+    result
+}
+
+fn has_any_reciprocal(map: &BTreeMap<Haplotype, Vec<Haplotype>>) -> bool {
+    for (key, values) in map.iter() {
+        for value in values {
+            if let Some(other_values) = map.get(value) {
+                if other_values.contains(key) {
+                    return true; // found at least one reciprocal pair
+                }
+            }
+        }
+    }
+    false // no reciprocal pair found
+}
+
+/// Pushes an LP solution to results only if it hasn't been seen yet.
+fn push_unique_solution(
+    lp_solution: &BTreeMap<Haplotype, f64>,
+    current_likelihood: LogProb,
+    results: &mut Vec<(BTreeMap<Haplotype, f64>, LogProb)>,
+    seen: &mut HashSet<String>,
+) {
+    let canonical_key = format!(
+        "{}|{:.6}",
+        lp_solution
+            .iter()
+            .map(|(h, f)| format!("{}:{:.2}", h.0, f))
+            .collect::<Vec<_>>()
+            .join(","),
+        current_likelihood.0
+    );
+
+    if !seen.contains(&canonical_key) {
+        seen.insert(canonical_key);
+        results.push((lp_solution.clone(), current_likelihood));
+    }
+}
+
+fn compute_lp_likelihood(
+    all_haplotype_variants: &HaplotypeVariants,
+    lp_haplotypes: &Vec<Haplotype>,
+    all_variant_calls: &VariantCalls, 
+    event_fractions: &HaplotypeFractions,
+) -> Result<LogProb, Box<dyn Error>> {
+    let lp_hv = all_haplotype_variants.filter_for_haplotypes(lp_haplotypes)?;
+    let lp_cm = CandidateMatrix::new(&lp_hv)?;
+    let data = Data::new(lp_cm, all_variant_calls.clone());
+
+    let mut cache = Cache::default();
+    let current_likelihood = Likelihood::new().compute(event_fractions, &data, &mut cache);
+
+    Ok(current_likelihood)
+}
+
+
+fn get_fractions_from_solution(
+    lp_solution: &BTreeMap<Haplotype, f64>,
+) -> HaplotypeFractions {
+    HaplotypeFractions(
+        lp_solution
+            .values()
+            .map(|&f| NotNan::new(f).unwrap())
+            .collect(),
+    )
 }
