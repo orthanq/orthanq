@@ -2452,6 +2452,7 @@ fn recursive_lp_search(
                 let haplotype_combinations = cartesian_product(&replacement_options);
                 dbg!(&haplotype_combinations);
                 for combo in haplotype_combinations {
+                    println!("Computing combination: {:?}", combo);
                     // Build alternative solution based on this combination
                     let mut alt_solution = BTreeMap::new();
     
@@ -2474,6 +2475,7 @@ fn recursive_lp_search(
                     // Compute likelihood for alternative solution
                     let alt_haps: Vec<Haplotype> = alt_solution.keys().cloned().collect();
                     let alt_likelihood = compute_lp_likelihood(all_haplotype_variants, &alt_haps, all_variant_calls, &event_fractions).unwrap();
+                    dbg!(&alt_likelihood);
     
                     // push the event with uniqueness checking
                     push_unique_solution(&alt_solution, alt_likelihood, results, seen);
@@ -2491,7 +2493,7 @@ fn recursive_lp_search(
                 continue; 
             }
         } else {
-            eprintln!("Warning: reciprocal entries found. This is because the solutions contain LP-identical haplotypes. No further combination of will be searched. The original solution will not be added to the results as this (homozygous case) is already covered by constraint value 1. Here is the responsible solution: {:?}", lp_solution);
+            eprintln!("Warning: reciprocal entries found. This is because the solutions contain LP-identical haplotypes. No further combination of will be searched. The original solution will not be added to the results as this (homozygous case) is already covered by constraint value 1. Recursion will still continue. Here is the responsible solution for this situation: {:?}", lp_solution);
         }
 
         // Recurse on this reduced set
