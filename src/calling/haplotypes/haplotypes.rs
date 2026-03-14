@@ -2452,7 +2452,7 @@ fn recursive_lp_search(
                 let haplotype_combinations = cartesian_product(&replacement_options);
                 dbg!(&haplotype_combinations);
                 for combo in haplotype_combinations {
-                    println!("Computing combination: {:?}", combo);
+                    eprintln!("Computing combination: {:?}", combo);
                     // Build alternative solution based on this combination
                     let mut alt_solution = BTreeMap::new();
     
