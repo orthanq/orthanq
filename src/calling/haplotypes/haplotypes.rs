@@ -2496,6 +2496,15 @@ fn recursive_lp_search(
             eprintln!("Warning: reciprocal entries found. This is because the solutions contain LP-identical haplotypes. No further combination of will be searched. The original solution will not be added to the results as this (homozygous case) is already covered by constraint value 1. Recursion will still continue. Here is the responsible solution for this situation: {:?}", lp_solution);
         }
 
+        //Performance improvement:
+        //as a last step in the recursion, we must avoid identical haplotypes of selected haplotypes to be considered over and over again to result in alternative combinations. Those alternative combinations are already done above by querying lp-identical haplotypes of each haplotype and this does not need to be repeated for single haplotypes in the further recursions.
+        let to_remove: HashSet<Haplotype> = lp_identical_haps
+            .values()
+            .flatten()
+            .cloned()
+            .collect();
+
+        reduced.retain(|h| !to_remove.contains(h));
         // Recurse on this reduced set
         recursive_lp_search(
             root_likelihood,
