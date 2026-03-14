@@ -102,7 +102,7 @@ impl Caller {
                 &candidate_matrix,
                 &event_posteriors,
                 &all_haplotypes,
-                true
+                true,
             )?;
 
             //plot first 10 posteriors of orthanq output

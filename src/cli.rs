@@ -403,7 +403,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 fast,
                 parent,
                 change_rate,
-                denovo_rate
+                denovo_rate,
             } => {
                 if fast {
                     let mut caller = calling::haplotypes::hla::FastCallerBuilder::default()
@@ -442,7 +442,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                         .enforce_given_alleles(enforce_given_alleles)
                         .build()
                         .unwrap();
-            
+
                     caller.call()?;
                 }
                 Ok(())
