@@ -293,7 +293,13 @@ pub enum CallKind {
             long,
             help = "Sample to use in case of multisample BCFs. Sample name should match the sample name in the variant calls BCF."
         )]
-        sample_name: Option<String>,
+        sample: Option<String>,
+        #[structopt(
+            long,
+            default_value = "present",
+            help = "Event(s) to use for HLA typing (from Varlociraptor scenario.yaml). Default is 'present' if none specified."
+        )]
+        events: Vec<String>,
         #[structopt(
             long,
             help = "List of HLA alleles to enforce during prediction (e.g. --enforce-given-alleles A*01:01:01 A*02:01:01)."
@@ -375,7 +381,8 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 num_extend_haplotypes,
                 num_constraint_haplotypes,
                 output_lp_datavzrd,
-                sample_name,
+                sample,
+                events,
                 threshold_posterior_density,
                 enforce_given_alleles,
             } => {
@@ -395,7 +402,8 @@ pub fn run(opt: Orthanq) -> Result<()> {
                     .num_extend_haplotypes(num_extend_haplotypes)
                     .num_constraint_haplotypes(num_constraint_haplotypes)
                     .output_lp_datavzrd(output_lp_datavzrd)
-                    .sample_name(sample_name)
+                    .sample(sample)
+                    .events(events)
                     .threshold_posterior_density(threshold_posterior_density)
                     .enforce_given_alleles(enforce_given_alleles)
                     .build()
