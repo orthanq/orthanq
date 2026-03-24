@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.22.0](https://github.com/orthanq/orthanq/compare/v1.21.0...v1.22.0) (2026-03-24)
+
+
+### Features
+
+* activate varlociraptor bias detections & make homopolymer artifact detection optional based on sample preparation ([#118](https://github.com/orthanq/orthanq/issues/118)) ([43b8fbe](https://github.com/orthanq/orthanq/commit/43b8fbe15af3561a33d0d5d511a4490aba0e8285))
+* estimate alignment properties and use it for varlociraptor prepocessing ([#120](https://github.com/orthanq/orthanq/issues/120)) ([7decb41](https://github.com/orthanq/orthanq/commit/7decb41f09d58d3a37ce123fad25caf0eed9a84a))
+* use --events flag to select for events instead of using just present ([#116](https://github.com/orthanq/orthanq/issues/116)) ([4f23966](https://github.com/orthanq/orthanq/commit/4f23966cedbcefae150aa3a1782acf9813782c8b))
+
 ## [1.21.0](https://github.com/orthanq/orthanq/compare/v1.20.0...v1.21.0) (2025-12-08)
 
 
