@@ -1683,7 +1683,7 @@ pub(crate) struct DatasetHaplotypeFractionsWsolution {
 
 #[derive(Serialize, Debug)]
 pub(crate) struct DatasetDensitySolution {
-    density: f64,
+    density: String,
     solution_number: usize,
 }
 
@@ -1692,6 +1692,7 @@ pub fn plot_densities(
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     final_haplotypes: &Vec<Haplotype>,
     file_prefix: &str,
+    convert_logprob: bool
 ) -> Result<()> {
     let file_name = format!("{}_solutions.json", file_prefix.to_string());
     let json = include_str!("../../../templates/densities.json");
@@ -1707,10 +1708,21 @@ pub fn plot_densities(
         new_event_posteriors = new_event_posteriors[0..plot_first_events].to_vec();
     }
     for (i, (fractions, logprob)) in new_event_posteriors.iter().enumerate() {
-        plot_density.push(DatasetDensitySolution {
-            density: logprob.exp().clone(),
-            solution_number: i,
-        });
+    
+        plot_density.push(
+            if convert_logprob{
+                DatasetDensitySolution {
+                    density: format!("{:?}", logprob.exp().clone()),
+                    solution_number: i,
+                }
+            } else {
+                DatasetDensitySolution {
+                    density: format!("{:?}", logprob.clone()),
+                    solution_number: i,
+                }
+            }
+        );
+
         for (f, h) in fractions.iter().zip(final_haplotypes.iter()) {
             //fractions and final haplotypes are already ordered.
             if f != &NotNan::new(0.0).unwrap() {
@@ -2337,6 +2349,7 @@ pub fn explore_haplotype_tree(
 
     let mut mut_all_haplotypes = all_haplotypes.clone();
     recursive_lp_search(
+        0,
         root_likelihood,
         &root_haplotypes,
         &mut mut_all_haplotypes,
@@ -2356,6 +2369,7 @@ pub fn explore_haplotype_tree(
 
 // Recursive LP search with likelihood pruning and uniqueness tracking
 fn recursive_lp_search(
+    depth: usize,
     root_likelihood: LogProb,
     prev_selected_haplotypes: &Vec<Haplotype>,
     prev_input_haplotypes: &mut Vec<Haplotype>,
@@ -2504,6 +2518,7 @@ fn recursive_lp_search(
             let ln_half = LogProb::from(Prob(0.5));
             dbg!(&current_likelihood, root_likelihood);
             if current_likelihood < root_likelihood + ln_half {
+            // if depth >= 4 {
                 dbg!(&current_likelihood, root_likelihood);
                 dbg!(&current_likelihood.exp(), root_likelihood.exp());
                 continue;
@@ -2518,7 +2533,9 @@ fn recursive_lp_search(
 
         reduced.retain(|h| !to_remove.contains(h));
         // Recurse on this reduced set
+        dbg!(&depth);
         recursive_lp_search(
+            depth + 1,
             root_likelihood,
             &lp_haplotypes,
             &mut reduced,

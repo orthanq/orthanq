@@ -122,6 +122,7 @@ impl Caller {
                 &all_haplotypes,
                 &event_posteriors,
                 self.output_lp_datavzrd,
+                true
             );
 
             //write 2-field and G group output tables
@@ -350,6 +351,7 @@ impl FastCaller {
                 &haplotypes,
                 &final_event_likelihoods,
                 self.output_lp_datavzrd,
+                false
             );
 
             //write 2-field and G group output tables
@@ -623,6 +625,7 @@ fn plot_all_hla(
     all_haplotypes: &Vec<Haplotype>,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     output_lp_datavzrd: bool,
+    convert_logprob: bool
 ) -> Result<()> {
     // collect best fractions
     let best_fractions = event_posteriors
@@ -681,13 +684,14 @@ fn plot_all_hla(
         convert_to_two_field(event_posteriors, all_haplotypes)?;
 
     // solution plots
-    haplotypes::plot_densities(&outdir, event_posteriors, all_haplotypes, "3_field")?;
+    haplotypes::plot_densities(&outdir, event_posteriors, all_haplotypes, "3_field", convert_logprob)?;
 
     haplotypes::plot_densities(
         &outdir,
         &two_field_event_posteriors,
         &two_field_haplotypes,
         "2_field",
+        convert_logprob
     )?;
 
     Ok(())
