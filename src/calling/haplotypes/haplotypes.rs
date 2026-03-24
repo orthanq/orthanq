@@ -202,7 +202,11 @@ pub struct VariantCall {
 #[derive(Derefable, DerefMut, Debug, Clone)]
 pub struct VariantCalls(#[deref] BTreeMap<VariantID, VariantCall>);
 impl VariantCalls {
-    pub fn new(variant_calls: &mut bcf::Reader, sample_name: &Option<String>) -> Result<Self> {
+    pub fn new(
+        variant_calls: &mut bcf::Reader,
+        sample_name: &Option<String>,
+        events: &Vec<String>,
+    ) -> Result<Self> {
         //initialize the final struct
         let mut calls = BTreeMap::new();
 
@@ -237,26 +241,70 @@ impl VariantCalls {
 
             // parse variant id
             let variant_id: i32 = String::from_utf8(record.id())?.parse()?;
+            dbg!(&variant_id);
 
-            // parse probability of the variant being present and absent to be used in the LP.
-            // by default, make prob_absent and prob_present 0.0 to handle the case with NaN prob values
+            // calculate the probability of the variant being present or not according to the steps below:
+
+            // 1-) find the probability of the variant being absent or artifact
+
+            // parse probability of the variant being absent OR artifact (this is based on the assumption that PROB_ABSENT always exists in varlociraptor records.)
+            // by default, make it 0.0 to handle the case with NaN prob values
             let mut prob_absent = NotNan::new(0.0).unwrap();
-            let mut prob_present = NotNan::new(0.0).unwrap();
+            let mut prob_artifact = NotNan::new(0.0).unwrap();
 
             let parsed_prob_absent = record.info(b"PROB_ABSENT").float()?.unwrap()[0];
-            let parsed_prob_present = record.info(b"PROB_PRESENT").float()?.unwrap()[0];
+            let parsed_prob_artifact = record.info(b"PROB_ARTIFACT").float()?.unwrap()[0];
 
             if !parsed_prob_absent.is_nan() {
                 prob_absent =
                     NotNan::new(*Prob::from(PHREDProb(parsed_prob_absent.into()))).unwrap();
             }
-            if !parsed_prob_present.is_nan() {
-                prob_present =
-                    NotNan::new(*Prob::from(PHREDProb(parsed_prob_present.into()))).unwrap();
+            if !parsed_prob_artifact.is_nan() {
+                prob_artifact =
+                    NotNan::new(*Prob::from(PHREDProb(parsed_prob_artifact.into()))).unwrap();
             }
 
-            // get max of prob_absent and prob_present to use for weighting in linear program
-            let max_prob = cmp::max(prob_absent, prob_present);
+            //then, sum the probabilities
+            let prob_absent_or_artifact = prob_absent + prob_artifact;
+            dbg!(&prob_absent, &prob_artifact, &prob_absent_or_artifact);
+
+            // 2-) find the probability of the variant given event definitions
+            let mut prob_events_present = NotNan::new(0.0).unwrap();
+
+            for event in events.iter() {
+                //initialize the prob of event
+                let mut prob_event = NotNan::new(0.0).unwrap();
+
+                // formulize the string to be parsed from the bcf
+                let event_name = format!("PROB_{}", event.to_uppercase());
+                let event_name_bytes = event_name.as_bytes();
+
+                //check if the field is there; if `maybe_values` is None, the tag isn't present
+
+                let maybe_values = record.info(event_name_bytes).float()?;
+
+                let parsed_prob_event = match maybe_values {
+                    Some(values) => values[0],
+                    None => {
+                        anyhow::bail!("This scenario doesn't contain the event '{}'", event_name)
+                    }
+                };
+
+                if !parsed_prob_event.is_nan() {
+                    prob_event =
+                        NotNan::new(*Prob::from(PHREDProb(parsed_prob_event.into()))).unwrap();
+                } else {
+                    println!("Parsed event is NaN!")
+                }
+
+                dbg!(&event, &parsed_prob_event, &prob_event);
+                prob_events_present += prob_event
+            }
+
+            dbg!(&prob_events_present);
+
+            // 3-) get max of the variant being not present and sum of the provided events to use for weighting in linear program
+            let max_prob = cmp::max(prob_absent_or_artifact, prob_events_present);
 
             // parse read depth by handling missing DP values
             let dp = record.format(b"DP").integer().unwrap();
