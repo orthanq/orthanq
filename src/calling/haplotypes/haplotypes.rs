@@ -303,6 +303,12 @@ impl VariantCalls {
 
             dbg!(&prob_events_present);
 
+            // Skip variant if artifact probability is the highest among all; this is how we identify artifact variants to exclude from analysis.
+            if prob_artifact > prob_absent && prob_artifact > prob_events_present {
+                dbg!("Skipping variant due to high artifact probability", &variant_id, &prob_artifact, &prob_absent, &prob_events_present);
+                continue;
+            }
+
             // 3-) get max of the variant being not present and sum of the provided events to use for weighting in linear program
             let max_prob = cmp::max(prob_absent_or_artifact, prob_events_present);
 
