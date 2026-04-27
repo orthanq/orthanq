@@ -264,6 +264,7 @@ impl model::Prior for PloidyPrior {
 pub(crate) struct PopulationPrior<'a> {
     pub haplotypes: &'a Vec<Haplotype>,
     pub pop_freqs: &'a BTreeMap<String, f64>,
+    pub ploidy_prior: &'a PriorTypes
 }
 
 impl<'a> model::Prior for PopulationPrior<'a> {
@@ -272,8 +273,12 @@ impl<'a> model::Prior for PopulationPrior<'a> {
     fn compute(&self, event: &Self::Event) -> LogProb {
         let mut prior = LogProb::ln_one();
 
-        let a = 2; // todo: do this configurable.
-
+        let a = match self.ploidy_prior {
+            PriorTypes::Diploid => 2,
+            PriorTypes::DiploidSubclonal => 3,
+            PriorTypes::Uniform => 1
+        };
+        
         for (haplotype, fraction) in self.haplotypes.iter().zip(event.iter()) {
             let hap_str = haplotype.to_string();
 

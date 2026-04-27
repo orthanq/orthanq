@@ -1373,8 +1373,8 @@ pub fn linear_program_fast_mode(
     variant_calls: &VariantCalls,
     lp_cutoff: f64,
     constraint_value: i32,
-    prior: &PriorTypes,
-    pop_freqs: &BTreeMap<String, f64>
+    pop_freqs: &BTreeMap<String, f64>,
+    ploidy_prior: &PriorTypes,
 ) -> Result<BTreeMap<Haplotype, f64>, anyhow::Error> {
     // 1. Create problem and variables
     let mut problem = ProblemVariables::new();
@@ -1408,7 +1408,7 @@ pub fn linear_program_fast_mode(
         // link main variables with fraction variables
         model = model.with(constraint!(variables[i] <= z[i]));
 
-        if constraint_value == 2 && *prior == PriorTypes::Diploid {
+        if constraint_value == 2 && *ploidy_prior == PriorTypes::Diploid {
             model = model.with(constraint!(variables[i] == 0.5 * z[i]));
         }
         // all other constraints and prior types (Diploid and DiploidSubclonal) should have the continuous space.
@@ -2363,7 +2363,7 @@ pub fn explore_haplotype_tree(
     output_folder: &PathBuf,
     lp_cutoff: f64,
     constraint_value: i32,
-    prior: &PriorTypes,
+    ploidy_prior: &PriorTypes,
     pop_freqs: &BTreeMap<String, f64>
 ) -> Result<Vec<(BTreeMap<Haplotype, f64>, LogProb)>, anyhow::Error> {
     //find the list of haplotypes to be used for LP
@@ -2388,8 +2388,8 @@ pub fn explore_haplotype_tree(
         all_variant_calls,
         lp_cutoff,
         constraint_value,
-        prior,
-        &pop_freqs
+        &pop_freqs,
+        ploidy_prior
     )?;
 
     if root_solution.is_empty() {
@@ -2408,7 +2408,8 @@ pub fn explore_haplotype_tree(
         &lp_haplotypes,
         all_variant_calls,
         &event_fractions,
-        Some(&pop_freqs)
+        Some(&pop_freqs),
+        &ploidy_prior
     )
     .unwrap();
     dbg!(&root_solution, &root_likelihood);
@@ -2450,7 +2451,7 @@ pub fn explore_haplotype_tree(
         constraint_value,
         &mut results,
         &mut seen,
-        prior,
+        ploidy_prior,
         &pop_freqs
     )?;
 
@@ -2471,7 +2472,7 @@ fn recursive_lp_search(
     constraint_value: i32,
     results: &mut Vec<(BTreeMap<Haplotype, f64>, LogProb)>,
     seen: &mut HashSet<String>,
-    prior: &PriorTypes,
+    ploidy_prior: &PriorTypes,
     pop_freqs: &BTreeMap<String, f64>
 ) -> Result<(), anyhow::Error> {
     // Immediately start by removing one haplotype
@@ -2519,8 +2520,8 @@ fn recursive_lp_search(
             all_variant_calls,
             lp_cutoff,
             constraint_value,
-            prior,
-            &pop_freqs
+            &pop_freqs,
+            ploidy_prior,
         )?;
         dbg!(&lp_solution);
 
@@ -2543,7 +2544,8 @@ fn recursive_lp_search(
                 &lp_haplotypes,
                 all_variant_calls,
                 &event_fractions,
-                Some(pop_freqs)
+                Some(pop_freqs),
+                &ploidy_prior
 
             )
             .unwrap();
@@ -2615,7 +2617,8 @@ fn recursive_lp_search(
                         &alt_haps,
                         all_variant_calls,
                         &event_fractions,
-                        Some(pop_freqs)
+                        Some(pop_freqs),
+                        &ploidy_prior
                     )
                     .unwrap();
                     dbg!(&alt_likelihood);
@@ -2660,7 +2663,7 @@ fn recursive_lp_search(
             constraint_value,
             results,
             seen,
-            prior,
+            ploidy_prior,
             pop_freqs
         )?;
     }
@@ -2796,6 +2799,7 @@ fn compute_lp_likelihood(
     all_variant_calls: &VariantCalls,
     event_fractions: &HaplotypeFractions,
     pop_freqs: Option<&BTreeMap<String, f64>>,
+    ploidy_prior: &PriorTypes
 ) -> Result<LogProb, Box<dyn Error>> {
     let lp_hv = all_haplotype_variants.filter_for_haplotypes(lp_haplotypes)?;
     let lp_cm = CandidateMatrix::new(&lp_hv)?;
@@ -2808,6 +2812,7 @@ fn compute_lp_likelihood(
         let pop_prior = PopulationPrior {
             haplotypes: lp_haplotypes,
             pop_freqs: freqs,
+            ploidy_prior: ploidy_prior
         };
 
         current_likelihood + pop_prior.compute(event_fractions)
@@ -2849,7 +2854,7 @@ pub fn differences_from_haplotype(
         let mut diff = 0;
 
         for (variant_id, variant_map) in &data.0 {
-            // 🔑 Only consider universally covered variants
+            // only consider universally covered variants
             if !valid_variants.contains(variant_id) {
                 continue;
             }
