@@ -1550,9 +1550,9 @@ pub fn write_results(
     let format_f64 = |number: f64, records: &mut Vec<String>| {
         if number <= 0.01 && convert_logprob {
             //very low logprobs are common in fast mode
-            records.push(format!("{:+.2e}", number))
+            records.push(format!("{:+.1e}", number))
         } else {
-            records.push(format!("{:.2}", number))
+            records.push(format!("{:.1}", number))
         }
     };
 
@@ -1562,12 +1562,14 @@ pub fn write_results(
         format_f64(f64::from(*best_density), &mut records);
     }
 
-    records.push(format!("{:.2}", best_odds));
+    records.push(format!("{:.1}", best_odds));
     let format_freqs = |frequency: NotNan<f64>, records: &mut Vec<String>| {
-        if frequency <= NotNan::new(0.01).unwrap() {
-            records.push(format!("{:+.4e}", NotNan::into_inner(frequency)))
+        if frequency == 0.0 {
+            records.push("0.0".to_string());
+        } else if frequency <= NotNan::new(0.01).unwrap() {
+            records.push(format!("{:+.1e}", NotNan::into_inner(frequency)))
         } else {
-            records.push(format!("{:.4}", frequency))
+            records.push(format!("{:.1}", frequency))
         }
     };
     haplotype_frequencies
@@ -1674,7 +1676,7 @@ pub fn write_results_fast_mode(
 
             let fractions = hap_map
                 .values()
-                .map(|f| format!("{:.6}", f))
+                .map(|f| format!("{:.1}", f))
                 .collect::<Vec<_>>()
                 .join(",");
 
