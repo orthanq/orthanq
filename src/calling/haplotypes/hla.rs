@@ -15,7 +15,7 @@ use crate::calling::haplotypes::haplotypes::{
 use crate::model::AlleleFreq;
 use crate::model::Data;
 use crate::model::HaplotypeFractions;
-use crate::model::{Cache, Likelihood, Posterior, Prior};
+use crate::model::{Cache, Likelihood, Posterior, PloidyPrior};
 
 use anyhow::Result;
 use bio::stats::bayesian::model::Likelihood as BayesianLikelihood;
@@ -26,7 +26,7 @@ use polars::export::arrow::compute::boolean::all;
 use core::cmp::Ordering;
 use csv::Reader;
 use derive_builder::Builder;
-
+use serde::Deserialize;
 use ordered_float::NotNan;
 
 use quick_xml::events::Event;
@@ -34,7 +34,7 @@ use quick_xml::reader::Reader as xml_reader;
 
 use rust_htslib::bcf::{self};
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, BTreeSet};
 use std::str::FromStr;
 
 use std::{path::PathBuf, str};
@@ -160,6 +160,7 @@ pub struct FastCaller {
     haplotype_variants: bcf::Reader,
     variant_calls: bcf::Reader,
     xml: PathBuf,
+    allele_freqs: PathBuf,
     output_folder: PathBuf,
     prior: String,
     lp_cutoff: f64,
@@ -181,12 +182,22 @@ impl FastCaller {
         //initially prepare haplotype_variants and variant_calls
         let variant_calls = VariantCalls::new(&mut self.variant_calls, &self.sample, &self.events)?;
 
+
         //write blank plots and tsv table if no variants are available.
         if variant_calls.len() == 0 {
             output_empty_output(&self.output_folder).unwrap();
             Ok(())
         } else {
             let mut haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
+
+            //read population allele frequencies file
+            let allele_freqs = get_hla_freqs(&self.allele_freqs)?;
+
+            // ensure the set of haplotypes are same; needed for the lprior computation.
+            //todo: maybe this has to change for every lp likelihood computation because one haplotype is less each time.
+            let pop_freqs = compute_filtered_haplotype_frequencies(&haplotype_variants, allele_freqs);
+            dbg!(&pop_freqs.len());
+            dbg!(&pop_freqs);
 
             //filter candidates vcf based on optional given input set of alleles (3-field-resolution)
             if let Some(input_alleles) = &self.enforce_given_alleles {
@@ -229,6 +240,7 @@ impl FastCaller {
                     self.lp_cutoff,
                     constraint,
                     &prior,
+                    &pop_freqs
                 )?;
 
                 all_results.push((constraint, tree));
@@ -778,4 +790,64 @@ fn write_two_field_results(
     )?;
 
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct RawRecord {
+    var: String,
+    population: String,
+    frequency: NotNan<f64>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PopFreq {
+    pub population: String,
+    pub frequency: NotNan<f64>,
+}
+
+fn get_hla_freqs(csv_path: &PathBuf) -> Result<BTreeMap<String, Vec<PopFreq>>> {
+    let mut rdr = csv::ReaderBuilder::new().from_path(csv_path)?;
+
+    let mut map: BTreeMap<String, Vec<PopFreq>> = BTreeMap::new();
+
+    for result in rdr.deserialize() {
+        let raw: RawRecord = result?;
+
+        map.entry(raw.var)
+            .or_default()
+            .push(PopFreq {
+                population: raw.population,
+                frequency: raw.frequency,
+            });
+    }
+
+    Ok(map)
+}
+
+fn compute_filtered_haplotype_frequencies(
+    haplotype_variants: &HaplotypeVariants,
+    allele_freqs: BTreeMap<String, Vec<PopFreq>>,
+) -> BTreeMap<String, f64> {
+    let hap_set: std::collections::HashSet<String> = haplotype_variants
+        .values()
+        .next()
+        .expect("HaplotypeVariants is empty")
+        .keys()
+        .map(|h| h.to_string())
+        .collect();
+
+    allele_freqs
+        .iter()
+        .filter(|(hap, _)| hap_set.contains(*hap))
+        .map(|(hap_str, records)| {
+            let sum: f64 = records
+                .iter()
+                .map(|r| r.frequency.into_inner())
+                .sum();
+
+            let freq = sum / records.len() as f64;
+
+            (hap_str.clone(), freq)
+        })
+        .collect()
 }

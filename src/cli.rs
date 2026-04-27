@@ -240,6 +240,12 @@ pub enum CallKind {
         )]
         xml: PathBuf,
         #[structopt(
+            long = "allele-freqs",
+            required = true,
+            help = "HLA population allele frequencies acquired from Allele Frequencies database."
+        )]
+        allele_freqs: PathBuf,
+        #[structopt(
             long,
             help = "Folder to store results and diagnostic plots in json format."
         )]
@@ -394,6 +400,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                 haplotype_variants,
                 variant_calls,
                 xml,
+                allele_freqs,
                 output,
                 prior,
                 lp_cutoff,
@@ -417,6 +424,7 @@ pub fn run(opt: Orthanq) -> Result<()> {
                         .haplotype_variants(bcf::Reader::from_path(&haplotype_variants)?)
                         .variant_calls(bcf::Reader::from_path(&variant_calls)?)
                         .xml(xml)
+                        .allele_freqs(allele_freqs)
                         .output_folder(output)
                         .prior(prior)
                         .lp_cutoff(lp_cutoff)
