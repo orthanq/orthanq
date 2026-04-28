@@ -264,25 +264,26 @@ impl model::Prior for PloidyPrior {
 pub(crate) struct PopulationPrior<'a> {
     pub haplotypes: &'a Vec<Haplotype>,
     pub pop_freqs: &'a BTreeMap<String, f64>,
-    pub ploidy_prior: &'a PriorTypes
+    pub ploidy_prior: &'a PriorTypes,
 }
 
 impl<'a> model::Prior for PopulationPrior<'a> {
     type Event = HaplotypeFractions;
-        
+
     fn compute(&self, event: &Self::Event) -> LogProb {
         let mut prior = LogProb::ln_one();
 
         let a = match self.ploidy_prior {
             PriorTypes::Diploid => 2,
             PriorTypes::DiploidSubclonal => 3,
-            PriorTypes::Uniform => 1
+            PriorTypes::Uniform => 1,
         };
-        
+
         for (haplotype, fraction) in self.haplotypes.iter().zip(event.iter()) {
             let hap_str = haplotype.to_string();
 
-            if let Some(&freq) = self.pop_freqs.get(&hap_str) { //todo: what to do if the haplotype is not in the alllele freq database?
+            if let Some(&freq) = self.pop_freqs.get(&hap_str) {
+                //todo: what to do if the haplotype is not in the alllele freq database?
                 // if freq > 0.0 { // todo: consider
                 let weight = fraction.into_inner() * a as f64;
                 prior += LogProb::from(Prob(freq.powf(weight)));

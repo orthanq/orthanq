@@ -15,7 +15,7 @@ use crate::calling::haplotypes::haplotypes::{
 use crate::model::AlleleFreq;
 use crate::model::Data;
 use crate::model::HaplotypeFractions;
-use crate::model::{Cache, Likelihood, Posterior, PloidyPrior};
+use crate::model::{Cache, Likelihood, PloidyPrior, Posterior};
 
 use anyhow::Result;
 use bio::stats::bayesian::model::Likelihood as BayesianLikelihood;
@@ -26,15 +26,15 @@ use polars::export::arrow::compute::boolean::all;
 use core::cmp::Ordering;
 use csv::Reader;
 use derive_builder::Builder;
-use serde::Deserialize;
 use ordered_float::NotNan;
+use serde::Deserialize;
 
 use quick_xml::events::Event;
 use quick_xml::reader::Reader as xml_reader;
 
 use rust_htslib::bcf::{self};
 
-use std::collections::{BTreeMap, HashMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::str::FromStr;
 
 use std::{path::PathBuf, str};
@@ -123,7 +123,7 @@ impl Caller {
                 &all_haplotypes,
                 &event_posteriors,
                 self.output_lp_datavzrd,
-                true
+                true,
             );
 
             //write 2-field and G group output tables
@@ -182,7 +182,6 @@ impl FastCaller {
         //initially prepare haplotype_variants and variant_calls
         let variant_calls = VariantCalls::new(&mut self.variant_calls, &self.sample, &self.events)?;
 
-
         //write blank plots and tsv table if no variants are available.
         if variant_calls.len() == 0 {
             output_empty_output(&self.output_folder).unwrap();
@@ -195,7 +194,8 @@ impl FastCaller {
 
             // ensure the set of haplotypes are same; needed for the lprior computation.
             //todo: maybe this has to change for every lp likelihood computation because one haplotype is less each time.
-            let pop_freqs = compute_filtered_haplotype_frequencies(&haplotype_variants, allele_freqs);
+            let pop_freqs =
+                compute_filtered_haplotype_frequencies(&haplotype_variants, allele_freqs);
             dbg!(&pop_freqs.len());
             dbg!(&pop_freqs);
 
@@ -240,7 +240,7 @@ impl FastCaller {
                     self.lp_cutoff,
                     constraint,
                     &prior,
-                    &pop_freqs
+                    &pop_freqs,
                 )?;
 
                 all_results.push((constraint, tree));
@@ -365,7 +365,7 @@ impl FastCaller {
                 &haplotypes,
                 &final_event_likelihoods,
                 self.output_lp_datavzrd,
-                false
+                false,
             );
 
             //write 2-field and G group output tables
@@ -639,7 +639,7 @@ fn plot_all_hla(
     all_haplotypes: &Vec<Haplotype>,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     output_lp_datavzrd: bool,
-    convert_logprob: bool
+    convert_logprob: bool,
 ) -> Result<()> {
     // collect best fractions
     let best_fractions = event_posteriors
@@ -698,14 +698,20 @@ fn plot_all_hla(
         convert_to_two_field(event_posteriors, all_haplotypes)?;
 
     // solution plots
-    haplotypes::plot_densities(&outdir, event_posteriors, all_haplotypes, "3_field", convert_logprob)?;
+    haplotypes::plot_densities(
+        &outdir,
+        event_posteriors,
+        all_haplotypes,
+        "3_field",
+        convert_logprob,
+    )?;
 
     haplotypes::plot_densities(
         &outdir,
         &two_field_event_posteriors,
         &two_field_haplotypes,
         "2_field",
-        convert_logprob
+        convert_logprob,
     )?;
 
     Ok(())
@@ -813,12 +819,10 @@ fn get_hla_freqs(csv_path: &PathBuf) -> Result<BTreeMap<String, Vec<PopFreq>>> {
     for result in rdr.deserialize() {
         let raw: RawRecord = result?;
 
-        map.entry(raw.var)
-            .or_default()
-            .push(PopFreq {
-                population: raw.population,
-                frequency: raw.frequency,
-            });
+        map.entry(raw.var).or_default().push(PopFreq {
+            population: raw.population,
+            frequency: raw.frequency,
+        });
     }
 
     Ok(map)
@@ -840,10 +844,7 @@ fn compute_filtered_haplotype_frequencies(
         .iter()
         .filter(|(hap, _)| hap_set.contains(*hap))
         .map(|(hap_str, records)| {
-            let sum: f64 = records
-                .iter()
-                .map(|r| r.frequency.into_inner())
-                .sum();
+            let sum: f64 = records.iter().map(|r| r.frequency.into_inner()).sum();
 
             let freq = sum / records.len() as f64;
 

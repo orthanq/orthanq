@@ -112,7 +112,7 @@ impl Caller {
                 &event_posteriors,
                 &all_haplotypes,
                 "viral",
-                true
+                true,
             )?;
             Ok(())
         }
