@@ -1551,7 +1551,7 @@ pub fn write_results(
     let (haplotype_frequencies, best_density) = event_posteriors.iter().next().unwrap();
     dbg!(&event_posteriors);
 
-    let best_odds: f64 = 1.00;
+    let best_odds: f64 = 0.0;
     let format_f64 = |number: f64, records: &mut Vec<String>| {
         if number <= 0.01 {
             //very low logprobs are common in fast mode
