@@ -274,16 +274,31 @@ impl FastCaller {
             };
 
             dbg!(&haplotypes, &sorted_event_likelihoods);
+
+            //normalize logprobs by their sum
+            let log_probs: Vec<LogProb> = sorted_event_likelihoods
+            .iter()
+            .map(|(_, lp)| *lp)
+            .collect();
+        
+            let log_sum = LogProb::ln_sum_exp(&log_probs);
+        
+            let normalized_event_likelihoods: Vec<(HaplotypeFractions, LogProb)> =
+                sorted_event_likelihoods
+                    .iter()
+                    .map(|(h, lp)| (h.clone(), *lp - log_sum))
+                    .collect();
+
             write_results(
                 &self.output_folder.join(&"predictions.csv"),
                 &variant_calls,
                 &cm,
-                &sorted_event_likelihoods,
+                &normalized_event_likelihoods,
                 &haplotypes,
                 true,
             );
 
-            //
+            //applying the weakly informative priors requires the non-normalized real logprobs.
             let mut final_event_likelihoods = sorted_event_likelihoods.clone();
 
             //use parent.csv and apply weakly informative priors
