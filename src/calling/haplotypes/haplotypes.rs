@@ -12,7 +12,6 @@ use datavzrd::render_report;
 use rand_xoshiro::rand_core::le;
 use serde_yaml::Value;
 use statrs::distribution::Uniform;
-
 use derefable::Derefable;
 
 use derive_deref::DerefMut;
@@ -1483,7 +1482,7 @@ pub fn write_results(
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     final_haplotypes: &Vec<Haplotype>,
     // variant_info: bool,
-    convert_logprob: bool,
+    to_phred: bool,
 ) -> Result<()> {
     //firstly add variant query and probabilities to the outout table for each event
     let variant_calls: Vec<AlleleFreqDist> = variant_calls
@@ -1554,7 +1553,7 @@ pub fn write_results(
 
     let best_odds: f64 = 1.00;
     let format_f64 = |number: f64, records: &mut Vec<String>| {
-        if number <= 0.01 && convert_logprob {
+        if number <= 0.01 {
             //very low logprobs are common in fast mode
             records.push(format!("{:+.1e}", number))
         } else {
@@ -1562,10 +1561,10 @@ pub fn write_results(
         }
     };
 
-    if convert_logprob {
-        format_f64(best_density.exp(), &mut records);
+    if to_phred {
+        format_f64(f64::from(PHREDProb::from(*best_density)), &mut records);
     } else {
-        format_f64(f64::from(*best_density), &mut records);
+        format_f64(best_density.exp(), &mut records);
     }
 
     records.push(format!("{:.1}", best_odds));
@@ -1634,16 +1633,15 @@ pub fn write_results(
         .skip(1)
         .for_each(|(haplotype_frequencies, density)| {
             let mut records = Vec::new();
-            let mut odds: f64 = (density - best_density).exp();
 
-            if !convert_logprob {
-                odds = f64::from(*density) / f64::from(*best_density);
-                format_f64(f64::from(*density), &mut records);
+            if to_phred {
+                format_f64(f64::from(PHREDProb::from(*density)), &mut records);
+                format_f64(f64::from(PHREDProb::from(density - best_density)), &mut records); //odds
             } else {
                 format_f64(density.exp(), &mut records);
+                format_f64((density - best_density).exp(), &mut records); //odds
             }
 
-            format_f64(odds, &mut records);
             haplotype_frequencies
                 .iter()
                 .for_each(|frequency| format_freqs(*frequency, &mut records));
@@ -1787,7 +1785,7 @@ pub fn plot_densities(
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     final_haplotypes: &Vec<Haplotype>,
     file_prefix: &str,
-    convert_logprob: bool,
+    to_phred: bool,
 ) -> Result<()> {
     let file_name = format!("{}_solutions.json", file_prefix.to_string());
     let json = include_str!("../../../templates/densities.json");
@@ -1803,14 +1801,14 @@ pub fn plot_densities(
         new_event_posteriors = new_event_posteriors[0..plot_first_events].to_vec();
     }
     for (i, (fractions, logprob)) in new_event_posteriors.iter().enumerate() {
-        plot_density.push(if convert_logprob {
+        plot_density.push(if to_phred {
             DatasetDensitySolution {
-                density: format!("{:?}", logprob.exp().clone()),
+                density: format!("{:?}", PHREDProb::from(logprob.clone())),
                 solution_number: i,
             }
         } else {
             DatasetDensitySolution {
-                density: format!("{:?}", logprob.clone()),
+                density: format!("{:?}", logprob.exp().clone()),
                 solution_number: i,
             }
         });

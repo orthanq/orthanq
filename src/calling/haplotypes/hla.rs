@@ -111,7 +111,7 @@ impl Caller {
                 &all_haplotypes_candidate_matrix,
                 &event_posteriors,
                 &all_haplotypes,
-                true,
+                false,
             )?;
 
             // draw plots
@@ -146,7 +146,7 @@ impl Caller {
                 &variant_calls,
                 &all_haplotypes_candidate_matrix,
                 &event_posteriors,
-                true,
+                false,
             )?;
 
             Ok(())
@@ -250,6 +250,7 @@ impl FastCaller {
             // Step3: Write results with and without haplotypes as headers
 
             //without headers and with constraints
+            //this output can be useful for debugging purposes.
             std::fs::create_dir_all(&self.output_folder)?;
             write_results_fast_mode(
                 &all_results,
@@ -274,12 +275,12 @@ impl FastCaller {
 
             dbg!(&haplotypes, &sorted_event_likelihoods);
             write_results(
-                &self.output_folder.join(&"predictions_unmodified.csv"),
+                &self.output_folder.join(&"predictions.csv"),
                 &variant_calls,
                 &cm,
                 &sorted_event_likelihoods,
                 &haplotypes,
-                false,
+                true,
             );
 
             //
@@ -341,7 +342,7 @@ impl FastCaller {
                     &cm,
                     &updated_event_likelihoods,
                     &haplotypes,
-                    false,
+                    true,
                 );
 
                 final_event_likelihoods = updated_event_likelihoods;
@@ -388,7 +389,7 @@ impl FastCaller {
                 &variant_calls,
                 &cm,
                 &final_event_likelihoods,
-                false,
+                true,
             )?;
 
             Ok(())
@@ -639,7 +640,7 @@ fn plot_all_hla(
     all_haplotypes: &Vec<Haplotype>,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     output_lp_datavzrd: bool,
-    convert_logprob: bool,
+    to_phred: bool,
 ) -> Result<()> {
     // collect best fractions
     let best_fractions = event_posteriors
@@ -703,7 +704,7 @@ fn plot_all_hla(
         event_posteriors,
         all_haplotypes,
         "3_field",
-        convert_logprob,
+        to_phred,
     )?;
 
     haplotypes::plot_densities(
@@ -711,7 +712,7 @@ fn plot_all_hla(
         &two_field_event_posteriors,
         &two_field_haplotypes,
         "2_field",
-        convert_logprob,
+        to_phred,
     )?;
 
     Ok(())
@@ -724,7 +725,7 @@ fn write_g_group_results(
     variant_calls: &VariantCalls,
     candidate_matrix: &CandidateMatrix,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
-    convert_logprob: bool,
+    to_phred: bool,
 ) -> Result<()> {
     //write table for G groups of HLA alleles, for HLA alleles with None G group in the XML table, we write the haplotype name back.
     //as a hint, successfuly converted G groups will have G in the end, while the ones with no G group will not have one.
@@ -778,7 +779,7 @@ fn write_two_field_results(
     all_haplotypes: &Vec<Haplotype>,
     variant_calls: &VariantCalls,
     candidate_matrix: &CandidateMatrix,
-    convert_logprob: bool,
+    to_phred: bool,
 ) -> Result<()> {
     let (two_field_haplotypes, two_field_event_posteriors) =
         convert_to_two_field(event_posteriors, all_haplotypes)?;
@@ -792,7 +793,7 @@ fn write_two_field_results(
         candidate_matrix,
         &two_field_event_posteriors,
         &two_field_haplotypes,
-        convert_logprob,
+        to_phred,
     )?;
 
     Ok(())
