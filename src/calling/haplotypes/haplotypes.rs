@@ -1568,18 +1568,21 @@ pub fn write_results(
 
     //write best record on top; assuming event_posteriors is always sorted
     let mut records = Vec::new();
-    dbg!(&event_posteriors);
     let (haplotype_frequencies, best_density) = event_posteriors.iter().next().unwrap();
-    dbg!(&event_posteriors);
 
     let best_odds: f64 = 0.0;
-    let format_f64 = |number: f64, records: &mut Vec<String>| {
-        if number <= 0.01 {
-            //very low logprobs are common in fast mode
-            records.push(format!("{:+.1e}", number))
-        } else {
-            records.push(format!("{:.1}", number))
-        }
+
+    let format_f64 = |n: f64, records: &mut Vec<String>| {
+        //necessary because f64 may preserve the minus sign and output may result in -0.0. 
+        let n = if n == 0.0 { 0.0 } else { n };
+    
+        records.push(
+            if n == 0.0 || n > 0.01 {
+                format!("{:.1}", n)
+            } else {
+                format!("{:+.1e}", n)
+            }
+        );
     };
 
     if to_phred {
