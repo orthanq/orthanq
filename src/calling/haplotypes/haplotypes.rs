@@ -1737,7 +1737,6 @@ pub fn collect_constraints_and_variants(
         candidate_matrix_values.iter().zip(variant_calls.iter())
     {
         let mut fraction_sum = Expression::from_other_affine(0.);
-        // let mut prior_sum = Expression::from_other_affine(0.);
 
         let mut counter = 0;
         for (i, _variable) in variables.iter().enumerate() {
@@ -1748,39 +1747,17 @@ pub fn collect_constraints_and_variants(
         if counter == variables.len() {
             for (i, (variable, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
                 if genotype_matrix[i as u64] {
-                    //first add each haplotype contribution
                     fraction_sum += *variable;
 
                     let mut existing = haplotype_dict.get(&haplotype).unwrap().clone();
                     existing.push(variant.clone());
                     haplotype_dict.insert(haplotype.clone(), existing);
 
-                    // //and add the population prior if it exists for the allele
-                    // if let Some(pop_freqs) = pop_freqs {
-                    //     let mut hap_prior = NotNan::new(0.0).unwrap();
-                    //     let haplotype_str = haplotype.to_string();
-
-                    //     match pop_freqs.get(&haplotype_str) {
-                    //         Some(freq) => {
-                    //             hap_prior = NotNan::new(*freq).unwrap();
-                    //         }
-                    //         None => {
-                    //             eprintln!(
-                    //                 "Warning: haplotype '{}' not found in population frequencies",
-                    //                 haplotype_str
-                    //             );
-                    //         }
-                    //     }
-                    //     prior_sum += -(*variable * *hap_prior);
-                    // }
                 }
             }
             let mut expr_to_add =
                 *call.max_prob * (fraction_sum - call.af.clone().into_expression());
 
-            // if let Some(pop_freqs) = pop_freqs {
-            //     expr_to_add += prior_sum;
-            // }
             constraints.push(expr_to_add.clone());
             expr += expr_to_add;
         }
