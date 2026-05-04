@@ -296,7 +296,7 @@ impl VariantCalls {
                     prob_event =
                         NotNan::new(*Prob::from(PHREDProb(parsed_prob_event.into()))).unwrap();
                 } else {
-                    println!("Parsed event is NaN!")
+                    eprintln!("Parsed event is NaN!")
                 }
 
                 dbg!(&event, &parsed_prob_event, &prob_event);
@@ -336,9 +336,19 @@ impl VariantCalls {
             let mut vaf_density = BTreeMap::new();
             for pair in afd_str.split(',') {
                 if let Some((vaf, density)) = pair.split_once('=') {
+                
                     let vaf: AlleleFreq = vaf.parse()?;
                     let density: f64 = density.parse()?;
-                    vaf_density.insert(vaf, LogProb::from(PHREDProb(density)));
+
+                    let log_prob = {
+                        let mut lp = LogProb::from(PHREDProb(density));
+                        //todo: some varlociraptor records may contain inf for some vafs. This is handled temporarily here by clamping inf using epsilon in probability space
+                        if !lp.is_finite() {
+                            lp = LogProb::from(1e-300_f64);
+                        }
+                        lp
+                    };
+                    vaf_density.insert(vaf, log_prob);
                 }
             }
 
@@ -2808,7 +2818,7 @@ fn compute_lp_likelihood(
 
     let mut cache = Cache::default();
     let current_likelihood = Likelihood::new().compute(event_fractions, &data, &mut cache);
-
+    dbg!(&current_likelihood);
     let posterior = if let Some(freqs) = pop_freqs {
         let pop_prior = PopulationPrior {
             haplotypes: lp_haplotypes,
