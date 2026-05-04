@@ -272,22 +272,21 @@ impl<'a> model::Prior for PopulationPrior<'a> {
 
     fn compute(&self, event: &Self::Event) -> LogProb {
         let mut prior = LogProb::ln_one();
-
+        let  epsilon = 1e-12;
+        //todo: needs to be added before the normalization
         let a = match self.ploidy_prior {
             PriorTypes::Diploid => 2,
             PriorTypes::DiploidSubclonal => 3,
             PriorTypes::Uniform => 1,
         };
-
+        dbg!(&self.haplotypes);
         for (haplotype, fraction) in self.haplotypes.iter().zip(event.iter()) {
             let hap_str = haplotype.to_string();
 
             if let Some(&freq) = self.pop_freqs.get(&hap_str) {
-                //todo: what to do if the haplotype is not in the alllele freq database?
-                // if freq > 0.0 { // todo: consider
+                let freq_max = freq.max(epsilon);
                 let weight = fraction.into_inner() * a as f64;
-                prior += LogProb::from(Prob(freq.powf(weight)));
-                // }
+                prior += LogProb::from(Prob(freq_max.powf(weight)));
             }
         }
 
