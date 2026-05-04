@@ -1233,7 +1233,6 @@ pub fn linear_program_main_mode(
         haplotypes,
         variant_calls,
         &variables,
-        None,
         &mut constraints,
     )
     .unwrap();
@@ -1378,7 +1377,7 @@ pub fn linear_program_fast_mode(
     variant_calls: &VariantCalls,
     lp_cutoff: f64,
     constraint_value: i32,
-    pop_freqs: &BTreeMap<String, f64>,
+    pop_freqs: Option<&BTreeMap<String, f64>>,
     ploidy_prior: &PriorTypes,
 ) -> Result<BTreeMap<Haplotype, f64>, anyhow::Error> {
     // 1. Create problem and variables
@@ -1392,9 +1391,31 @@ pub fn linear_program_fast_mode(
         haplotypes,
         variant_calls,
         &variables,
-        Some(pop_freqs),
         &mut constraints,
     )?;
+
+    //add prior constraints
+    if let Some(pop_freqs) = pop_freqs {
+        let mut prior_sum = Expression::from_other_affine(0.);
+        for (variable, haplotype) in variables.iter().zip(haplotypes.iter()) {
+                let mut hap_prior = NotNan::new(0.0).unwrap();
+                let haplotype_str = haplotype.to_string();
+        
+                match pop_freqs.get(&haplotype_str) {
+                    Some(freq) => {
+                        hap_prior = NotNan::new(*freq).unwrap();
+                    }
+                    None => {
+                        eprintln!(
+                            "Warning: haplotype '{}' not found in population frequencies",
+                            haplotype_str
+                        );
+                    }
+                }
+                prior_sum += -(*variable * *hap_prior);
+            }
+        constraints.push(prior_sum);
+    }
 
     let t_vars: Vec<Variable> = problem.add_vector(variable().min(0.0).max(1.0), constraints.len());
 
@@ -1702,7 +1723,7 @@ pub fn collect_constraints_and_variants(
     haplotypes: &Vec<Haplotype>,
     variant_calls: &VariantCalls,
     variables: &Vec<Variable>,
-    pop_freqs: Option<&BTreeMap<String, f64>>,
+    // pop_freqs: Option<&BTreeMap<String, f64>>,
     constraints: &mut Vec<Expression>,
 ) -> Result<HashMap<Haplotype, Vec<VariantID>>> {
     let candidate_matrix_values: Vec<(BitVec, BitVec)> =
@@ -1716,7 +1737,7 @@ pub fn collect_constraints_and_variants(
         candidate_matrix_values.iter().zip(variant_calls.iter())
     {
         let mut fraction_sum = Expression::from_other_affine(0.);
-        let mut prior_sum = Expression::from_other_affine(0.);
+        // let mut prior_sum = Expression::from_other_affine(0.);
 
         let mut counter = 0;
         for (i, _variable) in variables.iter().enumerate() {
@@ -1734,32 +1755,32 @@ pub fn collect_constraints_and_variants(
                     existing.push(variant.clone());
                     haplotype_dict.insert(haplotype.clone(), existing);
 
-                    //and add the population prior if it exists for the allele
-                    if let Some(pop_freqs) = pop_freqs {
-                        let mut hap_prior = NotNan::new(0.0).unwrap();
-                        let haplotype_str = haplotype.to_string();
+                    // //and add the population prior if it exists for the allele
+                    // if let Some(pop_freqs) = pop_freqs {
+                    //     let mut hap_prior = NotNan::new(0.0).unwrap();
+                    //     let haplotype_str = haplotype.to_string();
 
-                        match pop_freqs.get(&haplotype_str) {
-                            Some(freq) => {
-                                hap_prior = NotNan::new(*freq).unwrap();
-                            }
-                            None => {
-                                eprintln!(
-                                    "Warning: haplotype '{}' not found in population frequencies",
-                                    haplotype_str
-                                );
-                            }
-                        }
-                        prior_sum += -(*variable * *hap_prior);
-                    }
+                    //     match pop_freqs.get(&haplotype_str) {
+                    //         Some(freq) => {
+                    //             hap_prior = NotNan::new(*freq).unwrap();
+                    //         }
+                    //         None => {
+                    //             eprintln!(
+                    //                 "Warning: haplotype '{}' not found in population frequencies",
+                    //                 haplotype_str
+                    //             );
+                    //         }
+                    //     }
+                    //     prior_sum += -(*variable * *hap_prior);
+                    // }
                 }
             }
             let mut expr_to_add =
                 *call.max_prob * (fraction_sum - call.af.clone().into_expression());
 
-            if let Some(pop_freqs) = pop_freqs {
-                expr_to_add += prior_sum;
-            }
+            // if let Some(pop_freqs) = pop_freqs {
+            //     expr_to_add += prior_sum;
+            // }
             constraints.push(expr_to_add.clone());
             expr += expr_to_add;
         }
@@ -2392,7 +2413,7 @@ pub fn explore_haplotype_tree(
         all_variant_calls,
         lp_cutoff,
         constraint_value,
-        &pop_freqs,
+        Some(&pop_freqs),
         ploidy_prior,
     )?;
 
@@ -2522,7 +2543,7 @@ fn recursive_lp_search(
             all_variant_calls,
             lp_cutoff,
             constraint_value,
-            &pop_freqs,
+            Some(&pop_freqs),
             ploidy_prior,
         )?;
         dbg!(&lp_solution);
