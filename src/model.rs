@@ -272,7 +272,7 @@ impl<'a> model::Prior for PopulationPrior<'a> {
 
     fn compute(&self, event: &Self::Event) -> LogProb {
         let mut prior = LogProb::ln_one();
-        let  epsilon = 1e-12;
+        let epsilon = 1e-12;
         //todo: needs to be added before the normalization
         let a = match self.ploidy_prior {
             PriorTypes::Diploid => 2,

@@ -9,10 +9,10 @@ use bio::stats::bayesian::model::Prior as BayesianPrior;
 use bio::stats::{probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
 use datavzrd::render_report;
+use derefable::Derefable;
 use rand_xoshiro::rand_core::le;
 use serde_yaml::Value;
 use statrs::distribution::Uniform;
-use derefable::Derefable;
 
 use derive_deref::DerefMut;
 
@@ -336,7 +336,6 @@ impl VariantCalls {
             let mut vaf_density = BTreeMap::new();
             for pair in afd_str.split(',') {
                 if let Some((vaf, density)) = pair.split_once('=') {
-                
                     let vaf: AlleleFreq = vaf.parse()?;
                     let density: f64 = density.parse()?;
 
@@ -1408,22 +1407,22 @@ pub fn linear_program_fast_mode(
     if let Some(pop_freqs) = pop_freqs {
         let mut prior_sum = Expression::from_other_affine(0.);
         for (variable, haplotype) in variables.iter().zip(haplotypes.iter()) {
-                let mut hap_prior = NotNan::new(0.0).unwrap();
-                let haplotype_str = haplotype.to_string();
-        
-                match pop_freqs.get(&haplotype_str) {
-                    Some(freq) => {
-                        hap_prior = NotNan::new(*freq).unwrap();
-                    }
-                    None => {
-                        eprintln!(
-                            "Warning: haplotype '{}' not found in population frequencies",
-                            haplotype_str
-                        );
-                    }
+            let mut hap_prior = NotNan::new(0.0).unwrap();
+            let haplotype_str = haplotype.to_string();
+
+            match pop_freqs.get(&haplotype_str) {
+                Some(freq) => {
+                    hap_prior = NotNan::new(*freq).unwrap();
                 }
-                prior_sum += -(*variable * *hap_prior);
+                None => {
+                    eprintln!(
+                        "Warning: haplotype '{}' not found in population frequencies",
+                        haplotype_str
+                    );
+                }
             }
+            prior_sum += -(*variable * *hap_prior);
+        }
         constraints.push(prior_sum);
     }
 
@@ -1583,16 +1582,14 @@ pub fn write_results(
     let best_odds: f64 = 0.0;
 
     let format_f64 = |n: f64, records: &mut Vec<String>| {
-        //necessary because f64 may preserve the minus sign and output may result in -0.0. 
+        //necessary because f64 may preserve the minus sign and output may result in -0.0.
         let n = if n == 0.0 { 0.0 } else { n };
-    
-        records.push(
-            if n == 0.0 || n > 0.01 {
-                format!("{:.1}", n)
-            } else {
-                format!("{:+.1e}", n)
-            }
-        );
+
+        records.push(if n == 0.0 || n > 0.01 {
+            format!("{:.1}", n)
+        } else {
+            format!("{:+.1e}", n)
+        });
     };
 
     if to_phred {
@@ -1670,7 +1667,10 @@ pub fn write_results(
 
             if to_phred {
                 format_f64(f64::from(PHREDProb::from(*density)), &mut records);
-                format_f64(f64::from(PHREDProb::from(density - best_density)), &mut records); //odds
+                format_f64(
+                    f64::from(PHREDProb::from(density - best_density)),
+                    &mut records,
+                ); //odds
             } else {
                 format_f64(density.exp(), &mut records);
                 format_f64((density - best_density).exp(), &mut records); //odds
@@ -1765,7 +1765,6 @@ pub fn collect_constraints_and_variants(
                     let mut existing = haplotype_dict.get(&haplotype).unwrap().clone();
                     existing.push(variant.clone());
                     haplotype_dict.insert(haplotype.clone(), existing);
-
                 }
             }
             let mut expr_to_add =
@@ -2647,7 +2646,7 @@ fn recursive_lp_search(
             //A depth limit is set because for some samples the root likelihood has the worst likelihood and the recursion iterates indefinitely as all of them are better than the root solution.
             //For this reason, a depth limit that is high enough to meet many solutions is introduced. The reason for the root lp solution resulting in the worst likelihood is unclear and can be further investigated (TODO).
             let depth_limit = 50;
-            
+
             if current_likelihood < root_likelihood + ln_half || depth >= 50 {
                 dbg!(&current_likelihood, root_likelihood);
                 dbg!(&(root_likelihood + ln_half));

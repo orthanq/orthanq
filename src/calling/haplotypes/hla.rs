@@ -276,13 +276,11 @@ impl FastCaller {
             dbg!(&haplotypes, &sorted_event_likelihoods);
 
             //normalize logprobs by their sum
-            let log_probs: Vec<LogProb> = sorted_event_likelihoods
-            .iter()
-            .map(|(_, lp)| *lp)
-            .collect();
-        
+            let log_probs: Vec<LogProb> =
+                sorted_event_likelihoods.iter().map(|(_, lp)| *lp).collect();
+
             let log_sum = LogProb::ln_sum_exp(&log_probs);
-        
+
             let normalized_event_likelihoods: Vec<(HaplotypeFractions, LogProb)> =
                 sorted_event_likelihoods
                     .iter()
