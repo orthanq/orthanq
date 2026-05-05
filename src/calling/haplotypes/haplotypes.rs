@@ -2643,8 +2643,12 @@ fn recursive_lp_search(
             //Prune recursion if original LP solution is too low
             let ln_half = LogProb::from(Prob(0.5));
             dbg!(&current_likelihood, root_likelihood);
-            if current_likelihood < root_likelihood + ln_half {
-                // if depth >= 4 {
+
+            //A depth limit is set because for some samples the root likelihood has the worst likelihood and the recursion iterates indefinitely as all of them are better than the root solution.
+            //For this reason, a depth limit that is high enough to meet many solutions is introduced. The reason for the root lp solution resulting in the worst likelihood is unclear and can be further investigated (TODO).
+            let depth_limit = 50;
+            
+            if current_likelihood < root_likelihood + ln_half || depth >= 50 {
                 dbg!(&current_likelihood, root_likelihood);
                 dbg!(&(root_likelihood + ln_half));
                 dbg!(&"pruning the branch");
