@@ -1474,6 +1474,9 @@ pub fn linear_program_fast_mode(
         Ok(sol) => {
             let obj_val = sol.eval(&objective); 
     
+            // This check is necessary because some samples have 0.0 in the root and the likelihood is not the best likelihood leading to an idefinite number of iterations in the recursion.
+            // It happens because given data, there is no meaningful solution.
+            // It takes hours and never finishes. TODO: should be investigated why LP gives 0.0 obj value.
             if obj_val == 0.0 {
                 dbg!("Objective is 0.0 - no meaningful root solution, returning empty output");
                 output_empty_output(&output_folder).unwrap();
