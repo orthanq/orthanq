@@ -2351,6 +2351,7 @@ pub fn output_empty_output(output_folder: &PathBuf) -> Result<(), Box<dyn Error>
         "best_solution.json",
         "2_field_solutions.json",
         "3_field_solutions.json",
+        "arrow_plot.json"
     ] {
         let json = include_str!("../../../templates/final_prediction.json");
         let blueprint: Value = serde_json::from_str(json)?;
@@ -2364,7 +2365,7 @@ pub fn output_empty_output(output_folder: &PathBuf) -> Result<(), Box<dyn Error>
     wtr.write_record(&headers)?;
 
     // Write blank CSV for 2-field.csv and G_groups.csv
-    for file in ["predictions_2_field.csv", "predictions_G_groups.csv"] {
+    for file in ["2-field.csv", "G_groups.csv"] {
         let output_path = output_folder.join(file);
         let mut wtr = csv::Writer::from_path(output_path)?;
         let headers = ["density", "odds"];
