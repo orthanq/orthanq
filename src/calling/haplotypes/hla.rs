@@ -247,7 +247,7 @@ impl FastCaller {
             }
             dbg!(&all_results);
 
-            if all_results.is_empty() {
+            if all_results.iter().all(|(_, tree)| tree.is_empty()) {
                 return Ok(());
             }
             // Step3: Write results with and without haplotypes as headers
