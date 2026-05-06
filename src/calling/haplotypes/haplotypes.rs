@@ -1483,16 +1483,48 @@ pub fn linear_program_fast_mode(
                 return Ok(BTreeMap::new());
             }
     
-            let mut lp_haplotypes = BTreeMap::new();
             let best_variables: Vec<f64> =
                 variables.iter().map(|v| sol.value(*v)).collect();
     
-            for (val, haplotype) in best_variables.iter().zip(haplotypes.iter()) {
-                if *val > lp_cutoff {
-                    lp_haplotypes.insert(haplotype.clone(), *val);
+            // do not take only the nonzero fractions because sometimes lp may result in more than n (constraint number) number of solutions with one solution being very small.
+            // instead take the best 2 number if diploid and best 3 if diploid subclonal.
+            // let mut lp_haplotypes = BTreeMap::new();
+            // // for (val, haplotype) in best_variables.iter().zip(haplotypes.iter()) {
+            // //     if *val > lp_cutoff {
+            // //         lp_haplotypes.insert(haplotype.clone(), *val);
+            // //     }
+            // // }
+
+            let mut scored: Vec<(Haplotype, f64)> = haplotypes
+            .iter()
+            .cloned()
+            .zip(best_variables.iter().cloned())
+            .collect();
+        
+            // sort descending by score
+            scored.sort_by(|a, b| b.1.total_cmp(&a.1));
+            
+            let lp_haplotypes: BTreeMap<Haplotype, f64> = match (constraint_value, ploidy_prior) {
+                (1, PriorTypes::Diploid) => {
+                    scored.into_iter().take(1).collect()
                 }
-            }
-    
+            
+                (_, PriorTypes::Diploid) => {
+                    scored.into_iter().take(2).collect()
+                }
+            
+                (_, PriorTypes::DiploidSubclonal) => {
+                    scored.into_iter().take(3).collect()
+                }
+            
+                _ => {
+                    scored
+                        .into_iter()
+                        .filter(|(_, val)| *val > lp_cutoff)
+                        .collect()
+                }
+            };
+            
             // Plot
             let candidate_matrix_values: Vec<(BitVec, BitVec)> =
                 candidate_matrix.values().cloned().collect();
