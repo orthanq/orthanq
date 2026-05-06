@@ -1254,11 +1254,11 @@ pub fn linear_program_main_mode(
         problem.add_vector(variable().integer().min(0.0).max(1.0), variables.len());
 
     //create the model to minimise the sum of temporary variables
-    let mut sum_tvars = Expression::from_other_affine(0.);
+    let mut objective = Expression::from_other_affine(0.);
     for t_var in t_vars.iter() {
-        sum_tvars += t_var.into_expression();
+        objective += t_var.into_expression();
     }
-    let mut model = problem.minimise(sum_tvars.clone()).using(default_solver); // multiple solvers available
+    let mut model = problem.minimise(objective.clone()).using(default_solver); // multiple solvers available
 
     //add a constraint to make sure variables sum up to 1.0.
     let mut sum = Expression::from_other_affine(0.);
@@ -1432,11 +1432,11 @@ pub fn linear_program_fast_mode(
     let z: Vec<Variable> = problem.add_vector(variable().binary(), haplotypes.len());
 
     // 3. Build model
-    let mut sum_tvars = Expression::from_other_affine(0.);
+    let mut objective = Expression::from_other_affine(0.);
     for t_var in t_vars.iter() {
-        sum_tvars += t_var.into_expression();
+        objective += t_var.into_expression();
     }
-    let mut model = problem.minimise(sum_tvars.clone()).using(default_solver);
+    let mut model: solvers::coin_cbc::CoinCbcProblem = problem.minimise(objective.clone()).using(default_solver);
 
     // 4. Add fraction constraint for the diploid case to allow 0.5
     for i in 0..haplotypes.len() {
@@ -1472,18 +1472,28 @@ pub fn linear_program_fast_mode(
     // 8. Solve LP
     match model.solve() {
         Ok(sol) => {
+            let obj_val = sol.eval(&objective); 
+    
+            if obj_val == 0.0 {
+                dbg!("Objective is 0.0 - no meaningful root solution, returning empty output");
+                output_empty_output(&output_folder).unwrap();
+                return Ok(BTreeMap::new());
+            }
+    
             let mut lp_haplotypes = BTreeMap::new();
-            let best_variables: Vec<f64> = variables.iter().map(|v| sol.value(*v)).collect();
-
+            let best_variables: Vec<f64> =
+                variables.iter().map(|v| sol.value(*v)).collect();
+    
             for (val, haplotype) in best_variables.iter().zip(haplotypes.iter()) {
                 if *val > lp_cutoff {
                     lp_haplotypes.insert(haplotype.clone(), *val);
                 }
             }
-
+    
             // Plot
             let candidate_matrix_values: Vec<(BitVec, BitVec)> =
                 candidate_matrix.values().cloned().collect();
+    
             plot_prediction(
                 output_lp_datavzrd,
                 output_folder,
@@ -1493,14 +1503,16 @@ pub fn linear_program_fast_mode(
                 variant_calls,
                 &best_variables,
             )?;
-
+    
             Ok(lp_haplotypes)
         }
+    
         Err(ResolutionError::Infeasible) => {
             dbg!(format!("LP infeasible for constraint {}", constraint_value));
             output_empty_output(&output_folder).unwrap();
             Ok(BTreeMap::new())
         }
+    
         Err(e) => panic!("Unexpected LP error: {e}"),
     }
 }
