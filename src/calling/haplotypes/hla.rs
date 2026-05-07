@@ -196,8 +196,7 @@ impl FastCaller {
             //todo: maybe this has to change for every lp likelihood computation because one haplotype is less each time.
             let pop_freqs =
                 compute_filtered_haplotype_frequencies(&haplotype_variants, allele_freqs);
-            dbg!(&pop_freqs.len());
-            dbg!(&pop_freqs);
+
 
             //filter candidates vcf based on optional given input set of alleles (3-field-resolution)
             if let Some(input_alleles) = &self.enforce_given_alleles {
@@ -245,7 +244,6 @@ impl FastCaller {
 
                 all_results.push((constraint, tree));
             }
-            dbg!(&all_results);
 
             if all_results.iter().all(|(_, tree)| tree.is_empty()) {
                 return Ok(());
@@ -276,7 +274,6 @@ impl FastCaller {
                 v
             };
 
-            dbg!(&haplotypes, &sorted_event_likelihoods);
 
             //normalize logprobs by their sum
             let log_probs: Vec<LogProb> =
@@ -321,7 +318,6 @@ impl FastCaller {
                     .skip(odds_idx + 1)
                     .map(|s| s.to_string())
                     .collect();
-                dbg!(&haplotype_headers);
                 let hap_start = odds_idx + 1;
 
                 // collect events
@@ -344,7 +340,7 @@ impl FastCaller {
 
                     parent_event_likelihoods.push((HaplotypeFractions(fractions), logprob));
                 }
-                dbg!(&parent_event_likelihoods);
+                // dbg!(&parent_event_likelihoods);
 
                 let updated_event_likelihoods = adjust_event_likelihoods(
                     &parent_event_likelihoods,
@@ -420,7 +416,6 @@ fn convert_to_two_field(
     haplotypes: &Vec<Haplotype>,
 ) -> Result<(Vec<Haplotype>, Vec<(HaplotypeFractions, LogProb)>)> {
     let mut event_posteriors_map: Vec<(BTreeMap<Haplotype, NotNan<f64>>, LogProb)> = Vec::new();
-    // dbg!(&event_posteriors);
     for (fractions, logprob) in event_posteriors.iter() {
         //firstly, initiate a map for haplotype and fraction info for each event
         //by having zero fraction as first values

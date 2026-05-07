@@ -243,7 +243,6 @@ impl VariantCalls {
 
             // parse variant id
             let variant_id: i32 = String::from_utf8(record.id())?.parse()?;
-            dbg!(&variant_id);
 
             // calculate the probability of the variant being present or not according to the steps below:
 
@@ -268,7 +267,6 @@ impl VariantCalls {
 
             //then, sum the probabilities
             let prob_absent_or_artifact = prob_absent + prob_artifact;
-            dbg!(&prob_absent, &prob_artifact, &prob_absent_or_artifact);
 
             // 2-) find the probability of the variant given event definitions
             let mut prob_events_present = NotNan::new(0.0).unwrap();
@@ -295,25 +293,21 @@ impl VariantCalls {
                 if !parsed_prob_event.is_nan() {
                     prob_event =
                         NotNan::new(*Prob::from(PHREDProb(parsed_prob_event.into()))).unwrap();
-                } else {
-                    eprintln!("Parsed event is NaN!")
                 }
 
-                dbg!(&event, &parsed_prob_event, &prob_event);
                 prob_events_present += prob_event
             }
 
-            dbg!(&prob_events_present);
 
             // Skip variant if artifact probability is the highest among all; this is how we identify artifact variants to exclude from analysis.
             if prob_artifact > prob_absent && prob_artifact > prob_events_present {
-                dbg!(
-                    "Skipping variant due to high artifact probability",
-                    &variant_id,
-                    &prob_artifact,
-                    &prob_absent,
-                    &prob_events_present
-                );
+                // dbg!(
+                //     "Skipping variant due to high artifact probability",
+                //     &variant_id,
+                //     &prob_artifact,
+                //     &prob_absent,
+                //     &prob_events_present
+                // );
                 continue;
             }
 
@@ -2466,7 +2460,7 @@ pub fn explore_haplotype_tree(
         &ploidy_prior,
     )
     .unwrap();
-    dbg!(&root_solution, &root_likelihood);
+    // dbg!(&root_solution, &root_likelihood);
     // Keep a set of canonical keys to avoid duplicate solutions
     let mut seen: HashSet<String> = HashSet::new();
 
@@ -2545,13 +2539,11 @@ fn recursive_lp_search(
             3, // or whatever distance you want
             &valid_variants,
         );
-        dbg!(&sim_haps);
         // keep:
         // - similar haplotypes
         // - OR previously selected haplotypes
         reduced.retain(|h| sim_haps.contains(h) || prev_selected_haplotypes.contains(h));
 
-        dbg!(&reduced);
 
         //do not solve for vector lengths smaller than the constraint
         if reduced.len() < constraint_value as usize {
@@ -2561,7 +2553,6 @@ fn recursive_lp_search(
         // Recompute candidate matrix
         let filtered_hv = all_haplotype_variants.filter_for_haplotypes(&reduced)?;
         let candidate_matrix = CandidateMatrix::new(&filtered_hv)?;
-        dbg!(&reduced.len());
 
         // Solve LP for the reduced haplotype set
         let lp_solution = linear_program_fast_mode(
@@ -2575,7 +2566,6 @@ fn recursive_lp_search(
             Some(&pop_freqs),
             ploidy_prior,
         )?;
-        dbg!(&lp_solution);
 
         // Find lp haplotypes
         let lp_haplotypes: Vec<Haplotype> = lp_solution.keys().cloned().collect();
@@ -2584,7 +2574,6 @@ fn recursive_lp_search(
         // The latter is necessary to not include combinations that may arise from LP hitting two LP-identical haplotypes and find_identical_haplotypes_lp_variants() may result in each of these haplotypes pointing to each other, this then results in a double representation of the same haplotype.
         //the homozygous case is already supposed to be covered with constraint_n=1, so we don't want to have the case with the reciprocal combination. Example: Haplotype("A*68:03:01"): [Haplotype("A*68:31")], Haplotype("A*68:31"): [Haplotype("A*68:03:01")]
         let lp_identical_haps = find_identical_haplotypes_lp_variants(&filtered_hv, &lp_haplotypes);
-        dbg!(&lp_identical_haps);
 
         let check_for_reciprocal_entries = has_any_reciprocal(&lp_identical_haps);
         if !check_for_reciprocal_entries {
@@ -2681,15 +2670,13 @@ fn recursive_lp_search(
 
             //Prune recursion if original LP solution is too low
             let ln_half = LogProb::from(Prob(0.5));
-            dbg!(&current_likelihood, root_likelihood);
+            // dbg!(&current_likelihood, root_likelihood);
 
             //A depth limit is set because for some samples the root likelihood has the worst likelihood and the recursion iterates indefinitely as all of them are better than the root solution.
             //For this reason, a depth limit that is high enough to meet many solutions is introduced. The reason for the root lp solution resulting in the worst likelihood is unclear and can be further investigated (TODO).
             let depth_limit = 50;
 
             if current_likelihood < root_likelihood + ln_half || depth >= 50 {
-                dbg!(&current_likelihood, root_likelihood);
-                dbg!(&(root_likelihood + ln_half));
                 dbg!(&"pruning the branch");
                 continue;
             }
@@ -2703,7 +2690,6 @@ fn recursive_lp_search(
 
         reduced.retain(|h| !to_remove.contains(h));
         // Recurse on this reduced set
-        dbg!(&depth);
         recursive_lp_search(
             depth + 1,
             root_likelihood,
@@ -2861,7 +2847,6 @@ fn compute_lp_likelihood(
 
     let mut cache = Cache::default();
     let current_likelihood = Likelihood::new().compute(event_fractions, &data, &mut cache);
-    dbg!(&current_likelihood);
     let posterior = if let Some(freqs) = pop_freqs {
         let pop_prior = PopulationPrior {
             haplotypes: lp_haplotypes,

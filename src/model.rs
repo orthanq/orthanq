@@ -279,7 +279,6 @@ impl<'a> model::Prior for PopulationPrior<'a> {
             PriorTypes::DiploidSubclonal => 3,
             PriorTypes::Uniform => 1,
         };
-        dbg!(&self.haplotypes);
         for (haplotype, fraction) in self.haplotypes.iter().zip(event.iter()) {
             let hap_str = haplotype.to_string();
 
