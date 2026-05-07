@@ -197,7 +197,6 @@ impl FastCaller {
             let pop_freqs =
                 compute_filtered_haplotype_frequencies(&haplotype_variants, allele_freqs);
 
-
             //filter candidates vcf based on optional given input set of alleles (3-field-resolution)
             if let Some(input_alleles) = &self.enforce_given_alleles {
                 haplotype_variants =
@@ -273,7 +272,6 @@ impl FastCaller {
                 v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
                 v
             };
-
 
             //normalize logprobs by their sum
             let log_probs: Vec<LogProb> =

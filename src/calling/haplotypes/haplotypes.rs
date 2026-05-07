@@ -298,7 +298,6 @@ impl VariantCalls {
                 prob_events_present += prob_event
             }
 
-
             // Skip variant if artifact probability is the highest among all; this is how we identify artifact variants to exclude from analysis.
             if prob_artifact > prob_absent && prob_artifact > prob_events_present {
                 // dbg!(
@@ -2543,7 +2542,6 @@ fn recursive_lp_search(
         // - similar haplotypes
         // - OR previously selected haplotypes
         reduced.retain(|h| sim_haps.contains(h) || prev_selected_haplotypes.contains(h));
-
 
         //do not solve for vector lengths smaller than the constraint
         if reduced.len() < constraint_value as usize {
