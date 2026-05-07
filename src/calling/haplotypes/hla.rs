@@ -300,7 +300,7 @@ impl FastCaller {
             );
 
             //applying the weakly informative priors requires the non-normalized real logprobs.
-            let mut final_event_likelihoods = sorted_event_likelihoods.clone();
+            let mut final_event_likelihoods = normalized_event_likelihoods.clone();
 
             //use parent.csv and apply weakly informative priors
             if let Some(parent_path) = &self.parent {
@@ -382,7 +382,7 @@ impl FastCaller {
                 &haplotypes,
                 &final_event_likelihoods,
                 self.output_lp_datavzrd,
-                false,
+                true,
             );
 
             //write 2-field and G group output tables
@@ -394,7 +394,7 @@ impl FastCaller {
                 &haplotypes,
                 &variant_calls,
                 &cm,
-                false,
+                true,
             )?;
 
             // 2-) G groups
@@ -783,7 +783,7 @@ fn write_g_group_results(
         candidate_matrix,
         event_posteriors,
         &final_haplotypes_converted,
-        false,
+        true,
     )?;
 
     Ok(())

@@ -17,8 +17,7 @@
         "y": {
           "field": "density",
           "type": "quantitative",
-          "scale": {"type": "log"},
-          "axis": {"title": "log(posterior density)"}
+          "axis": {"title": "phred prob"}
         },
         "color": {"value": "black"}
       }

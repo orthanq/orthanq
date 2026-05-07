@@ -1436,7 +1436,8 @@ pub fn linear_program_fast_mode(
     for t_var in t_vars.iter() {
         objective += t_var.into_expression();
     }
-    let mut model: solvers::coin_cbc::CoinCbcProblem = problem.minimise(objective.clone()).using(default_solver);
+    let mut model: solvers::coin_cbc::CoinCbcProblem =
+        problem.minimise(objective.clone()).using(default_solver);
 
     // 4. Add fraction constraint for the diploid case to allow 0.5
     for i in 0..haplotypes.len() {
@@ -1472,8 +1473,8 @@ pub fn linear_program_fast_mode(
     // 8. Solve LP
     match model.solve() {
         Ok(sol) => {
-            let obj_val = sol.eval(&objective); 
-    
+            let obj_val = sol.eval(&objective);
+
             // This check is necessary because some samples have 0.0 in the root and the likelihood is not the best likelihood leading to an idefinite number of iterations in the recursion.
             // It happens because given data, there is no meaningful solution.
             // It takes hours and never finishes. TODO: should be investigated why LP gives 0.0 obj value.
@@ -1482,10 +1483,9 @@ pub fn linear_program_fast_mode(
                 output_empty_output(&output_folder).unwrap();
                 return Ok(BTreeMap::new());
             }
-    
-            let best_variables: Vec<f64> =
-                variables.iter().map(|v| sol.value(*v)).collect();
-    
+
+            let best_variables: Vec<f64> = variables.iter().map(|v| sol.value(*v)).collect();
+
             // do not take only the nonzero fractions because sometimes lp may result in more than n (constraint number) number of solutions with one solution being very small.
             // instead take the best 2 number if diploid and best 3 if diploid subclonal.
             // let mut lp_haplotypes = BTreeMap::new();
@@ -1496,39 +1496,31 @@ pub fn linear_program_fast_mode(
             // // }
 
             let mut scored: Vec<(Haplotype, f64)> = haplotypes
-            .iter()
-            .cloned()
-            .zip(best_variables.iter().cloned())
-            .collect();
-        
+                .iter()
+                .cloned()
+                .zip(best_variables.iter().cloned())
+                .collect();
+
             // sort descending by score
             scored.sort_by(|a, b| b.1.total_cmp(&a.1));
-            
+
             let lp_haplotypes: BTreeMap<Haplotype, f64> = match (constraint_value, ploidy_prior) {
-                (1, PriorTypes::Diploid) => {
-                    scored.into_iter().take(1).collect()
-                }
-            
-                (_, PriorTypes::Diploid) => {
-                    scored.into_iter().take(2).collect()
-                }
-            
-                (_, PriorTypes::DiploidSubclonal) => {
-                    scored.into_iter().take(3).collect()
-                }
-            
-                _ => {
-                    scored
-                        .into_iter()
-                        .filter(|(_, val)| *val > lp_cutoff)
-                        .collect()
-                }
+                (1, PriorTypes::Diploid) => scored.into_iter().take(1).collect(),
+
+                (_, PriorTypes::Diploid) => scored.into_iter().take(2).collect(),
+
+                (_, PriorTypes::DiploidSubclonal) => scored.into_iter().take(3).collect(),
+
+                _ => scored
+                    .into_iter()
+                    .filter(|(_, val)| *val > lp_cutoff)
+                    .collect(),
             };
-            
+
             // Plot
             let candidate_matrix_values: Vec<(BitVec, BitVec)> =
                 candidate_matrix.values().cloned().collect();
-    
+
             plot_prediction(
                 output_lp_datavzrd,
                 output_folder,
@@ -1538,16 +1530,16 @@ pub fn linear_program_fast_mode(
                 variant_calls,
                 &best_variables,
             )?;
-    
+
             Ok(lp_haplotypes)
         }
-    
+
         Err(ResolutionError::Infeasible) => {
             dbg!(format!("LP infeasible for constraint {}", constraint_value));
             output_empty_output(&output_folder).unwrap();
             Ok(BTreeMap::new())
         }
-    
+
         Err(e) => panic!("Unexpected LP error: {e}"),
     }
 }
@@ -1860,7 +1852,7 @@ pub fn plot_densities(
     for (i, (fractions, logprob)) in new_event_posteriors.iter().enumerate() {
         plot_density.push(if to_phred {
             DatasetDensitySolution {
-                density: format!("{:?}", PHREDProb::from(logprob.clone())),
+                density: format!("{}", PHREDProb::from(logprob.clone()).0),
                 solution_number: i,
             }
         } else {
@@ -2351,7 +2343,7 @@ pub fn output_empty_output(output_folder: &PathBuf) -> Result<(), Box<dyn Error>
         "best_solution.json",
         "2_field_solutions.json",
         "3_field_solutions.json",
-        "arrow_plot.json"
+        "arrow_plot.json",
     ] {
         let json = include_str!("../../../templates/final_prediction.json");
         let blueprint: Value = serde_json::from_str(json)?;
