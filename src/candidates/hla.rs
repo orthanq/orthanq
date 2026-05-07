@@ -340,12 +340,12 @@ impl Caller {
     // }
 }
 
-#[derive(Debug, Deserialize)]
-struct Record {
-    var: String,
-    // population: String,
-    frequency: NotNan<f64>,
-}
+// #[derive(Debug, Deserialize)]
+// struct Record {
+//     var: String,
+//     // population: String,
+//     frequency: NotNan<f64>,
+// }
 
 //get_unconfirmed_alleles function finds HLA alleles that are "Confirmed" and "Unconfirmed".
 //In the end the unconfirmed vector contains "Unconfirmed" alleles

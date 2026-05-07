@@ -1,13 +1,18 @@
+use crate::calling::haplotypes::hla::PopFreq;
+use crate::model::Cache;
 use crate::model::{AlleleFreq, Data, HaplotypeFractions};
-use crate::model::{Likelihood, Marginal, Posterior, Prior};
+use crate::model::{CombinedPrior, Likelihood, Marginal, PloidyPrior, PopulationPrior, Posterior};
 use anyhow::Result;
+use bio::stats::bayesian::model::Likelihood as BayesianLikelihood;
 use bio::stats::bayesian::model::Model;
+use bio::stats::bayesian::model::Prior as BayesianPrior;
 use bio::stats::{probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
 use datavzrd::render_report;
-use serde_yaml::Value;
-
 use derefable::Derefable;
+use rand_xoshiro::rand_core::le;
+use serde_yaml::Value;
+use statrs::distribution::Uniform;
 
 use derive_deref::DerefMut;
 
@@ -34,6 +39,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use derive_new::new;
 use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 use std::str::FromStr;
@@ -121,7 +127,7 @@ impl CandidateMatrix {
         });
         Ok(CandidateMatrix(candidate_matrix))
     }
-    pub fn find_identical_haplotypes(
+    pub fn find_identical_haplotypes_all_variants(
         &self,
         haplotypes: Vec<Haplotype>,
     ) -> (
@@ -237,7 +243,6 @@ impl VariantCalls {
 
             // parse variant id
             let variant_id: i32 = String::from_utf8(record.id())?.parse()?;
-            dbg!(&variant_id);
 
             // calculate the probability of the variant being present or not according to the steps below:
 
@@ -262,7 +267,6 @@ impl VariantCalls {
 
             //then, sum the probabilities
             let prob_absent_or_artifact = prob_absent + prob_artifact;
-            dbg!(&prob_absent, &prob_artifact, &prob_absent_or_artifact);
 
             // 2-) find the probability of the variant given event definitions
             let mut prob_events_present = NotNan::new(0.0).unwrap();
@@ -289,15 +293,22 @@ impl VariantCalls {
                 if !parsed_prob_event.is_nan() {
                     prob_event =
                         NotNan::new(*Prob::from(PHREDProb(parsed_prob_event.into()))).unwrap();
-                } else {
-                    println!("Parsed event is NaN!")
                 }
 
-                dbg!(&event, &parsed_prob_event, &prob_event);
                 prob_events_present += prob_event
             }
 
-            dbg!(&prob_events_present);
+            // Skip variant if artifact probability is the highest among all; this is how we identify artifact variants to exclude from analysis.
+            if prob_artifact > prob_absent && prob_artifact > prob_events_present {
+                // dbg!(
+                //     "Skipping variant due to high artifact probability",
+                //     &variant_id,
+                //     &prob_artifact,
+                //     &prob_absent,
+                //     &prob_events_present
+                // );
+                continue;
+            }
 
             // 3-) get max of the variant being not present and sum of the provided events to use for weighting in linear program
             let max_prob = cmp::max(prob_absent_or_artifact, prob_events_present);
@@ -320,7 +331,16 @@ impl VariantCalls {
                 if let Some((vaf, density)) = pair.split_once('=') {
                     let vaf: AlleleFreq = vaf.parse()?;
                     let density: f64 = density.parse()?;
-                    vaf_density.insert(vaf, LogProb::from(PHREDProb(density)));
+
+                    let log_prob = {
+                        let mut lp = LogProb::from(PHREDProb(density));
+                        //todo: some varlociraptor records may contain inf for some vafs. This is handled temporarily here by clamping inf using epsilon in probability space
+                        if !lp.is_finite() {
+                            lp = LogProb::from(1e-300_f64);
+                        }
+                        lp
+                    };
+                    vaf_density.insert(vaf, log_prob);
                 }
             }
 
@@ -1189,7 +1209,7 @@ pub(crate) struct ArrowRecord {
     status: String,
 }
 
-pub fn linear_program(
+pub fn linear_program_main_mode(
     output_lp_datavzrd: &bool,
     output_folder: &PathBuf,
     candidate_matrix: &CandidateMatrix,
@@ -1227,11 +1247,11 @@ pub fn linear_program(
         problem.add_vector(variable().integer().min(0.0).max(1.0), variables.len());
 
     //create the model to minimise the sum of temporary variables
-    let mut sum_tvars = Expression::from_other_affine(0.);
+    let mut objective = Expression::from_other_affine(0.);
     for t_var in t_vars.iter() {
-        sum_tvars += t_var.into_expression();
+        objective += t_var.into_expression();
     }
-    let mut model = problem.minimise(sum_tvars.clone()).using(default_solver); // multiple solvers available
+    let mut model = problem.minimise(objective.clone()).using(default_solver); // multiple solvers available
 
     //add a constraint to make sure variables sum up to 1.0.
     let mut sum = Expression::from_other_affine(0.);
@@ -1351,13 +1371,180 @@ pub fn linear_program(
     }
 }
 
+pub fn linear_program_fast_mode(
+    output_lp_datavzrd: &bool,
+    output_folder: &PathBuf,
+    candidate_matrix: &CandidateMatrix,
+    haplotypes: &Vec<Haplotype>,
+    variant_calls: &VariantCalls,
+    lp_cutoff: f64,
+    constraint_value: i32,
+    pop_freqs: Option<&BTreeMap<String, f64>>,
+    ploidy_prior: &PriorTypes,
+) -> Result<BTreeMap<Haplotype, f64>, anyhow::Error> {
+    // 1. Create problem and variables
+    let mut problem = ProblemVariables::new();
+    let variables: Vec<Variable> =
+        problem.add_vector(variable().min(0.0).max(1.0), haplotypes.len());
+    let mut constraints: Vec<Expression> = Vec::new();
+
+    collect_constraints_and_variants(
+        candidate_matrix,
+        haplotypes,
+        variant_calls,
+        &variables,
+        &mut constraints,
+    )?;
+
+    //add prior constraints
+    if let Some(pop_freqs) = pop_freqs {
+        let mut prior_sum = Expression::from_other_affine(0.);
+        for (variable, haplotype) in variables.iter().zip(haplotypes.iter()) {
+            let mut hap_prior = NotNan::new(0.0).unwrap();
+            let haplotype_str = haplotype.to_string();
+
+            match pop_freqs.get(&haplotype_str) {
+                Some(freq) => {
+                    hap_prior = NotNan::new(*freq).unwrap();
+                }
+                None => {
+                    eprintln!(
+                        "Warning: haplotype '{}' not found in population frequencies",
+                        haplotype_str
+                    );
+                }
+            }
+            prior_sum += -(*variable * *hap_prior);
+        }
+        constraints.push(prior_sum);
+    }
+
+    let t_vars: Vec<Variable> = problem.add_vector(variable().min(0.0).max(1.0), constraints.len());
+
+    // 2. Binary fraction variables; these are required for 1) ensuring the number of selected haplotypes are equal to constraint_Value and 2) if it's 2 and diploid is chosen, only 0.5 is allowed in addition to 0.0 and 1.0.
+    let z: Vec<Variable> = problem.add_vector(variable().binary(), haplotypes.len());
+
+    // 3. Build model
+    let mut objective = Expression::from_other_affine(0.);
+    for t_var in t_vars.iter() {
+        objective += t_var.into_expression();
+    }
+    let mut model: solvers::coin_cbc::CoinCbcProblem =
+        problem.minimise(objective.clone()).using(default_solver);
+
+    // 4. Add fraction constraint for the diploid case to allow 0.5
+    for i in 0..haplotypes.len() {
+        // link main variables with fraction variables
+        model = model.with(constraint!(variables[i] <= z[i]));
+
+        if constraint_value == 2 && *ploidy_prior == PriorTypes::Diploid {
+            model = model.with(constraint!(variables[i] == 0.5 * z[i]));
+        }
+        // all other constraints and prior types (Diploid and DiploidSubclonal) should have the continuous space.
+    }
+
+    // 5. Enforce total number of haplotypes selected equals constraint_value
+    let mut sum_z = Expression::from_other_affine(0.);
+    for z_var in z.iter() {
+        sum_z += Expression::from_other_affine(*z_var);
+    }
+    model = model.with(constraint!(sum_z == constraint_value));
+
+    // 6. Sum of fractions = 1
+    let mut sum = Expression::from_other_affine(0.);
+    for var in variables.iter() {
+        sum += Expression::from_other_affine(*var);
+    }
+    model = model.with(constraint!(sum == 1.0));
+
+    // 7. Variant matrix constraints
+    for (c, t_var) in constraints.iter().zip(t_vars.iter()) {
+        model = model.with(constraint!(t_var >= c.clone()));
+        model = model.with(constraint!(t_var >= -c.clone()));
+    }
+
+    // 8. Solve LP
+    match model.solve() {
+        Ok(sol) => {
+            let obj_val = sol.eval(&objective);
+
+            // This check is necessary because some samples have 0.0 in the root and the likelihood is not the best likelihood leading to an idefinite number of iterations in the recursion.
+            // It happens because given data, there is no meaningful solution.
+            // It takes hours and never finishes. TODO: should be investigated why LP gives 0.0 obj value.
+            if obj_val == 0.0 {
+                dbg!("Objective is 0.0 - no meaningful root solution, returning empty output");
+                output_empty_output(&output_folder).unwrap();
+                return Ok(BTreeMap::new());
+            }
+
+            let best_variables: Vec<f64> = variables.iter().map(|v| sol.value(*v)).collect();
+
+            // do not take only the nonzero fractions because sometimes lp may result in more than n (constraint number) number of solutions with one solution being very small.
+            // instead take the best 2 number if diploid and best 3 if diploid subclonal.
+            // let mut lp_haplotypes = BTreeMap::new();
+            // // for (val, haplotype) in best_variables.iter().zip(haplotypes.iter()) {
+            // //     if *val > lp_cutoff {
+            // //         lp_haplotypes.insert(haplotype.clone(), *val);
+            // //     }
+            // // }
+
+            let mut scored: Vec<(Haplotype, f64)> = haplotypes
+                .iter()
+                .cloned()
+                .zip(best_variables.iter().cloned())
+                .collect();
+
+            // sort descending by score
+            scored.sort_by(|a, b| b.1.total_cmp(&a.1));
+
+            let lp_haplotypes: BTreeMap<Haplotype, f64> = match (constraint_value, ploidy_prior) {
+                (1, PriorTypes::Diploid) => scored.into_iter().take(1).collect(),
+
+                (_, PriorTypes::Diploid) => scored.into_iter().take(2).collect(),
+
+                (_, PriorTypes::DiploidSubclonal) => scored.into_iter().take(3).collect(),
+
+                _ => scored
+                    .into_iter()
+                    .filter(|(_, val)| *val > lp_cutoff)
+                    .collect(),
+            };
+
+            // Plot
+            let candidate_matrix_values: Vec<(BitVec, BitVec)> =
+                candidate_matrix.values().cloned().collect();
+
+            plot_prediction(
+                output_lp_datavzrd,
+                output_folder,
+                &"lp",
+                &candidate_matrix_values,
+                haplotypes,
+                variant_calls,
+                &best_variables,
+            )?;
+
+            Ok(lp_haplotypes)
+        }
+
+        Err(ResolutionError::Infeasible) => {
+            dbg!(format!("LP infeasible for constraint {}", constraint_value));
+            output_empty_output(&output_folder).unwrap();
+            Ok(BTreeMap::new())
+        }
+
+        Err(e) => panic!("Unexpected LP error: {e}"),
+    }
+}
+
 pub fn write_results(
     outcsv: &PathBuf,
     variant_calls: &VariantCalls,
     candidate_matrix: &CandidateMatrix,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     final_haplotypes: &Vec<Haplotype>,
-    variant_info: bool,
+    // variant_info: bool,
+    to_phred: bool,
 ) -> Result<()> {
     //firstly add variant query and probabilities to the outout table for each event
     let variant_calls: Vec<AlleleFreqDist> = variant_calls
@@ -1365,39 +1552,41 @@ pub fn write_results(
         .map(|(_, call)| call.afd.clone())
         .collect();
     let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
-    // let event_posteriors = computed_model.event_posteriors();
-    if variant_info {
-        event_posteriors.iter().for_each(|(fractions, _)| {
-            let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
-            candidate_matrix.iter().zip(variant_calls.iter()).for_each(
-                |((variant_id, (genotypes, covered)), afd)| {
-                    let mut denom = NotNan::new(1.0).unwrap();
-                    let mut vaf_sum = NotNan::new(0.0).unwrap();
-                    let mut counter = 0;
-                    fractions.iter().enumerate().for_each(|(i, fraction)| {
-                        if genotypes[i as u64] && covered[i as u64] {
-                            vaf_sum += *fraction;
-                            counter += 1;
-                        } else if genotypes[i as u64] == false && covered[i as u64] == false {
-                            denom -= *fraction;
-                        }
-                    });
-                    if denom > NotNan::new(0.0).unwrap() {
-                        vaf_sum /= denom;
-                    }
-                    vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
-                        / NotNan::new(100.0).unwrap();
-                    if !afd.is_empty() && counter > 0 {
-                        let answer = afd.vaf_query(&vaf_sum);
-                        vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
-                    } else {
-                        ()
-                    }
-                },
-            );
-            event_queries.push(vaf_queries);
-        });
-    }
+
+    // todo: unused since the plots are already used for the same purpose; reactivate this parameter when needed again
+
+    // if variant_info {
+    //     event_posteriors.iter().for_each(|(fractions, _)| {
+    //         let mut vaf_queries: BTreeMap<VariantID, (AlleleFreq, LogProb)> = BTreeMap::new();
+    //         candidate_matrix.iter().zip(variant_calls.iter()).for_each(
+    //             |((variant_id, (genotypes, covered)), afd)| {
+    //                 let mut denom = NotNan::new(1.0).unwrap();
+    //                 let mut vaf_sum = NotNan::new(0.0).unwrap();
+    //                 let mut counter = 0;
+    //                 fractions.iter().enumerate().for_each(|(i, fraction)| {
+    //                     if genotypes[i as u64] && covered[i as u64] {
+    //                         vaf_sum += *fraction;
+    //                         counter += 1;
+    //                     } else if genotypes[i as u64] == false && covered[i as u64] == false {
+    //                         denom -= *fraction;
+    //                     }
+    //                 });
+    //                 if denom > NotNan::new(0.0).unwrap() {
+    //                     vaf_sum /= denom;
+    //                 }
+    //                 vaf_sum = NotNan::new((vaf_sum * NotNan::new(100.0).unwrap()).round()).unwrap()
+    //                     / NotNan::new(100.0).unwrap();
+    //                 if !afd.is_empty() && counter > 0 {
+    //                     let answer = afd.vaf_query(&vaf_sum);
+    //                     vaf_queries.insert(*variant_id, (vaf_sum, answer.unwrap()));
+    //                 } else {
+    //                     ()
+    //                 }
+    //             },
+    //         );
+    //         event_queries.push(vaf_queries);
+    //     });
+    // }
     // Then,print TSV table with results
     // Columns: posterior_prob, haplotype_a, haplotype_b, haplotype_c, ...
     // with each column after the first showing the fraction of the respective haplotype
@@ -1409,100 +1598,166 @@ pub fn write_results(
         .map(|h| h.to_string())
         .collect();
     headers.extend(haplotypes_str);
-    if variant_info {
-        let variant_names = event_queries[0]
-            .keys()
-            .map(|key| format!("{:?}", key))
-            .collect::<Vec<String>>();
-        headers.extend(variant_names); //add variant names as separate columns
-    }
+    // if variant_info {
+    //     let variant_names = event_queries[0]
+    //         .keys()
+    //         .map(|key| format!("{:?}", key))
+    //         .collect::<Vec<String>>();
+    //     headers.extend(variant_names); //add variant names as separate columns
+    // }
     wtr.write_record(&headers)?;
 
-    //write best record on top
+    //write best record on top; assuming event_posteriors is always sorted
     let mut records = Vec::new();
-    // let mut event_posteriors = computed_model.event_posteriors(); //compute a second time because event_posteriors can't be cloned from above.
     let (haplotype_frequencies, best_density) = event_posteriors.iter().next().unwrap();
-    let best_odds: f64 = 1.00;
-    let format_f64 = |number: f64, records: &mut Vec<String>| {
-        if number <= 0.01 {
-            records.push(format!("{:+.2e}", number))
+
+    let best_odds: f64 = 0.0;
+
+    let format_f64 = |n: f64, records: &mut Vec<String>| {
+        //necessary because f64 may preserve the minus sign and output may result in -0.0.
+        let n = if n == 0.0 { 0.0 } else { n };
+
+        records.push(if n == 0.0 || n > 0.01 {
+            format!("{:.1}", n)
         } else {
-            records.push(format!("{:.2}", number))
-        }
+            format!("{:+.1e}", n)
+        });
     };
-    format_f64(best_density.exp(), &mut records);
-    records.push(format!("{:.2}", best_odds));
+
+    if to_phred {
+        format_f64(f64::from(PHREDProb::from(*best_density)), &mut records);
+    } else {
+        format_f64(best_density.exp(), &mut records);
+    }
+
+    records.push(format!("{:.1}", best_odds));
     let format_freqs = |frequency: NotNan<f64>, records: &mut Vec<String>| {
-        if frequency <= NotNan::new(0.01).unwrap() {
-            records.push(format!("{:+.4e}", NotNan::into_inner(frequency)))
+        if frequency == 0.0 {
+            records.push("0.0".to_string());
+        } else if frequency <= NotNan::new(0.01).unwrap() {
+            records.push(format!("{:+.1e}", NotNan::into_inner(frequency)))
         } else {
-            records.push(format!("{:.4}", frequency))
+            records.push(format!("{:.1}", frequency))
         }
     };
     haplotype_frequencies
         .iter()
         .for_each(|frequency| format_freqs(*frequency, &mut records));
 
-    if variant_info {
-        //add vaf queries and probabilities for the first event to the output table
-        let queries: Vec<(AlleleFreq, LogProb)> = event_queries
-            .iter()
-            .next()
-            .unwrap()
-            .values()
-            .cloned()
-            .collect();
-        queries.iter().for_each(|(query, answer)| {
-            let prob = f64::from(Prob::from(*answer));
-            if prob <= 0.01 {
-                records.push(format!("{}{}{:+.2e}", query, ":", prob));
-            } else {
-                records.push(format!("{}{}{:.2}", query, ":", prob));
-            }
-        });
-    }
+    // if variant_info {
+    //     //add vaf queries and probabilities for the first event to the output table
+    //     let queries: Vec<(AlleleFreq, LogProb)> = event_queries
+    //         .iter()
+    //         .next()
+    //         .unwrap()
+    //         .values()
+    //         .cloned()
+    //         .collect();
+    //     queries.iter().for_each(|(query, answer)| {
+    //         let prob = f64::from(Prob::from(*answer));
+    //         if prob <= 0.01 {
+    //             records.push(format!("{}{}{:+.2e}", query, ":", prob));
+    //         } else {
+    //             records.push(format!("{}{}{:.2}", query, ":", prob));
+    //         }
+    //     });
+    // }
 
     wtr.write_record(records)?;
 
-    if variant_info {
-        event_posteriors
-            .iter()
-            .skip(1)
-            .zip(event_queries.iter().skip(1))
-            .for_each(|((haplotype_frequencies, density), queries)| {
-                let mut records = Vec::new();
-                let odds = (density - best_density).exp();
-                format_f64(density.exp(), &mut records);
-                format_f64(odds, &mut records);
-                haplotype_frequencies
-                    .iter()
-                    .for_each(|frequency| format_freqs(*frequency, &mut records));
+    // todo: unused since the plots are already used for the same purpose; reactivate this parameter when needed again
+    // if variant_info {
+    //     event_posteriors
+    //         .iter()
+    //         .skip(1)
+    //         .zip(event_queries.iter().skip(1))
+    //         .for_each(|((haplotype_frequencies, density), queries)| {
+    //             let mut records = Vec::new();
+    //             let odds = (density - best_density).exp();
+    //             format_f64(density.exp(), &mut records);
+    //             format_f64(odds, &mut records);
+    //             haplotype_frequencies
+    //                 .iter()
+    //                 .for_each(|frequency| format_freqs(*frequency, &mut records));
 
-                queries.iter().for_each(|(_, (query, answer))| {
-                    let prob = f64::from(Prob::from(*answer));
-                    if prob <= 0.01 {
-                        records.push(format!("{}{}{:+.2e}", query, ":", prob));
-                    } else {
-                        records.push(format!("{}{}{:.2}", query, ":", prob));
-                    }
-                });
-                wtr.write_record(records).unwrap();
-            });
-    } else {
-        event_posteriors
-            .iter()
-            .skip(1)
-            .for_each(|(haplotype_frequencies, density)| {
-                let mut records = Vec::new();
-                let odds = (density - best_density).exp();
-                format_f64(density.exp(), &mut records);
-                format_f64(odds, &mut records);
-                haplotype_frequencies
-                    .iter()
-                    .for_each(|frequency| format_freqs(*frequency, &mut records));
+    //             queries.iter().for_each(|(_, (query, answer))| {
+    //                 let prob = f64::from(Prob::from(*answer));
+    //                 if prob <= 0.01 {
+    //                     records.push(format!("{}{}{:+.2e}", query, ":", prob));
+    //                 } else {
+    //                     records.push(format!("{}{}{:.2}", query, ":", prob));
+    //                 }
+    //             });
+    //             wtr.write_record(records).unwrap();
+    //         });
+    // } else {
+    event_posteriors
+        .iter()
+        .skip(1)
+        .for_each(|(haplotype_frequencies, density)| {
+            let mut records = Vec::new();
 
-                wtr.write_record(records).unwrap();
-            });
+            if to_phred {
+                format_f64(f64::from(PHREDProb::from(*density)), &mut records);
+                format_f64(
+                    f64::from(PHREDProb::from(density - best_density)),
+                    &mut records,
+                ); //odds
+            } else {
+                format_f64(density.exp(), &mut records);
+                format_f64((density - best_density).exp(), &mut records); //odds
+            }
+
+            haplotype_frequencies
+                .iter()
+                .for_each(|frequency| format_freqs(*frequency, &mut records));
+
+            wtr.write_record(records).unwrap();
+        });
+    // }
+
+    Ok(())
+}
+
+pub fn write_results_fast_mode(
+    results: &Vec<(i32, Vec<(BTreeMap<Haplotype, f64>, LogProb)>)>,
+    outcsv: &PathBuf,
+) -> Result<(), anyhow::Error> {
+    let mut wtr = csv::WriterBuilder::new()
+        .delimiter(b'\t')
+        .from_path(outcsv)?;
+
+    let headers = [
+        "constraint_n",
+        "haplotypes",
+        "fractions",
+        "log_likelihood",
+        "norm_likelihood",
+    ];
+    wtr.write_record(&headers)?;
+
+    for (constraint_value, tree_results) in results {
+        for (hap_map, logprob) in tree_results {
+            let haplotypes = hap_map
+                .keys()
+                .map(|h| h.0.clone())
+                .collect::<Vec<_>>()
+                .join(",");
+
+            let fractions = hap_map
+                .values()
+                .map(|f| format!("{:.1}", f))
+                .collect::<Vec<_>>()
+                .join(",");
+
+            wtr.write_record(&[
+                constraint_value.to_string(),
+                haplotypes,
+                fractions,
+                logprob.0.to_string(),
+                logprob.exp().to_string(),
+            ])?;
+        }
     }
 
     Ok(())
@@ -1513,6 +1768,7 @@ pub fn collect_constraints_and_variants(
     haplotypes: &Vec<Haplotype>,
     variant_calls: &VariantCalls,
     variables: &Vec<Variable>,
+    // pop_freqs: Option<&BTreeMap<String, f64>>,
     constraints: &mut Vec<Expression>,
 ) -> Result<HashMap<Haplotype, Vec<VariantID>>> {
     let candidate_matrix_values: Vec<(BitVec, BitVec)> =
@@ -1525,9 +1781,8 @@ pub fn collect_constraints_and_variants(
     for ((genotype_matrix, coverage_matrix), (variant, call)) in
         candidate_matrix_values.iter().zip(variant_calls.iter())
     {
-        let mut fraction_cont = Expression::from_other_affine(0.);
-        let _prime_fraction_cont = Expression::from_other_affine(0.);
-        let _vaf = Expression::from_other_affine(0.);
+        let mut fraction_sum = Expression::from_other_affine(0.);
+
         let mut counter = 0;
         for (i, _variable) in variables.iter().enumerate() {
             if coverage_matrix[i as u64] {
@@ -1537,13 +1792,16 @@ pub fn collect_constraints_and_variants(
         if counter == variables.len() {
             for (i, (variable, haplotype)) in variables.iter().zip(haplotypes.iter()).enumerate() {
                 if genotype_matrix[i as u64] {
-                    fraction_cont += *variable;
+                    fraction_sum += *variable;
+
                     let mut existing = haplotype_dict.get(&haplotype).unwrap().clone();
                     existing.push(variant.clone());
                     haplotype_dict.insert(haplotype.clone(), existing);
                 }
             }
-            let expr_to_add = *call.max_prob * (fraction_cont - call.af.clone().into_expression());
+            let mut expr_to_add =
+                *call.max_prob * (fraction_sum - call.af.clone().into_expression());
+
             constraints.push(expr_to_add.clone());
             expr += expr_to_add;
         }
@@ -1560,7 +1818,7 @@ pub(crate) struct DatasetHaplotypeFractionsWsolution {
 
 #[derive(Serialize, Debug)]
 pub(crate) struct DatasetDensitySolution {
-    density: f64,
+    density: String,
     solution_number: usize,
 }
 
@@ -1569,6 +1827,7 @@ pub fn plot_densities(
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     final_haplotypes: &Vec<Haplotype>,
     file_prefix: &str,
+    to_phred: bool,
 ) -> Result<()> {
     let file_name = format!("{}_solutions.json", file_prefix.to_string());
     let json = include_str!("../../../templates/densities.json");
@@ -1584,10 +1843,18 @@ pub fn plot_densities(
         new_event_posteriors = new_event_posteriors[0..plot_first_events].to_vec();
     }
     for (i, (fractions, logprob)) in new_event_posteriors.iter().enumerate() {
-        plot_density.push(DatasetDensitySolution {
-            density: logprob.exp().clone(),
-            solution_number: i,
+        plot_density.push(if to_phred {
+            DatasetDensitySolution {
+                density: format!("{}", PHREDProb::from(logprob.clone()).0),
+                solution_number: i,
+            }
+        } else {
+            DatasetDensitySolution {
+                density: format!("{:?}", logprob.exp().clone()),
+                solution_number: i,
+            }
         });
+
         for (f, h) in fractions.iter().zip(final_haplotypes.iter()) {
             //fractions and final haplotypes are already ordered.
             if f != &NotNan::new(0.0).unwrap() {
@@ -1646,7 +1913,7 @@ fn haplotype_positive_variants(
         .collect()
 }
 
-fn find_similar_haplotypes(
+fn find_identical_haplotypes_lp_variants(
     hap_var: &HaplotypeVariants,
     queried_haplotypes: &[Haplotype],
 ) -> BTreeMap<Haplotype, Vec<Haplotype>> {
@@ -1728,7 +1995,7 @@ pub fn get_event_posteriors(
 
     //generate one map with representative haplotypes as key (required for lp) and one map with all haplotypes as key (required for extension of resulting table)
     let (identical_haplotypes_map_rep, identical_haplotypes_map) =
-        candidate_matrix.find_identical_haplotypes(haplotypes);
+        candidate_matrix.find_identical_haplotypes_all_variants(haplotypes);
 
     // Print the result
     // for (representative, group) in &identical_haplotypes_map {
@@ -1739,7 +2006,7 @@ pub fn get_event_posteriors(
         var_filt_haplotype_variants.filter_for_haplotypes(&representatives)?;
     let repr_candidate_matrix = CandidateMatrix::new(&repr_haplotype_variants).unwrap();
     //employ the linear program
-    let lp_haplotypes = linear_program(
+    let lp_haplotypes = linear_program_main_mode(
         output_lp_datavzrd,
         &output_folder,
         &repr_candidate_matrix,
@@ -1754,7 +2021,8 @@ pub fn get_event_posteriors(
     //add haplotypes that are the same considering all covered variants used in the LP.
     //first, find all variants where ALL haplotypes have coverage=true
     //then, for a haplotype, get its genotype map restricted to those variants
-    let similar_lp_haplotypes = find_similar_haplotypes(&repr_haplotype_variants, &lp_haplotypes);
+    let similar_lp_haplotypes =
+        find_identical_haplotypes_lp_variants(&repr_haplotype_variants, &lp_haplotypes);
 
     //collect all haplotypes (some haplotypes with the same genotype matrix set migt have been chosen twice in the lp solution)
     let mut lp_haplotypes_extended_set = BTreeSet::new();
@@ -1792,7 +2060,7 @@ pub fn get_event_posteriors(
     let prior = PriorTypes::from_str(&prior).unwrap();
     let model = Model::new(
         Likelihood::new(),
-        Prior::new(prior.clone()),
+        PloidyPrior::new(prior.clone()),
         Posterior::new(),
     );
     let data = Data::new(model_candidate_matrix.clone(), variant_calls.clone());
@@ -2068,6 +2336,7 @@ pub fn output_empty_output(output_folder: &PathBuf) -> Result<(), Box<dyn Error>
         "best_solution.json",
         "2_field_solutions.json",
         "3_field_solutions.json",
+        "arrow_plot.json",
     ] {
         let json = include_str!("../../../templates/final_prediction.json");
         let blueprint: Value = serde_json::from_str(json)?;
@@ -2081,7 +2350,7 @@ pub fn output_empty_output(output_folder: &PathBuf) -> Result<(), Box<dyn Error>
     wtr.write_record(&headers)?;
 
     // Write blank CSV for 2-field.csv and G_groups.csv
-    for file in ["predictions_2_field.csv", "predictions_G_groups.csv"] {
+    for file in ["2-field.csv", "G_groups.csv"] {
         let output_path = output_folder.join(file);
         let mut wtr = csv::Writer::from_path(output_path)?;
         let headers = ["density", "odds"];
@@ -2130,4 +2399,518 @@ fn parse_position(change: &str) -> Option<u32> {
         .take_while(|c| c.is_ascii_digit())
         .collect::<String>();
     pos_str.parse::<u32>().ok()
+}
+
+// Entry point: explore LP tree and gather events
+
+pub fn explore_haplotype_tree(
+    all_haplotype_variants: &HaplotypeVariants,
+    all_variant_calls: &VariantCalls,
+    output_lp_datavzrd: &bool,
+    output_folder: &PathBuf,
+    lp_cutoff: f64,
+    constraint_value: i32,
+    ploidy_prior: &PriorTypes,
+    pop_freqs: &BTreeMap<String, f64>,
+) -> Result<Vec<(BTreeMap<Haplotype, f64>, LogProb)>, anyhow::Error> {
+    //find the list of haplotypes to be used for LP
+    let all_haplotypes: Vec<Haplotype> = all_haplotype_variants
+        .iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("No haplotypes found"))?
+        .1
+        .keys()
+        .cloned()
+        .collect();
+
+    //compute candidate matrix
+    let all_candidate_matrix = CandidateMatrix::new(&all_haplotype_variants)?;
+
+    // Run LP on full haplotype set (root)
+    let root_solution = linear_program_fast_mode(
+        output_lp_datavzrd,
+        output_folder,
+        &all_candidate_matrix,
+        &all_haplotypes,
+        all_variant_calls,
+        lp_cutoff,
+        constraint_value,
+        Some(&pop_freqs),
+        ploidy_prior,
+    )?;
+
+    if root_solution.is_empty() {
+        println!("Root LP solution empty. Exiting.");
+        return Ok(vec![]);
+    }
+
+    //collect LP haplotypes
+    let lp_haplotypes: Vec<Haplotype> = root_solution.keys().cloned().collect();
+
+    //collect fractions of the LP event
+    let event_fractions = get_fractions_from_solution(&root_solution);
+
+    let root_likelihood = compute_lp_likelihood(
+        all_haplotype_variants,
+        &lp_haplotypes,
+        all_variant_calls,
+        &event_fractions,
+        Some(&pop_freqs),
+        &ploidy_prior,
+    )
+    .unwrap();
+    // dbg!(&root_solution, &root_likelihood);
+    // Keep a set of canonical keys to avoid duplicate solutions
+    let mut seen: HashSet<String> = HashSet::new();
+
+    // Canonical key for root
+    let root_entries = format!(
+        "{}|{:.6}",
+        root_solution
+            .iter()
+            .map(|(h, f)| format!("{}:{:.2}", h.0, f))
+            .collect::<Vec<_>>()
+            .join(","),
+        root_likelihood.0
+    );
+
+    seen.insert(root_entries);
+
+    //find the selected haplotypes in the root solution to be used in the recursion function
+    let root_haplotypes = root_solution.keys().cloned().collect();
+
+    // Initialize results with root event
+    let mut results = vec![(root_solution, root_likelihood)];
+
+    // Start recursion: remove one haplotype at a time from the list of selected haplotypes
+
+    let mut mut_all_haplotypes = all_haplotypes.clone();
+    recursive_lp_search(
+        0,
+        root_likelihood,
+        &root_haplotypes,
+        &mut mut_all_haplotypes,
+        output_lp_datavzrd,
+        output_folder,
+        all_haplotype_variants,
+        all_variant_calls,
+        lp_cutoff,
+        constraint_value,
+        &mut results,
+        &mut seen,
+        ploidy_prior,
+        &pop_freqs,
+    )?;
+
+    Ok(results)
+}
+
+// Recursive LP search with likelihood pruning and uniqueness tracking
+fn recursive_lp_search(
+    depth: usize,
+    root_likelihood: LogProb,
+    prev_selected_haplotypes: &Vec<Haplotype>,
+    prev_input_haplotypes: &mut Vec<Haplotype>,
+    output_lp_datavzrd: &bool,
+    output_folder: &PathBuf,
+    all_haplotype_variants: &HaplotypeVariants,
+    all_variant_calls: &VariantCalls,
+    lp_cutoff: f64,
+    constraint_value: i32,
+    results: &mut Vec<(BTreeMap<Haplotype, f64>, LogProb)>,
+    seen: &mut HashSet<String>,
+    ploidy_prior: &PriorTypes,
+    pop_freqs: &BTreeMap<String, f64>,
+) -> Result<(), anyhow::Error> {
+    // Immediately start by removing one haplotype
+    for i in 0..prev_selected_haplotypes.len() {
+        let selected = &prev_selected_haplotypes[i];
+
+        // clone and remove current selected haplotype
+        let mut reduced = prev_input_haplotypes.clone();
+        reduced.retain(|h| h != selected);
+
+        // compute similar haplotypes relative to the selected one
+        let valid_variants = universally_covered_variants(all_haplotype_variants);
+        let sim_haps = differences_from_haplotype(
+            all_haplotype_variants,
+            selected,
+            3, // or whatever distance you want
+            &valid_variants,
+        );
+        // keep:
+        // - similar haplotypes
+        // - OR previously selected haplotypes
+        reduced.retain(|h| sim_haps.contains(h) || prev_selected_haplotypes.contains(h));
+
+        //do not solve for vector lengths smaller than the constraint
+        if reduced.len() < constraint_value as usize {
+            continue;
+        }
+
+        // Recompute candidate matrix
+        let filtered_hv = all_haplotype_variants.filter_for_haplotypes(&reduced)?;
+        let candidate_matrix = CandidateMatrix::new(&filtered_hv)?;
+
+        // Solve LP for the reduced haplotype set
+        let lp_solution = linear_program_fast_mode(
+            output_lp_datavzrd,
+            output_folder,
+            &candidate_matrix,
+            &reduced,
+            all_variant_calls,
+            lp_cutoff,
+            constraint_value,
+            Some(&pop_freqs),
+            ploidy_prior,
+        )?;
+
+        // Find lp haplotypes
+        let lp_haplotypes: Vec<Haplotype> = lp_solution.keys().cloned().collect();
+
+        // Check for LP-identical haplotypes and as a corner case, check if there are reciprocal entries.
+        // The latter is necessary to not include combinations that may arise from LP hitting two LP-identical haplotypes and find_identical_haplotypes_lp_variants() may result in each of these haplotypes pointing to each other, this then results in a double representation of the same haplotype.
+        //the homozygous case is already supposed to be covered with constraint_n=1, so we don't want to have the case with the reciprocal combination. Example: Haplotype("A*68:03:01"): [Haplotype("A*68:31")], Haplotype("A*68:31"): [Haplotype("A*68:03:01")]
+        let lp_identical_haps = find_identical_haplotypes_lp_variants(&filtered_hv, &lp_haplotypes);
+
+        let check_for_reciprocal_entries = has_any_reciprocal(&lp_identical_haps);
+        if !check_for_reciprocal_entries {
+            // Compute likelihood on full variant set for this subset
+            let event_fractions = get_fractions_from_solution(&lp_solution);
+
+            let current_likelihood = compute_lp_likelihood(
+                all_haplotype_variants,
+                &lp_haplotypes,
+                all_variant_calls,
+                &event_fractions,
+                Some(pop_freqs),
+                &ploidy_prior,
+            )
+            .unwrap();
+
+            // Push original LP solution to results (with uniqueness check)
+            push_unique_solution(&lp_solution, current_likelihood, results, seen);
+
+            //Generate alternative haplotype combinations (LP-identical)
+
+            //check if there are LP-identical haplotypes of any haplotype and if yes then proceed to finding the alternatives.
+            let has_nonempty = lp_identical_haps.values().any(|v| !v.is_empty());
+
+            //only search for alternative combinations if any haplotype in the solution has at least an LP-identical haplotype
+
+            if has_nonempty {
+                //collect each haplotype into a vector; one vector contains all alternative haplotypes
+                //e.g. if each selected haplotype in lp_selected haplotypes of length 2 have one identical haplotypes each, then the vector will contain two vectors each containing two haplotypes (together with the original haplotypes).
+                let mut replacement_options: Vec<Vec<Haplotype>> = Vec::new();
+
+                for hap in &lp_haplotypes {
+                    let mut options: Vec<Haplotype> = vec![hap.clone()];
+
+                    if let Some(similar) = lp_identical_haps.get(hap) {
+                        if !similar.is_empty() {
+                            eprintln!(
+                                "LP-identical haplotypes detected for {}: {:?}",
+                                hap.0, similar
+                            );
+                            options.extend(similar.clone());
+                        }
+                    }
+
+                    replacement_options.push(options);
+                }
+                dbg!(&replacement_options);
+
+                // now generate all haplotype combinations with the cartesian product
+                let haplotype_combinations = cartesian_product(&replacement_options);
+                dbg!(&haplotype_combinations);
+                for combo in haplotype_combinations {
+                    eprintln!("Computing combination: {:?}", combo);
+                    // Build alternative solution based on this combination
+                    let mut alt_solution = BTreeMap::new();
+
+                    // it's assumed here that cartesian product returns haplotype combinations in the same order as lp_solution keys
+                    // so if lp_solution has ["A*03:01", "A*24:02"] and the haplotpye_combinations might have e.g. [["A*03:01", "A*24:02"], ["A*03:02", "A*24:03"]]
+                    for (orig_hap, new_hap) in lp_haplotypes.iter().zip(combo.iter()) {
+                        if let Some(frac) = lp_solution.get(orig_hap) {
+                            alt_solution.insert(new_hap.clone(), *frac);
+                        }
+                    }
+
+                    // Only print when the combination differs from the original LP solution
+                    if &combo != &lp_haplotypes {
+                        eprintln!(
+                            "Alternative LP-identical haplotype combination detected: {}",
+                            combo
+                                .iter()
+                                .map(|h| h.0.as_str())
+                                .collect::<Vec<_>>()
+                                .join(",")
+                        );
+                    }
+
+                    // Compute likelihood for alternative solution
+                    let alt_haps: Vec<Haplotype> = alt_solution.keys().cloned().collect();
+                    let alt_likelihood = compute_lp_likelihood(
+                        all_haplotype_variants,
+                        &alt_haps,
+                        all_variant_calls,
+                        &event_fractions,
+                        Some(pop_freqs),
+                        &ploidy_prior,
+                    )
+                    .unwrap();
+                    dbg!(&alt_likelihood);
+
+                    // push the event with uniqueness checking
+                    push_unique_solution(&alt_solution, alt_likelihood, results, seen);
+                }
+            }
+
+            //Prune recursion if original LP solution is too low
+            let ln_half = LogProb::from(Prob(0.5));
+            // dbg!(&current_likelihood, root_likelihood);
+
+            //A depth limit is set because for some samples the root likelihood has the worst likelihood and the recursion iterates indefinitely as all of them are better than the root solution.
+            //For this reason, a depth limit that is high enough to meet many solutions is introduced. The reason for the root lp solution resulting in the worst likelihood is unclear and can be further investigated (TODO).
+            let depth_limit = 50;
+
+            if current_likelihood < root_likelihood + ln_half || depth >= 50 {
+                dbg!(&"pruning the branch");
+                continue;
+            }
+        } else {
+            eprintln!("Warning: reciprocal entries found. This is because the solutions contain LP-identical haplotypes. No further combination of will be searched. The original solution will not be added to the results as this (homozygous case) is already covered by constraint value 1. Recursion will still continue. Here is the responsible solution for this situation: {:?}", lp_solution);
+        }
+
+        //Performance improvement:
+        //as a last step in the recursion, we must avoid identical haplotypes of selected haplotypes to be considered over and over again to result in alternative combinations. Those alternative combinations are already done above by querying lp-identical haplotypes of each haplotype and this does not need to be repeated for single haplotypes in the further recursions.
+        let to_remove: HashSet<Haplotype> = lp_identical_haps.values().flatten().cloned().collect();
+
+        reduced.retain(|h| !to_remove.contains(h));
+        // Recurse on this reduced set
+        recursive_lp_search(
+            depth + 1,
+            root_likelihood,
+            &lp_haplotypes,
+            &mut reduced,
+            output_lp_datavzrd,
+            output_folder,
+            all_haplotype_variants,
+            all_variant_calls,
+            lp_cutoff,
+            constraint_value,
+            results,
+            seen,
+            ploidy_prior,
+            pop_freqs,
+        )?;
+    }
+
+    Ok(())
+}
+
+pub fn prepare_representative_haplotypes(
+    haplotype_variants: &HaplotypeVariants,
+    variant_calls: &VariantCalls,
+) -> Result<Vec<Haplotype>, anyhow::Error> {
+    // Keep only variants with nonzero DP
+    let nonzero_dp_variants: Vec<VariantID> = variant_calls.keys().cloned().collect();
+
+    let var_filt_haplotype_variants: HaplotypeVariants =
+        haplotype_variants.filter_for_variants(&nonzero_dp_variants)?;
+
+    // Extract haplotypes
+    let haplotypes: Vec<Haplotype> = var_filt_haplotype_variants
+        .iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("No haplotypes found"))?
+        .1
+        .keys()
+        .cloned()
+        .collect();
+
+    // Build candidate matrix
+    let candidate_matrix = CandidateMatrix::new(&var_filt_haplotype_variants)?;
+
+    // Collapse identical haplotypes
+    let (identical_haplotypes_map_rep, identical_haplotypes_map) =
+        candidate_matrix.find_identical_haplotypes_all_variants(haplotypes);
+    dbg!(&identical_haplotypes_map);
+    let representatives: Vec<Haplotype> = identical_haplotypes_map_rep.keys().cloned().collect();
+
+    Ok(representatives)
+}
+pub fn collect_haplotypes_and_fractions_from_fast_mode(
+    results: &Vec<(i32, Vec<(BTreeMap<Haplotype, f64>, LogProb)>)>,
+) -> (Vec<Haplotype>, Vec<(HaplotypeFractions, LogProb)>) {
+    // 1. collect unique haplotypes (deterministic order)
+    let mut hap_set = BTreeSet::new();
+
+    for (_, events) in results {
+        for (hap_map, _) in events {
+            for hap in hap_map.keys() {
+                hap_set.insert(hap.clone());
+            }
+        }
+    }
+
+    let haplotypes: Vec<Haplotype> = hap_set.into_iter().collect();
+
+    // 2. build fractions
+    let mut events_out = Vec::new();
+
+    for (_, events) in results {
+        for (hap_map, logprob) in events {
+            let mut row = Vec::with_capacity(haplotypes.len());
+
+            for hap in &haplotypes {
+                let val = hap_map.get(hap).copied().unwrap_or(0.0);
+                row.push(NotNan::new(val).expect("fraction must not be NaN"));
+            }
+            events_out.push((HaplotypeFractions(row), logprob.clone()));
+        }
+    }
+
+    (haplotypes, events_out)
+}
+
+fn cartesian_product(alt_haps: &Vec<Vec<Haplotype>>) -> Vec<Vec<Haplotype>> {
+    let mut result: Vec<Vec<Haplotype>> = vec![vec![]];
+
+    for options in alt_haps {
+        let mut new_result: Vec<Vec<Haplotype>> = Vec::new();
+
+        for prefix in &result {
+            for item in options {
+                let mut new_prefix = prefix.clone();
+
+                new_prefix.push(item.clone());
+                new_result.push(new_prefix);
+            }
+        }
+
+        result = new_result;
+    }
+
+    result
+}
+
+fn has_any_reciprocal(map: &BTreeMap<Haplotype, Vec<Haplotype>>) -> bool {
+    for (key, values) in map.iter() {
+        for value in values {
+            if let Some(other_values) = map.get(value) {
+                if other_values.contains(key) {
+                    return true; // found at least one reciprocal pair
+                }
+            }
+        }
+    }
+    false // no reciprocal pair found
+}
+
+/// Pushes an LP solution to results only if it hasn't been seen yet.
+fn push_unique_solution(
+    lp_solution: &BTreeMap<Haplotype, f64>,
+    current_likelihood: LogProb,
+    results: &mut Vec<(BTreeMap<Haplotype, f64>, LogProb)>,
+    seen: &mut HashSet<String>,
+) {
+    let canonical_key = format!(
+        "{}|{:.6}",
+        lp_solution
+            .iter()
+            .map(|(h, f)| format!("{}:{:.2}", h.0, f))
+            .collect::<Vec<_>>()
+            .join(","),
+        current_likelihood.0
+    );
+
+    if !seen.contains(&canonical_key) {
+        seen.insert(canonical_key);
+        results.push((lp_solution.clone(), current_likelihood));
+    }
+}
+
+fn compute_lp_likelihood(
+    all_haplotype_variants: &HaplotypeVariants,
+    lp_haplotypes: &Vec<Haplotype>,
+    all_variant_calls: &VariantCalls,
+    event_fractions: &HaplotypeFractions,
+    pop_freqs: Option<&BTreeMap<String, f64>>,
+    ploidy_prior: &PriorTypes,
+) -> Result<LogProb, Box<dyn Error>> {
+    let lp_hv = all_haplotype_variants.filter_for_haplotypes(lp_haplotypes)?;
+    let lp_cm = CandidateMatrix::new(&lp_hv)?;
+    let data = Data::new(lp_cm, all_variant_calls.clone());
+
+    let mut cache = Cache::default();
+    let current_likelihood = Likelihood::new().compute(event_fractions, &data, &mut cache);
+    let posterior = if let Some(freqs) = pop_freqs {
+        let pop_prior = PopulationPrior {
+            haplotypes: lp_haplotypes,
+            pop_freqs: freqs,
+            ploidy_prior: ploidy_prior,
+        };
+
+        current_likelihood + pop_prior.compute(event_fractions)
+    } else {
+        current_likelihood
+    };
+    Ok(posterior)
+}
+
+fn get_fractions_from_solution(lp_solution: &BTreeMap<Haplotype, f64>) -> HaplotypeFractions {
+    HaplotypeFractions(
+        lp_solution
+            .values()
+            .map(|&f| NotNan::new(f).unwrap())
+            .collect(),
+    )
+}
+
+//Compare one haplotype against all others
+pub fn differences_from_haplotype(
+    data: &HaplotypeVariants,
+    target: &Haplotype,
+    target_diff: usize,
+    valid_variants: &BTreeSet<VariantID>,
+) -> Vec<Haplotype> {
+    let mut result = Vec::new();
+
+    let first_variant = match data.0.values().next() {
+        Some(v) => v,
+        None => return result,
+    };
+
+    for other in first_variant.keys() {
+        if other == target {
+            continue;
+        }
+
+        let mut diff = 0;
+
+        for (variant_id, variant_map) in &data.0 {
+            // only consider universally covered variants
+            if !valid_variants.contains(variant_id) {
+                continue;
+            }
+
+            let (b_target, _) = variant_map.get(target).unwrap();
+            let (b_other, _) = variant_map.get(other).unwrap();
+
+            if b_target != b_other {
+                diff += 1;
+
+                if diff > target_diff {
+                    break;
+                }
+            }
+        }
+
+        if diff <= target_diff {
+            result.push(other.clone());
+        }
+    }
+
+    result
 }

@@ -1,6 +1,7 @@
 use crate::calling::haplotypes::haplotypes::{
     AlleleFreqDist, CandidateMatrix, Haplotype, HaplotypeGraph, PriorTypes, VariantCalls,
 };
+use crate::calling::haplotypes::hla::PopFreq;
 
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb, Prob};
@@ -9,7 +10,7 @@ use derefable::Derefable;
 use derive_new::new;
 use ordered_float::NotNan;
 use petgraph::visit::Bfs;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 pub type AlleleFreq = NotNan<f64>;
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug, Derefable, PartialOrd)]
@@ -221,11 +222,11 @@ impl Likelihood {
 }
 
 #[derive(Debug, new)]
-pub(crate) struct Prior {
-    prior: PriorTypes,
+pub(crate) struct PloidyPrior {
+    pub prior: PriorTypes,
 }
 
-impl model::Prior for Prior {
+impl model::Prior for PloidyPrior {
     type Event = HaplotypeFractions;
 
     fn compute(&self, event: &Self::Event) -> LogProb {
@@ -243,7 +244,7 @@ impl model::Prior for Prior {
             });
             prior_prob
         } else if self.prior == PriorTypes::DiploidSubclonal {
-            //diploid subclonal prior: don't allow for more than 4 fractions bearing greater than 0.0
+            //diploid subclonal prior: don't allow for more than 3 fractions bearing greater than 0.0
             if event
                 .iter()
                 .filter(|&n| n > &NotNan::new(0.0).unwrap())
@@ -256,6 +257,60 @@ impl model::Prior for Prior {
             }
         } else {
             LogProb::ln_one()
+        }
+    }
+}
+
+pub(crate) struct PopulationPrior<'a> {
+    pub haplotypes: &'a Vec<Haplotype>,
+    pub pop_freqs: &'a BTreeMap<String, f64>,
+    pub ploidy_prior: &'a PriorTypes,
+}
+
+impl<'a> model::Prior for PopulationPrior<'a> {
+    type Event = HaplotypeFractions;
+
+    fn compute(&self, event: &Self::Event) -> LogProb {
+        let mut prior = LogProb::ln_one();
+        let epsilon = 1e-12;
+        //todo: needs to be added before the normalization
+        let a = match self.ploidy_prior {
+            PriorTypes::Diploid => 2,
+            PriorTypes::DiploidSubclonal => 3,
+            PriorTypes::Uniform => 1,
+        };
+        for (haplotype, fraction) in self.haplotypes.iter().zip(event.iter()) {
+            let hap_str = haplotype.to_string();
+
+            if let Some(&freq) = self.pop_freqs.get(&hap_str) {
+                let freq_max = freq.max(epsilon);
+                let weight = fraction.into_inner() * a as f64;
+                prior += LogProb::from(Prob(freq_max.powf(weight)));
+            }
+        }
+
+        prior
+    }
+}
+
+pub(crate) struct CombinedPrior<P1, P2> {
+    pub p1: P1,
+    pub p2: Option<P2>,
+}
+
+impl<P1, P2> model::Prior for CombinedPrior<P1, P2>
+where
+    P1: model::Prior<Event = HaplotypeFractions>,
+    P2: model::Prior<Event = HaplotypeFractions>,
+{
+    type Event = HaplotypeFractions;
+
+    fn compute(&self, event: &Self::Event) -> LogProb {
+        let base = self.p1.compute(event);
+
+        match &self.p2 {
+            Some(p2) => base + p2.compute(event),
+            None => base,
         }
     }
 }
