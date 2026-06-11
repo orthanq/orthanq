@@ -11,7 +11,7 @@ Orthanq is under active development.
 
 Orthanq is available as a Bioconda package and can be installed via:
 
-    mamba install orthanq
+    conda install orthanq
 
 ## HLA typing
 
