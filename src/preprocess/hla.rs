@@ -294,7 +294,7 @@ chr6\t31353872\t31367067";
                 .arg("estimate")
                 .arg("alignment-properties")
                 .arg(&self.genome)
-                .arg("bams")
+                .arg("--bams")
                 .arg(&file_aligned_sorted)
                 .stdout(Stdio::piped())
                 .spawn()
