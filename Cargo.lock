@@ -3142,7 +3142,7 @@ dependencies = [
 
 [[package]]
 name = "orthanq"
-version = "1.22.1"
+version = "1.22.2"
 dependencies = [
  "GSL",
  "anyhow",

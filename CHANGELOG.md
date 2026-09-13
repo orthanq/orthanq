@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.2](https://github.com/orthanq/orthanq/compare/v1.22.1...v1.22.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* trigger release ([20d3bf1](https://github.com/orthanq/orthanq/commit/20d3bf1684b10a98fbd3cccd47b375c9cd69d454))
+
 ## [1.22.1](https://github.com/orthanq/orthanq/compare/v1.22.0...v1.22.1) (2026-09-13)
 
 
