@@ -8,7 +8,7 @@ license = "MIT"
 
 [dependencies]
 bio-types = ">=0.9"
-rust-htslib = "0.49.0"
+rust-htslib = "0.50.0"
 log = "0.4.27"
 GSL = "6.0"
 itertools = "0.10"
