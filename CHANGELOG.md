@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.22.1](https://github.com/orthanq/orthanq/compare/v1.22.0...v1.22.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* don't fail preprocessing when temp dir cleanup lags on network filesystems ([#123](https://github.com/orthanq/orthanq/issues/123)) ([b321d15](https://github.com/orthanq/orthanq/commit/b321d1568701052f92613903696aae33fa3f1fd1))
+* fix estimate alignment properties flag usage ([#125](https://github.com/orthanq/orthanq/issues/125)) ([00690ae](https://github.com/orthanq/orthanq/commit/00690ae3caca68fe5b51172de1dd914bdcc2003d))
+
 ## [1.22.0](https://github.com/orthanq/orthanq/compare/v1.21.0...v1.22.0) (2026-05-07)
 
 
