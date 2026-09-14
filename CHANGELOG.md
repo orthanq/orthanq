@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.3](https://github.com/orthanq/orthanq/compare/v1.22.2...v1.22.3) (2026-09-14)
+
+
+### Bug Fixes
+
+* regenerate Cargo.lock for rust-htslib 0.50.0 bump ([acacc77](https://github.com/orthanq/orthanq/commit/acacc770104cf7948c75ef4ad00d76e3c0649dc5))
+
 ## [1.22.2](https://github.com/orthanq/orthanq/compare/v1.22.1...v1.22.2) (2026-09-13)
 
 
