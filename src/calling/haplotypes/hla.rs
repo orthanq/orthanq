@@ -160,7 +160,7 @@ pub struct FastCaller {
     haplotype_variants: bcf::Reader,
     variant_calls: bcf::Reader,
     xml: PathBuf,
-    allele_freqs: PathBuf,
+    allele_freqs: Option<PathBuf>,
     output_folder: PathBuf,
     prior: String,
     lp_cutoff: f64,
@@ -176,7 +176,7 @@ pub struct FastCaller {
 
 impl FastCaller {
     pub fn call(&mut self) -> Result<()> {
-        println!("Entering fast mode");
+        println!("Entering fast mode (experimental)");
 
         //Step 1: Prepare data and compute the model
         //initially prepare haplotype_variants and variant_calls
@@ -190,7 +190,7 @@ impl FastCaller {
             let mut haplotype_variants = HaplotypeVariants::new(&mut self.haplotype_variants)?;
 
             //read population allele frequencies file
-            let allele_freqs = get_hla_freqs(&self.allele_freqs)?;
+            let allele_freqs = get_hla_freqs(self.allele_freqs.as_ref().unwrap())?;
 
             // ensure the set of haplotypes are same; needed for the lprior computation.
             //todo: maybe this has to change for every lp likelihood computation because one haplotype is less each time.
