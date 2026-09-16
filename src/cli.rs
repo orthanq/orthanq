@@ -241,10 +241,9 @@ pub enum CallKind {
         xml: PathBuf,
         #[structopt(
             long = "allele-freqs",
-            required = true,
             help = "HLA population allele frequencies acquired from Allele Frequencies database."
         )]
-        allele_freqs: PathBuf,
+        allele_freqs: Option<PathBuf>,
         #[structopt(
             long,
             help = "Folder to store results and diagnostic plots in json format."
@@ -319,7 +318,7 @@ pub enum CallKind {
         threshold_posterior_density: i32,
         #[structopt(
             long,
-            help = "Use fast HLA caller (recursive LP mode without posterior estimation)."
+            help = "Use fast HLA caller (recursive LP mode without posterior estimation). Experimental."
         )]
         fast: bool,
         #[structopt(
