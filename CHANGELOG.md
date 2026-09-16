@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.4](https://github.com/orthanq/orthanq/compare/v1.22.3...v1.22.4) (2026-09-16)
+
+
+### Bug Fixes
+
+* fix required allele freq input parameter for hla calling and add notes for fast mode ([#130](https://github.com/orthanq/orthanq/issues/130)) ([71fe00b](https://github.com/orthanq/orthanq/commit/71fe00b347ad298bd713640f4347d980bed0c713))
+
 ## [1.22.3](https://github.com/orthanq/orthanq/compare/v1.22.2...v1.22.3) (2026-09-14)
 
 
