@@ -1,7 +1,6 @@
 use crate::calling::haplotypes::haplotypes::{
     AlleleFreqDist, CandidateMatrix, Haplotype, HaplotypeGraph, PriorTypes, VariantCalls,
 };
-use crate::calling::haplotypes::hla::PopFreq;
 
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb, Prob};

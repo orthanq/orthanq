@@ -1,7 +1,6 @@
-use crate::calling::haplotypes::hla::PopFreq;
 use crate::model::Cache;
 use crate::model::{AlleleFreq, Data, HaplotypeFractions};
-use crate::model::{CombinedPrior, Likelihood, Marginal, PloidyPrior, PopulationPrior, Posterior};
+use crate::model::{Likelihood, Marginal, PloidyPrior, PopulationPrior, Posterior};
 use anyhow::Result;
 use bio::stats::bayesian::model::Likelihood as BayesianLikelihood;
 use bio::stats::bayesian::model::Model;
@@ -10,9 +9,7 @@ use bio::stats::{probs::LogProb, PHREDProb, Prob};
 use bv::BitVec;
 use datavzrd::render_report;
 use derefable::Derefable;
-use rand_xoshiro::rand_core::le;
 use serde_yaml::Value;
-use statrs::distribution::Uniform;
 
 use derive_deref::DerefMut;
 
@@ -1533,7 +1530,7 @@ pub fn linear_program_fast_mode(
             Ok(BTreeMap::new())
         }
 
-        Err(e) => panic!("Unexpected LP error: {e}"),
+        Err(e) => panic!("{}", "Unexpected LP error: {e}"),
     }
 }
 
@@ -1551,7 +1548,7 @@ pub fn write_results(
         .iter()
         .map(|(_, call)| call.afd.clone())
         .collect();
-    let mut event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
+    let event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
 
     // todo: unused since the plots are already used for the same purpose; reactivate this parameter when needed again
 
@@ -1799,7 +1796,7 @@ pub fn collect_constraints_and_variants(
                     haplotype_dict.insert(haplotype.clone(), existing);
                 }
             }
-            let mut expr_to_add =
+            let expr_to_add =
                 *call.max_prob * (fraction_sum - call.af.clone().into_expression());
 
             constraints.push(expr_to_add.clone());

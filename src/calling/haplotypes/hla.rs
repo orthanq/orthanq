@@ -7,21 +7,14 @@ use crate::calling::haplotypes::haplotypes::write_results_fast_mode;
 use crate::calling::haplotypes::haplotypes::PriorTypes;
 use crate::calling::haplotypes::haplotypes::{
     collect_haplotypes_and_fractions_from_fast_mode, explore_haplotype_tree,
-    prepare_representative_haplotypes,
 };
 use crate::calling::haplotypes::haplotypes::{
     CandidateMatrix, Haplotype, HaplotypeVariants, VariantCalls, VariantID,
 };
-use crate::model::AlleleFreq;
-use crate::model::Data;
 use crate::model::HaplotypeFractions;
-use crate::model::{Cache, Likelihood, PloidyPrior, Posterior};
 
 use anyhow::Result;
-use bio::stats::bayesian::model::Likelihood as BayesianLikelihood;
 use bio::stats::{probs::LogProb, Prob};
-use itertools::sorted;
-use polars::export::arrow::compute::boolean::all;
 
 use core::cmp::Ordering;
 use csv::Reader;
@@ -34,7 +27,7 @@ use quick_xml::reader::Reader as xml_reader;
 
 use rust_htslib::bcf::{self};
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 
 use std::{path::PathBuf, str};
