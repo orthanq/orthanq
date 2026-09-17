@@ -82,19 +82,18 @@ impl Caller {
         }
 
         //find sample name of one of the fastq files from the read pair
-        let mut sample_name = "".to_string();
-        if let Some(fastq_reads) = &self.reads {
+        let sample_name = if let Some(fastq_reads) = &self.reads {
             let stem_of_sample_dir = fastq_reads[0].file_stem().unwrap().to_str().unwrap();
             //get rid of any underscore (PE reads contain them)
             let splitted = stem_of_sample_dir.split('_').collect::<Vec<&str>>();
-            sample_name = splitted[0].to_string();
+            splitted[0].to_string()
         } else if let Some(bam_input) = &self.bam_input {
             let stem_of_sample_dir = bam_input.file_stem().unwrap().to_str().unwrap();
             let splitted = stem_of_sample_dir.split('_').collect::<Vec<&str>>();
-            sample_name = splitted[0].to_string();
+            splitted[0].to_string()
         } else {
             return Err(anyhow::anyhow!("Please provide either fastq reads with --reads or BWA aligned BAM input with --bam-input !"));
-        }
+        };
 
         //initialize the output file name for sorting
         let file_aligned_sorted = parent.join(format!("{}_sorted.bam", sample_name));
@@ -455,7 +454,7 @@ chr6\t31353872\t31367067";
         //in Rust, piping cannot be done via "|" but instead in the following way:
 
         //get the header
-        let samtools_view_child = Command::new("samtools")
+        let mut samtools_view_child = Command::new("samtools")
             .arg("view") // `samtools view` command...
             .arg("-H") // of which we will pipe the output.
             .arg(&file_vg_aligned_sorted) //Once configured, we actually spawn the command...
@@ -471,22 +470,26 @@ chr6\t31353872\t31367067";
             regex = &"s/GRCh38.chr//g";
         }
         println!("regex for reheader: {}", regex);
-        let sed_child_one = Command::new("sed")
+        let mut sed_child_one = Command::new("sed")
             .arg(regex)
-            .stdin(Stdio::from(samtools_view_child.stdout.unwrap())) // Pipe through.
+            .stdin(Stdio::from(samtools_view_child.stdout.take().unwrap())) // Pipe through.
             .stdout(Stdio::piped())
             .spawn()
             .unwrap();
+        samtools_view_child
+            .wait()
+            .expect("failed to wait on samtools view process");
 
         //then, reheader the header of the input bam
         let reheader_child_two = Command::new("samtools")
             .arg("reheader")
             .arg("-")
-            .stdin(sed_child_one.stdout.unwrap())
+            .stdin(sed_child_one.stdout.take().unwrap())
             .arg(file_vg_aligned_sorted)
             .stdout(Stdio::piped())
             .spawn()
             .unwrap();
+        sed_child_one.wait().expect("failed to wait on sed process");
 
         //write the reheadered bam to file
         let output = reheader_child_two
@@ -628,10 +631,7 @@ chr6\t31353872\t31367067";
         scenario_file.write_all(scenario_str.as_bytes())?;
         println!("YAML written to scenario.yaml in temp dir");
 
-        println!(
-            "{}",
-            format!("sample={}", &varlociraptor_prep_dir.display())
-        );
+        println!("sample={}", &varlociraptor_prep_dir.display());
 
         // omit homopolymer bias detection if parameter is given
         let mut cmd: Command = Command::new("varlociraptor");
@@ -670,7 +670,7 @@ chr6\t31353872\t31367067";
             );
         }
 
-        let mut called_file = std::fs::File::create(&varlociraptor_call_dir)?;
+        let mut called_file = std::fs::File::create(varlociraptor_call_dir)?;
         called_file.write_all(&var_output.stdout)?; //write with bam writer
         called_file.flush()?;
 

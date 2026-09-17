@@ -16,8 +16,6 @@ use petgraph::graph::{Graph, NodeIndex};
 use petgraph::prelude::Dfs;
 
 use rust_htslib::faidx;
-use seq_io::fasta::Record as OtherRecord;
-use serde::Deserialize;
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -28,7 +26,7 @@ use std::io;
 
 use std::io::Write;
 use std::iter::FromIterator;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use std::process::Command;
 
@@ -45,10 +43,10 @@ impl Caller {
 
         //first, create the output dir for database setup
         let outdir = &self.output;
-        fs::create_dir_all(&outdir)?;
+        fs::create_dir_all(outdir)?;
 
         //download required resources
-        let (reference_path, clades_path) = download_resources(&outdir).unwrap();
+        let (reference_path, clades_path) = download_resources(outdir).unwrap();
 
         //read the clades
         let mut rdr = csv::ReaderBuilder::new()
@@ -88,10 +86,10 @@ impl Caller {
                         child_presence = true
                     }
                 }
-                if parent_presence == false {
+                if !parent_presence {
                     clade_hierarchy.add_node(clade.clone());
                 }
-                if child_presence == false {
+                if !child_presence {
                     clade_hierarchy.add_node(record.site.clone());
                 }
 
@@ -151,7 +149,7 @@ impl Caller {
             "{:?}",
             Dot::with_config(&clade_hierarchy, &[Config::EdgeNoLabel])
         );
-        f.write_all(&output.as_bytes())
+        f.write_all(output.as_bytes())
             .expect("could not write file");
 
         //create a map and an array as a template of upcoming vcf data structure
@@ -236,7 +234,7 @@ impl Caller {
         let outdir = &mut self.output.clone();
         outdir.push("sequences");
         dbg!(&outdir);
-        fs::create_dir_all(&outdir);
+        fs::create_dir_all(&outdir)?;
 
         //load genome into memory
         let reference_genome = fasta::Reader::from_file(reference_path).unwrap();
@@ -264,46 +262,16 @@ impl Caller {
             });
 
             //then write the record to file
-            let record = bio::io::fasta::Record::with_attrs(clade, Some(&""), &clade_seq);
+            let record = bio::io::fasta::Record::with_attrs(clade, Some(""), &clade_seq);
             writer
                 .write_record(&record)
-                .ok()
                 .expect("Error writing record.");
         });
         Ok(())
     }
 }
 
-//accession_to_lineage simply converts accession ids that represent each lineage to lineage names as well as nextstrain clade
-fn accession_to_lineage(
-    df: &DataFrame,
-    accession_to_clade_map: &HashMap<&str, &str>,
-    output_path_to_mapping: &PathBuf,
-) -> Result<DataFrame> {
-    //clone the input df
-    let mut renamed_df = df.clone();
-
-    //rename accessions to clades and collect clade-accession mapping to a hashmap
-    let mut mapping: HashMap<&str, &str> = HashMap::new();
-    accession_to_clade_map.iter().for_each(|(acc, cld)| {
-        let mut rename_str = format!("no clade");
-        rename_str = format!("{}", cld.clone());
-        renamed_df.rename(acc.clone(), &rename_str);
-        mapping.insert(cld.clone(), acc.clone());
-    });
-    dbg!(&renamed_df.shape());
-
-    //write mapping to file
-    let mut wtr = csv::Writer::from_path(output_path_to_mapping)?;
-    wtr.write_record(&vec!["Nexstrain_clade", "Accession"])?;
-    mapping
-        .iter()
-        .for_each(|(cld, acc)| wtr.write_record(&vec![cld, acc]).unwrap());
-
-    Ok(renamed_df)
-}
-
-fn download_resources(outdir: &PathBuf) -> Result<(PathBuf, PathBuf)> {
+fn download_resources(outdir: &Path) -> Result<(PathBuf, PathBuf)> {
     let ref_link = &"https://raw.githubusercontent.com/nextstrain/ncov/1f7265a7f4e51147a38f738e3f2bcb77b9d35287/defaults/reference_seq.fasta";
     let clades_link = &"https://raw.githubusercontent.com/nextstrain/ncov/1f7265a7f4e51147a38f738e3f2bcb77b9d35287/defaults/clades.tsv";
 
@@ -313,7 +281,7 @@ fn download_resources(outdir: &PathBuf) -> Result<(PathBuf, PathBuf)> {
     let _download_ref = {
         Command::new("wget")
             .arg("-c")
-            .arg(&ref_link)
+            .arg(ref_link)
             .arg("-O")
             .arg(&ref_path)
             .status()
@@ -323,7 +291,7 @@ fn download_resources(outdir: &PathBuf) -> Result<(PathBuf, PathBuf)> {
     let _download_clades = {
         Command::new("wget")
             .arg("-c")
-            .arg(&clades_link)
+            .arg(clades_link)
             .arg("-O")
             .arg(&clades_path)
             .status()
@@ -344,7 +312,7 @@ struct Record {
 fn convert_to_dataframe(
     candidate_variants: &BTreeMap<(String, usize, String, String), Vec<usize>>,
     array: Array2<i32>,
-    haplotype_names: &Vec<String>,
+    haplotype_names: &[String],
 ) -> Result<DataFrame> {
     //first initialize the dataframes with index columns that contain variant information.
     let mut genotype_df: DataFrame = df!("Index" => candidate_variants

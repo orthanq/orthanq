@@ -59,7 +59,7 @@ impl Caller {
         let bgzip = {
             Command::new("bgzip")
                 .arg("-c")
-                .arg(&haplotype_variants)
+                .arg(haplotype_variants)
                 .stdout(Stdio::piped())
                 .spawn()
                 .expect("failed to execute the zipping process")
@@ -94,7 +94,7 @@ impl Caller {
         //vg indexing
 
         //create the output file name
-        let idx_name = temp_dir.path().join(&"idx");
+        let idx_name = temp_dir.path().join("idx");
         println!("{}", bgzip_dir.display());
 
         let vg_index = {
@@ -103,7 +103,7 @@ impl Caller {
                 .arg("--workflow")
                 .arg("giraffe")
                 .arg("-r")
-                .arg(&ref_genome)
+                .arg(ref_genome)
                 .arg("-v")
                 .arg(&bgzip_dir)
                 .arg("-p")
@@ -213,8 +213,8 @@ impl Caller {
                 .arg("--omit-mapq-adjustment")
                 .arg("--atomic-candidate-variants")
                 .arg("--candidates")
-                .arg(&haplotype_variants)
-                .arg(&ref_genome)
+                .arg(haplotype_variants)
+                .arg(ref_genome)
                 .arg("--bam")
                 .arg(&file_vg_aligned_sorted)
                 .arg("--output")
@@ -249,7 +249,7 @@ impl Caller {
                 .arg("call")
                 .arg("variants")
                 .arg("--output")
-                .arg(&outdir)
+                .arg(outdir)
                 .arg("--omit-strand-bias")
                 .arg("--omit-read-position-bias")
                 .arg("--omit-read-orientation-bias")
