@@ -292,6 +292,10 @@ impl<'a> model::Prior for PopulationPrior<'a> {
     }
 }
 
+// Not currently constructed anywhere in the crate; kept for combining two
+// `Prior` implementations (e.g. population frequency + uniform/diploid) once
+// that composition is wired in.
+#[allow(dead_code)]
 pub(crate) struct CombinedPrior<P1, P2> {
     pub p1: P1,
     pub p2: Option<P2>,
