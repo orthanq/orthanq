@@ -303,12 +303,7 @@ impl FastCaller {
                     .position(|h| h == "odds")
                     .expect("odds column not found");
 
-                // collect haplotype headers
-                let haplotype_headers: Vec<String> = headers
-                    .iter()
-                    .skip(odds_idx + 1)
-                    .map(|s| s.to_string())
-                    .collect();
+
                 let hap_start = odds_idx + 1;
 
                 // collect events
@@ -352,15 +347,6 @@ impl FastCaller {
             }
 
             //draw plots
-
-            let best_fractions: Vec<f64> = final_event_likelihoods
-                .iter()
-                .next()
-                .unwrap()
-                .0
-                .iter()
-                .map(|x| x.into_inner())
-                .collect();
 
             plot_all_hla(
                 &self.output_folder,
@@ -769,7 +755,7 @@ fn write_g_group_results(
         candidate_matrix,
         event_posteriors,
         &final_haplotypes_converted,
-        true,
+        to_phred,
     )?;
 
     Ok(())

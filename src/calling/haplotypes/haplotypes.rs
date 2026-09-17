@@ -1530,25 +1530,25 @@ pub fn linear_program_fast_mode(
             Ok(BTreeMap::new())
         }
 
-        Err(e) => panic!("{}", "Unexpected LP error: {e}"),
+        Err(_e) => panic!("{}", "Unexpected LP error: {e}"),
     }
 }
 
 pub fn write_results(
     outcsv: &PathBuf,
     variant_calls: &VariantCalls,
-    candidate_matrix: &CandidateMatrix,
+    _candidate_matrix: &CandidateMatrix,
     event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
     final_haplotypes: &Vec<Haplotype>,
     // variant_info: bool,
     to_phred: bool,
 ) -> Result<()> {
     //firstly add variant query and probabilities to the outout table for each event
-    let variant_calls: Vec<AlleleFreqDist> = variant_calls
+    let _variant_calls: Vec<AlleleFreqDist> = variant_calls
         .iter()
         .map(|(_, call)| call.afd.clone())
         .collect();
-    let event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
+    let _event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
 
     // todo: unused since the plots are already used for the same purpose; reactivate this parameter when needed again
 
@@ -2671,7 +2671,7 @@ fn recursive_lp_search(
             //For this reason, a depth limit that is high enough to meet many solutions is introduced. The reason for the root lp solution resulting in the worst likelihood is unclear and can be further investigated (TODO).
             let depth_limit = 50;
 
-            if current_likelihood < root_likelihood + ln_half || depth >= 50 {
+            if current_likelihood < root_likelihood + ln_half || depth >= depth_limit {
                 dbg!(&"pruning the branch");
                 continue;
             }
