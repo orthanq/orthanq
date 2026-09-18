@@ -1,7 +1,6 @@
 use crate::calling::haplotypes::haplotypes::{
     AlleleFreqDist, CandidateMatrix, Haplotype, HaplotypeGraph, PriorTypes, VariantCalls,
 };
-use crate::calling::haplotypes::hla::PopFreq;
 
 use bio::stats::probs::adaptive_integration;
 use bio::stats::{bayesian::model, LogProb, Prob};
@@ -46,41 +45,39 @@ impl Marginal {
                 if self.enable_equivalence_class_constraint
                     && fraction > NotNan::new(0.0).unwrap()
                     && fractions.len() > 1
+                    && self.application == "hla"
                 {
-                    if self.application == "hla".to_string() {
-                        // only if the fraction for the current has greater than 0.0
-                        let current_haplotype = &self.haplotypes[haplotype_index];
-                        let splitted = &self.haplotypes[haplotype_index]
-                            .split(':')
-                            .collect::<Vec<&str>>();
-                        let haplotype_group =
-                            Haplotype(splitted[0].to_owned() + &":" + splitted[1]);
+                    // only if the fraction for the current has greater than 0.0
+                    let current_haplotype = &self.haplotypes[haplotype_index];
+                    let splitted = &self.haplotypes[haplotype_index]
+                        .split(':')
+                        .collect::<Vec<&str>>();
+                    let haplotype_group = Haplotype(splitted[0].to_owned() + ":" + splitted[1]);
 
-                        //find the index of the (haplotype, haplotype_group) in graph
-                        if let Some(haplotype_graph) = &self.haplotype_graph {
-                            // query node index
-                            let index = haplotype_graph
-                                .get_node_index(&(current_haplotype.clone(), haplotype_group))
-                                .unwrap();
-                            // step through the graph and sum incoming edges into the node weight
-                            let mut bfs = Bfs::new(&**haplotype_graph, index);
+                    //find the index of the (haplotype, haplotype_group) in graph
+                    if let Some(haplotype_graph) = &self.haplotype_graph {
+                        // query node index
+                        let index = haplotype_graph
+                            .get_node_index(&(current_haplotype.clone(), haplotype_group))
+                            .unwrap();
+                        // step through the graph and sum incoming edges into the node weight
+                        let mut bfs = Bfs::new(&**haplotype_graph, index);
 
-                            while let Some(nx) = bfs.next(&**haplotype_graph) {
-                                // we can access `graph` mutably here still
-                                let haplotype_query = &haplotype_graph[nx].0;
-                                for (h, f) in self.haplotypes[0..haplotype_index]
-                                    .to_vec()
-                                    .iter()
-                                    .zip(fractions[0..haplotype_index].to_vec().iter())
-                                {
-                                    if (h == haplotype_query) && (f > &NotNan::new(0.0).unwrap()) {
-                                        return LogProb::ln_zero();
-                                    }
+                        while let Some(nx) = bfs.next(&**haplotype_graph) {
+                            // we can access `graph` mutably here still
+                            let haplotype_query = &haplotype_graph[nx].0;
+                            for (h, f) in self.haplotypes[0..haplotype_index]
+                                .to_vec()
+                                .iter()
+                                .zip(fractions[0..haplotype_index].to_vec().iter())
+                            {
+                                if (h == haplotype_query) && (f > &NotNan::new(0.0).unwrap()) {
+                                    return LogProb::ln_zero();
                                 }
                             }
                         }
                     }
-                    // else if self.application == "virus".to_string() {
+                    // else if self.application == "virus" {
                     //TODO: explore other methods.
                     // }
                 }
@@ -92,41 +89,37 @@ impl Marginal {
 
             if haplotype_index == self.n_haplotypes - 1 {
                 density(fraction_upper_bound)
+            } else if fraction_upper_bound == NotNan::new(0.0).unwrap() {
+                density(NotNan::new(0.0).unwrap())
             } else {
-                if fraction_upper_bound == NotNan::new(0.0).unwrap() {
-                    density(NotNan::new(0.0).unwrap())
+                //check prior info
+                if self.prior_info == PriorTypes::Diploid {
+                    //sum 0.0, 0.5 and 1.0
+                    let mut probs = Vec::new();
+                    let mut diploid_points = |point, probs: &mut Vec<_>| {
+                        let fractions = fractions.to_vec();
+                        if fractions.iter().sum::<NotNan<f64>>() + point
+                            <= NotNan::new(1.0).unwrap()
+                        {
+                            // this check is necessary to avoid combinations that sum up to more than 1.0.
+                            probs.push(density(point));
+                        }
+                    };
+                    diploid_points(NotNan::new(0.0).unwrap(), &mut probs);
+                    diploid_points(NotNan::new(0.5).unwrap(), &mut probs);
+                    diploid_points(NotNan::new(1.0).unwrap(), &mut probs);
+                    LogProb::ln_sum_exp(&probs)
+                } else if self.prior_info == PriorTypes::Uniform
+                    || self.prior_info == PriorTypes::DiploidSubclonal
+                {
+                    adaptive_integration::ln_integrate_exp(
+                        density,
+                        NotNan::new(0.0).unwrap(),
+                        fraction_upper_bound,
+                        NotNan::new(0.1).unwrap(),
+                    )
                 } else {
-                    //check prior info
-                    if self.prior_info == PriorTypes::Diploid {
-                        //sum 0.0, 0.5 and 1.0
-                        let mut probs = Vec::new();
-                        let mut diploid_points = |point, probs: &mut Vec<_>| {
-                            let fractions = fractions.to_vec();
-                            if fractions.iter().sum::<NotNan<f64>>() + point
-                                <= NotNan::new(1.0).unwrap()
-                            {
-                                // this check is necessary to avoid combinations that sum up to more than 1.0.
-                                probs.push(density(point));
-                            } else {
-                                ()
-                            }
-                        };
-                        diploid_points(NotNan::new(0.0).unwrap(), &mut probs);
-                        diploid_points(NotNan::new(0.5).unwrap(), &mut probs);
-                        diploid_points(NotNan::new(1.0).unwrap(), &mut probs);
-                        LogProb::ln_sum_exp(&probs)
-                    } else if self.prior_info == PriorTypes::Uniform
-                        || self.prior_info == PriorTypes::DiploidSubclonal
-                    {
-                        adaptive_integration::ln_integrate_exp(
-                            density,
-                            NotNan::new(0.0).unwrap(),
-                            fraction_upper_bound,
-                            NotNan::new(0.1).unwrap(),
-                        )
-                    } else {
-                        panic!("uniform, prior or diploid-subclonal must be selected")
-                    }
+                    panic!("uniform, prior or diploid-subclonal must be selected")
                 }
             }
         }
@@ -267,7 +260,7 @@ pub(crate) struct PopulationPrior<'a> {
     pub ploidy_prior: &'a PriorTypes,
 }
 
-impl<'a> model::Prior for PopulationPrior<'a> {
+impl model::Prior for PopulationPrior<'_> {
     type Event = HaplotypeFractions;
 
     fn compute(&self, event: &Self::Event) -> LogProb {
@@ -293,6 +286,10 @@ impl<'a> model::Prior for PopulationPrior<'a> {
     }
 }
 
+// Not currently constructed anywhere in the crate; kept for combining two
+// `Prior` implementations (e.g. population frequency + uniform/diploid) once
+// that composition is wired in.
+#[allow(dead_code)]
 pub(crate) struct CombinedPrior<P1, P2> {
     pub p1: P1,
     pub p2: Option<P2>,

@@ -5,12 +5,9 @@ use derive_builder::Builder;
 use crate::candidates::hla::alignment;
 use crate::candidates::hla::find_variants_from_cigar;
 
-use std::io::Write;
-
 use std::path::PathBuf;
 
 use polars::frame::DataFrame;
-use polars::prelude::*;
 
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 
@@ -28,7 +25,7 @@ impl Caller {
     pub fn call(&mut self) -> Result<()> {
         //align and sort
         alignment(
-            &"virus",
+            "virus",
             &self.genome,
             &self.lineages,
             &self.threads,
@@ -40,7 +37,7 @@ impl Caller {
         let bam_path: &PathBuf = &self.output.with_file_name("viruses_alignment_sorted.bam");
 
         //find variants from cigar
-        let (genotype_df, loci_df) = find_variants_from_cigar(&self.genome, &bam_path).unwrap();
+        let (genotype_df, loci_df) = find_variants_from_cigar(&self.genome, bam_path).unwrap();
 
         //write locus-wise vcf files.
         write_to_vcf(&self.output, genotype_df, loci_df, self.output_bcf)?;
@@ -67,7 +64,7 @@ pub fn write_to_vcf(
         .utf8()
         .unwrap()
         .into_iter()
-        .nth(0)
+        .next()
         .unwrap()
         .unwrap()
         .split(',')
@@ -92,7 +89,7 @@ pub fn write_to_vcf(
 
     //create VCF/BCF Writer
     let format = if output_bcf { Format::Bcf } else { Format::Vcf };
-    let mut writer = Writer::from_path(&output_path, &header, true, format)
+    let mut writer = Writer::from_path(output_path, &header, true, format)
         .expect("Failed to create VCF/BCF writer");
 
     let _id_iter = variant_table["ID"].i64().unwrap().into_iter();

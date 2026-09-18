@@ -7,21 +7,14 @@ use crate::calling::haplotypes::haplotypes::write_results_fast_mode;
 use crate::calling::haplotypes::haplotypes::PriorTypes;
 use crate::calling::haplotypes::haplotypes::{
     collect_haplotypes_and_fractions_from_fast_mode, explore_haplotype_tree,
-    prepare_representative_haplotypes,
 };
 use crate::calling::haplotypes::haplotypes::{
     CandidateMatrix, Haplotype, HaplotypeVariants, VariantCalls, VariantID,
 };
-use crate::model::AlleleFreq;
-use crate::model::Data;
 use crate::model::HaplotypeFractions;
-use crate::model::{Cache, Likelihood, PloidyPrior, Posterior};
 
 use anyhow::Result;
-use bio::stats::bayesian::model::Likelihood as BayesianLikelihood;
 use bio::stats::{probs::LogProb, Prob};
-use itertools::sorted;
-use polars::export::arrow::compute::boolean::all;
 
 use core::cmp::Ordering;
 use csv::Reader;
@@ -34,10 +27,13 @@ use quick_xml::reader::Reader as xml_reader;
 
 use rust_htslib::bcf::{self};
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 
-use std::{path::PathBuf, str};
+use std::{
+    path::{Path, PathBuf},
+    str,
+};
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
@@ -70,7 +66,7 @@ impl Caller {
         let variant_calls = VariantCalls::new(&mut self.variant_calls, &self.sample, &self.events)?;
 
         //write blank plots and tsv table if no variants are available.
-        if variant_calls.len() == 0 {
+        if variant_calls.is_empty() {
             output_empty_output(&self.output_folder).unwrap();
             Ok(())
         } else {
@@ -79,14 +75,14 @@ impl Caller {
             //filter candidates vcf based on optional given input set of alleles (3-field-resolution)
             if let Some(input_alleles) = &self.enforce_given_alleles {
                 haplotype_variants =
-                    haplotype_variants.filter_for_haplotype_prefixes(&input_alleles)?;
+                    haplotype_variants.filter_for_haplotype_prefixes(input_alleles)?;
             }
 
             let (event_posteriors, all_haplotypes) = get_event_posteriors(
                 &self.output_lp_datavzrd,
                 &haplotype_variants,
                 &variant_calls,
-                &"hla",
+                "hla",
                 &self.prior,
                 &self.output_folder,
                 self.extend_haplotypes.unwrap_or(true),
@@ -106,7 +102,7 @@ impl Caller {
             )
             .unwrap();
             haplotypes::write_results(
-                &self.output_folder.join(&"predictions.csv"),
+                &self.output_folder.join("predictions.csv"),
                 &variant_calls,
                 &all_haplotypes_candidate_matrix,
                 &event_posteriors,
@@ -124,7 +120,7 @@ impl Caller {
                 &event_posteriors,
                 self.output_lp_datavzrd,
                 true,
-            );
+            )?;
 
             //write 2-field and G group output tables
 
@@ -183,7 +179,7 @@ impl FastCaller {
         let variant_calls = VariantCalls::new(&mut self.variant_calls, &self.sample, &self.events)?;
 
         //write blank plots and tsv table if no variants are available.
-        if variant_calls.len() == 0 {
+        if variant_calls.is_empty() {
             output_empty_output(&self.output_folder).unwrap();
             Ok(())
         } else {
@@ -200,7 +196,7 @@ impl FastCaller {
             //filter candidates vcf based on optional given input set of alleles (3-field-resolution)
             if let Some(input_alleles) = &self.enforce_given_alleles {
                 haplotype_variants =
-                    haplotype_variants.filter_for_haplotype_prefixes(&input_alleles)?;
+                    haplotype_variants.filter_for_haplotype_prefixes(input_alleles)?;
             }
 
             //Step 1: use only the nonzero DP variant calls
@@ -254,7 +250,7 @@ impl FastCaller {
             std::fs::create_dir_all(&self.output_folder)?;
             write_results_fast_mode(
                 &all_results,
-                &self.output_folder.join(&"predictions_alt_output.csv"),
+                &self.output_folder.join("predictions_alt_output.csv"),
             )?;
 
             //with headers as haplotypes
@@ -286,20 +282,20 @@ impl FastCaller {
                     .collect();
 
             write_results(
-                &self.output_folder.join(&"predictions.csv"),
+                &self.output_folder.join("predictions.csv"),
                 &variant_calls,
                 &cm,
                 &normalized_event_likelihoods,
                 &haplotypes,
                 true,
-            );
+            )?;
 
             //applying the weakly informative priors requires the non-normalized real logprobs.
             let mut final_event_likelihoods = normalized_event_likelihoods.clone();
 
             //use parent.csv and apply weakly informative priors
             if let Some(parent_path) = &self.parent {
-                let mut rdr = Reader::from_path(&parent_path)?;
+                let mut rdr = Reader::from_path(parent_path)?;
 
                 // read header row
                 let headers = rdr.headers()?.clone();
@@ -310,12 +306,6 @@ impl FastCaller {
                     .position(|h| h == "odds")
                     .expect("odds column not found");
 
-                // collect haplotype headers
-                let haplotype_headers: Vec<String> = headers
-                    .iter()
-                    .skip(odds_idx + 1)
-                    .map(|s| s.to_string())
-                    .collect();
                 let hap_start = odds_idx + 1;
 
                 // collect events
@@ -347,27 +337,18 @@ impl FastCaller {
                     self.denovo_rate,
                 );
                 write_results(
-                    &self.output_folder.join(&"predictions_updated.csv"),
+                    &self.output_folder.join("predictions_updated.csv"),
                     &variant_calls,
                     &cm,
                     &updated_event_likelihoods,
                     &haplotypes,
                     true,
-                );
+                )?;
 
                 final_event_likelihoods = updated_event_likelihoods;
             }
 
             //draw plots
-
-            let best_fractions: Vec<f64> = final_event_likelihoods
-                .iter()
-                .next()
-                .unwrap()
-                .0
-                .iter()
-                .map(|x| x.into_inner())
-                .collect();
 
             plot_all_hla(
                 &self.output_folder,
@@ -377,7 +358,7 @@ impl FastCaller {
                 &final_event_likelihoods,
                 self.output_lp_datavzrd,
                 true,
-            );
+            )?;
 
             //write 2-field and G group output tables
 
@@ -409,10 +390,12 @@ impl FastCaller {
 
 //convert_to_two_field function converts the event posteriors that contain three-field info by default, to two-field information
 //by summing densities of events that have identical explanation with the first two fields
+type TwoFieldResult = Result<(Vec<Haplotype>, Vec<(HaplotypeFractions, LogProb)>)>;
+
 fn convert_to_two_field(
-    event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
-    haplotypes: &Vec<Haplotype>,
-) -> Result<(Vec<Haplotype>, Vec<(HaplotypeFractions, LogProb)>)> {
+    event_posteriors: &[(HaplotypeFractions, LogProb)],
+    haplotypes: &[Haplotype],
+) -> TwoFieldResult {
     let mut event_posteriors_map: Vec<(BTreeMap<Haplotype, NotNan<f64>>, LogProb)> = Vec::new();
     for (fractions, logprob) in event_posteriors.iter() {
         //firstly, initiate a map for haplotype and fraction info for each event
@@ -421,7 +404,7 @@ fn convert_to_two_field(
             .iter()
             .map(|h| {
                 let splitted: Vec<&str> = h.split(':').collect();
-                let two_field = format!("{}:{}", splitted[0].to_string(), splitted[1]);
+                let two_field = format!("{}:{}", splitted[0], splitted[1]);
                 (Haplotype(two_field.clone()), NotNan::new(0.00).unwrap())
             })
             .collect();
@@ -432,13 +415,13 @@ fn convert_to_two_field(
         // than 0 to 0 because of having the identical first two fields
         for (fraction, haplotype) in fractions.iter().zip(haplotypes.iter()) {
             let splitted: Vec<&str> = haplotype.split(':').collect();
-            let two_field = format!("{}:{}", splitted[0].to_string(), splitted[1]);
+            let two_field = format!("{}:{}", splitted[0], splitted[1]);
             let two_field = Haplotype(two_field);
             if haplotype_to_fraction_new[&two_field] == NotNan::new(0.00).unwrap() {
                 haplotype_to_fraction_new.insert(two_field.clone(), *fraction);
             } else {
                 // this is to ensure that haplotypes with identical two_fields do not have separate records
-                let sum_of_two = haplotype_to_fraction_new[&two_field].clone() + fraction.clone();
+                let sum_of_two = haplotype_to_fraction_new[&two_field] + *fraction;
                 haplotype_to_fraction_new.insert(two_field.clone(), sum_of_two);
             }
         }
@@ -449,11 +432,11 @@ fn convert_to_two_field(
     //in order to sum all logprobs belonging to same haplotype-fractions
     let mut hf_to_logprob: BTreeMap<BTreeMap<Haplotype, NotNan<f64>>, LogProb> = BTreeMap::new();
     for (hf, logprob) in event_posteriors_map.iter() {
-        if hf_to_logprob.contains_key(&hf) {
-            let new_logprob = LogProb::ln_sum_exp(&vec![hf_to_logprob[&hf].clone(), *logprob]);
-            hf_to_logprob.insert(hf.clone(), new_logprob.clone());
+        if hf_to_logprob.contains_key(hf) {
+            let new_logprob = LogProb::ln_sum_exp(&[hf_to_logprob[hf], *logprob]);
+            hf_to_logprob.insert(hf.clone(), new_logprob);
         } else {
-            hf_to_logprob.insert(hf.clone(), logprob.clone());
+            hf_to_logprob.insert(hf.clone(), *logprob);
         }
     }
     //logprob doesn't implement Ord, so, convert the map to a vector of tuples starting with logprob
@@ -507,7 +490,7 @@ fn adjust_event_likelihoods(
     // if haplotype dimensions differ, everything is de-novo
     if parent.first().map(|(f, _)| f.len()) != current.first().map(|(f, _)| f.len()) {
         return current
-            .into_iter()
+            .iter()
             .map(|(frac, lp)| (frac.clone(), lp + de_novo_rate_lp))
             .collect();
     }
@@ -523,8 +506,8 @@ fn adjust_event_likelihoods(
     let mut result = Vec::with_capacity(current.len());
 
     for (current_frac, current_lp) in current {
-        let current_comp = composition(&current_frac);
-        let mut adjusted = current_lp.clone();
+        let current_comp = composition(current_frac);
+        let mut adjusted = *current_lp;
         let mut matched = false;
 
         for (parent_frac, _) in parent {
@@ -533,14 +516,14 @@ fn adjust_event_likelihoods(
             if parent_comp == current_comp {
                 matched = true;
                 if parent_frac != current_frac {
-                    adjusted = adjusted + change_rate_lp;
+                    adjusted += change_rate_lp;
                 }
                 break;
             }
         }
 
         if !matched {
-            adjusted = adjusted + de_novo_rate_lp;
+            adjusted += de_novo_rate_lp;
         }
 
         result.push((current_frac.clone(), adjusted));
@@ -563,8 +546,8 @@ pub fn convert_to_g(path_to_xml: &PathBuf) -> Result<BTreeMap<String, String>> {
         match reader.read_event_into(&mut buf) {
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
             Ok(Event::Eof) => break,
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"allele" => {
+            Ok(Event::Start(e)) => {
+                if e.name().as_ref() == b"allele" {
                     let mut id_value: Option<String> = None;
                     let mut name_value: Option<String> = None;
 
@@ -600,10 +583,9 @@ pub fn convert_to_g(path_to_xml: &PathBuf) -> Result<BTreeMap<String, String>> {
                         }
                     }
                 }
-                _ => (),
-            },
-            Ok(Event::Empty(e)) => match e.name().as_ref() {
-                b"hla_g_group" => {
+            }
+            Ok(Event::Empty(e)) => {
+                if e.name().as_ref() == b"hla_g_group" {
                     let mut status_value: Option<String> = None;
 
                     for attr in e.attributes().flatten() {
@@ -625,8 +607,7 @@ pub fn convert_to_g(path_to_xml: &PathBuf) -> Result<BTreeMap<String, String>> {
                         );
                     }
                 }
-                _ => (),
-            },
+            }
             _ => (),
         }
         buf.clear();
@@ -646,8 +627,8 @@ fn plot_all_hla(
     outdir: &PathBuf,
     haplotype_variants: &HaplotypeVariants,
     variant_calls: &VariantCalls,
-    all_haplotypes: &Vec<Haplotype>,
-    event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
+    all_haplotypes: &[Haplotype],
+    event_posteriors: &[(HaplotypeFractions, LogProb)],
     output_lp_datavzrd: bool,
     to_phred: bool,
 ) -> Result<()> {
@@ -681,7 +662,7 @@ fn plot_all_hla(
     // best solution plot
     haplotypes::plot_prediction(
         &output_lp_datavzrd,
-        &outdir,
+        outdir,
         "final",
         &best_solution_matrix,
         &filtered_haplotypes,
@@ -697,11 +678,11 @@ fn plot_all_hla(
         .filter_variants_in_range(&filtered_candidate_matrix, locus_start, locus_end)?;
 
     haplotypes::get_arrow_plot(
-        &outdir,
+        outdir,
         candidate_matrix_in_locus,
         &nonzero_haplotype_fractions,
         variant_calls_in_locus,
-    );
+    )?;
 
     // convert to 2-field resolution
     let (two_field_haplotypes, two_field_event_posteriors) =
@@ -709,7 +690,7 @@ fn plot_all_hla(
 
     // solution plots
     haplotypes::plot_densities(
-        &outdir,
+        outdir,
         event_posteriors,
         all_haplotypes,
         "3_field",
@@ -717,7 +698,7 @@ fn plot_all_hla(
     )?;
 
     haplotypes::plot_densities(
-        &outdir,
+        outdir,
         &two_field_event_posteriors,
         &two_field_haplotypes,
         "2_field",
@@ -730,10 +711,10 @@ fn plot_all_hla(
 fn write_g_group_results(
     outdir: &PathBuf,
     xml_path: &PathBuf,
-    all_haplotypes: &Vec<Haplotype>,
+    all_haplotypes: &[Haplotype],
     variant_calls: &VariantCalls,
     candidate_matrix: &CandidateMatrix,
-    event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
+    event_posteriors: &[(HaplotypeFractions, LogProb)],
     to_phred: bool,
 ) -> Result<()> {
     //write table for G groups of HLA alleles, for HLA alleles with None G group in the XML table, we write the haplotype name back.
@@ -776,16 +757,16 @@ fn write_g_group_results(
         candidate_matrix,
         event_posteriors,
         &final_haplotypes_converted,
-        true,
+        to_phred,
     )?;
 
     Ok(())
 }
 
 fn write_two_field_results(
-    outdir: &PathBuf,
-    event_posteriors: &Vec<(HaplotypeFractions, LogProb)>,
-    all_haplotypes: &Vec<Haplotype>,
+    outdir: &Path,
+    event_posteriors: &[(HaplotypeFractions, LogProb)],
+    all_haplotypes: &[Haplotype],
     variant_calls: &VariantCalls,
     candidate_matrix: &CandidateMatrix,
     to_phred: bool,
@@ -817,6 +798,7 @@ struct RawRecord {
 
 #[derive(Clone, Debug)]
 pub(crate) struct PopFreq {
+    #[allow(dead_code)]
     pub population: String,
     pub frequency: NotNan<f64>,
 }

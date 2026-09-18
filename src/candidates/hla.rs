@@ -3,13 +3,11 @@ use anyhow::Result;
 use bio_types::genome::AbstractInterval;
 use derive_builder::Builder;
 use ndarray::Array2;
-use ordered_float::NotNan;
 use polars::{df, frame::DataFrame, prelude::NamedFrom, series::Series};
 use quick_xml::events::Event;
 use quick_xml::reader::Reader as xml_reader;
 use rust_htslib::bcf::{header::Header, record::GenotypeAllele, Format, Writer};
 use rust_htslib::{bam, bam::ext::BamRecordExtensions, bam::record::Cigar, bam::Read, faidx};
-use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::io::BufWriter;
@@ -19,7 +17,7 @@ use std::process::Stdio;
 use std::iter::FromIterator;
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
 
@@ -47,7 +45,7 @@ impl Caller {
 
         //align and sort
         alignment(
-            &"hla",
+            "hla",
             &self.genome,
             &self.alleles,
             &self.threads,
@@ -137,9 +135,7 @@ impl Caller {
             variant_table["Index"].clone(),
             variant_table["ID"].clone(),
         ])?;
-        for (_column_index, column_name) in
-            variant_table.get_column_names().iter().skip(2).enumerate()
-        {
+        for column_name in variant_table.get_column_names().iter().skip(2) {
             let protein_level = &allele_digit_table[&column_name.to_string()];
             if new_df.get_column_names().contains(&protein_level.as_str()) {
                 let existing_column = &new_df[protein_level.as_str()];
@@ -237,7 +233,7 @@ impl Caller {
                 Format::Vcf
             };
 
-            let mut writer = Writer::from_path(&output_path, &header, true, format)
+            let mut writer = Writer::from_path(output_path, &header, true, format)
                 .expect("Failed to create VCF/BCF writer");
 
             let _id_iter = variant_table["ID"].i64().unwrap().into_iter();
@@ -364,8 +360,8 @@ fn get_unconfirmed_alleles(xml_path: &PathBuf) -> Result<Vec<String>> {
         match reader.read_event_into(&mut buf) {
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
             Ok(Event::Eof) => break,
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"allele" => {
+            Ok(Event::Start(e)) => {
+                if e.name().as_ref() == b"allele" {
                     let mut id_value: Option<String> = None;
                     let mut name_value: Option<String> = None;
 
@@ -402,10 +398,9 @@ fn get_unconfirmed_alleles(xml_path: &PathBuf) -> Result<Vec<String>> {
                         }
                     }
                 }
-                _ => (),
-            },
-            Ok(Event::Empty(e)) => match e.name().as_ref() {
-                b"releaseversions" => {
+            }
+            Ok(Event::Empty(e)) => {
+                if e.name().as_ref() == b"releaseversions" {
                     let mut confirmed_found = false;
 
                     for attr in e.attributes().flatten() {
@@ -425,8 +420,7 @@ fn get_unconfirmed_alleles(xml_path: &PathBuf) -> Result<Vec<String>> {
                         );
                     }
                 }
-                _ => (),
-            },
+            }
             _ => (),
         }
         // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
@@ -512,7 +506,7 @@ fn get_unconfirmed_alleles(xml_path: &PathBuf) -> Result<Vec<String>> {
 #[allow(dead_code)]
 pub fn alignment(
     application: &str,
-    genome: &PathBuf,
+    genome: &Path,
     alleles: &PathBuf,
     thread_number: &str,
     index: bool,
@@ -521,7 +515,7 @@ pub fn alignment(
     //FOR HLA: separate HLA loci to separate FASTA files. align those to corresponding loci on the genome. merge bam. reheader if necessary.
     if application == "hla" {
         //create output path, for hla the output has to be given as a folder, for virus, a BCF or a VCF file.
-        fs::create_dir_all(&output)?;
+        fs::create_dir_all(output)?;
         let sorted_merged_path = output.join("alleles_alignment_sorted.bam");
 
         // Create a directory inside of `std::env::temp_dir()`
@@ -550,7 +544,7 @@ pub fn alignment(
             bio::io::fasta::Writer::new(BufWriter::new(fs::File::create(drb1_alleles).unwrap()));
 
         //read alleles fasta
-        let hla_alleles_rdr = bio::io::fasta::Reader::from_file(&alleles)?;
+        let hla_alleles_rdr = bio::io::fasta::Reader::from_file(alleles)?;
 
         for record in hla_alleles_rdr.records() {
             let record = record.unwrap();
@@ -561,17 +555,17 @@ pub fn alignment(
             //gets the locus strating name (e.g. B*01:01)
             let desc = record.desc().unwrap();
 
-            if desc.starts_with(&"A") {
+            if desc.starts_with("A") {
                 writer_a.write_record(&record)?;
-            } else if desc.starts_with(&"B") {
+            } else if desc.starts_with("B") {
                 writer_b.write_record(&record)?;
-            } else if desc.starts_with(&"C") {
+            } else if desc.starts_with("C") {
                 writer_c.write_record(&record)?;
-            } else if desc.starts_with(&"DQA1") {
+            } else if desc.starts_with("DQA1") {
                 writer_dqa1.write_record(&record)?;
-            } else if desc.starts_with(&"DQB1") {
+            } else if desc.starts_with("DQB1") {
                 writer_dqb1.write_record(&record)?;
-            } else if desc.starts_with(&"DRB1") {
+            } else if desc.starts_with("DRB1") {
                 writer_drb1.write_record(&record)?;
             }
         }
@@ -617,60 +611,60 @@ pub fn alignment(
 
             if locus == &"A" {
                 region = &"6:29940260-29950572";
-                genome_path = temp_dir.path().join(&"A_ref.fasta");
-                allele_path = temp_dir.path().join(&"A_alleles.fasta");
-                aligned_file = temp_dir.path().join(&"A_aligned.sam");
-                corrected_file_path = output.join(&"A_aligned_corrected.bam");
+                genome_path = temp_dir.path().join("A_ref.fasta");
+                allele_path = temp_dir.path().join("A_alleles.fasta");
+                aligned_file = temp_dir.path().join("A_aligned.sam");
+                corrected_file_path = output.join("A_aligned_corrected.bam");
                 awk_string =
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+29940260-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:29940260-29950572/SN:6/"#;
                 regex_second = r#"s/LN:10313/LN:170805979/"#;
             } else if locus == &"B" {
                 region = &"6:31352872-31368067";
-                genome_path = temp_dir.path().join(&"B_ref.fasta");
-                allele_path = temp_dir.path().join(&"B_alleles.fasta");
-                aligned_file = temp_dir.path().join(&"B_aligned.sam");
-                corrected_file_path = output.join(&"B_aligned_corrected.bam");
+                genome_path = temp_dir.path().join("B_ref.fasta");
+                allele_path = temp_dir.path().join("B_alleles.fasta");
+                aligned_file = temp_dir.path().join("B_aligned.sam");
+                corrected_file_path = output.join("B_aligned_corrected.bam");
                 awk_string =
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+31352872-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:31352872-31368067/SN:6/"#;
                 regex_second = r#"s/LN:15196/LN:170805979/"#;
             } else if locus == &"C" {
                 region = &"6:31267749-31273130";
-                genome_path = temp_dir.path().join(&"C_ref.fasta");
-                allele_path = temp_dir.path().join(&"C_alleles.fasta");
-                aligned_file = temp_dir.path().join(&"C_aligned.sam");
-                corrected_file_path = output.join(&"C_aligned_corrected.bam");
+                genome_path = temp_dir.path().join("C_ref.fasta");
+                allele_path = temp_dir.path().join("C_alleles.fasta");
+                aligned_file = temp_dir.path().join("C_aligned.sam");
+                corrected_file_path = output.join("C_aligned_corrected.bam");
                 awk_string =
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+31267749-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:31267749-31273130/SN:6/"#;
                 regex_second = r#"s/LN:5382/LN:170805979/"#;
             } else if locus == &"DQA1" {
                 region = &"6:32627179-32648062";
-                genome_path = temp_dir.path().join(&"DQA1_ref.fasta");
-                allele_path = temp_dir.path().join(&"DQA1_alleles.fasta");
-                aligned_file = temp_dir.path().join(&"DQA1_aligned.sam");
-                corrected_file_path = output.join(&"DQA1_aligned_corrected.bam");
+                genome_path = temp_dir.path().join("DQA1_ref.fasta");
+                allele_path = temp_dir.path().join("DQA1_alleles.fasta");
+                aligned_file = temp_dir.path().join("DQA1_aligned.sam");
+                corrected_file_path = output.join("DQA1_aligned_corrected.bam");
                 awk_string =
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+32627179-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:32627179-32648062/SN:6/"#;
                 regex_second = r#"s/LN:20883/LN:170805979/"#;
             } else if locus == &"DQB1" {
                 region = &"6:32658467-32669383";
-                genome_path = temp_dir.path().join(&"DQB1_ref.fasta");
-                allele_path = temp_dir.path().join(&"DQB1_alleles.fasta");
-                aligned_file = temp_dir.path().join(&"DQB1_aligned.sam");
-                corrected_file_path = output.join(&"DQB1_aligned_corrected.bam");
+                genome_path = temp_dir.path().join("DQB1_ref.fasta");
+                allele_path = temp_dir.path().join("DQB1_alleles.fasta");
+                aligned_file = temp_dir.path().join("DQB1_aligned.sam");
+                corrected_file_path = output.join("DQB1_aligned_corrected.bam");
                 awk_string =
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+32658467-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:32658467-32669383/SN:6/"#;
                 regex_second = r#"s/LN:10917/LN:170805979/"#;
             } else if locus == &"DRB1" {
                 region = &"6:32576902-32590848";
-                genome_path = temp_dir.path().join(&"DRB1_ref.fasta");
-                allele_path = temp_dir.path().join(&"DRB1_alleles.fasta");
-                aligned_file = temp_dir.path().join(&"DRB1_aligned.sam");
-                corrected_file_path = output.join(&"DRB1_aligned_corrected.bam");
+                genome_path = temp_dir.path().join("DRB1_ref.fasta");
+                allele_path = temp_dir.path().join("DRB1_alleles.fasta");
+                aligned_file = temp_dir.path().join("DRB1_aligned.sam");
+                corrected_file_path = output.join("DRB1_aligned_corrected.bam");
                 awk_string =
                     r#"BEGIN{OFS="\t"} !/^@/ { $3="6"; $4=$4+32576902-1; print } /^@/ { print }"#;
                 regex_first = r#"s/SN:6:32576902-32590848/SN:6/"#;
@@ -680,29 +674,27 @@ pub fn alignment(
             let faidx = {
                 Command::new("samtools")
                     .arg("faidx")
-                    .arg(genome.clone())
-                    .arg(&region)
+                    .arg(genome)
+                    .arg(region)
                     .arg("-o")
                     .arg(&genome_path)
                     .status()
-                    .expect(&format!(
-                        "failed to execute indexing process for locus {}",
-                        locus
-                    ))
+                    .unwrap_or_else(|_| {
+                        panic!("failed to execute indexing process for locus {}", locus)
+                    })
             };
             println!("indexing process finished with: {}", faidx);
 
             //align each allele to the corresponding genomic region for each locus.
             let align = {
                 Command::new("minimap2")
-                    .args(["-a", "-t", &thread_number, "--eqx", "--MD"])
+                    .args(["-a", "-t", thread_number, "--eqx", "--MD"])
                     .arg(genome_path)
                     .arg(allele_path)
                     .output()
-                    .expect(&format!(
-                        "failed to execute alignment process for locus {}",
-                        locus
-                    ))
+                    .unwrap_or_else(|_| {
+                        panic!("failed to execute alignment process for locus {}", locus)
+                    })
             };
             println!(
                 "alignment process finished with exit status {}!",
@@ -715,36 +707,36 @@ pub fn alignment(
             //rename header, update CHROM and POS fields of the SAM file.
             //check for supplementary alignments, flag 2048, should work for that too though
 
+            //convert SAM to BAM
+            let mut corrected_file_path_file = std::fs::File::create(&corrected_file_path)?;
+
             //first update CHROM and POS fields and write to file
-            let awk = Command::new("awk")
-                .arg(&awk_string)
+            let mut awk = Command::new("awk")
+                .arg(awk_string)
                 .arg(&aligned_file)
                 .stdout(Stdio::piped())
                 .spawn()
-                .expect(&format!(
-                    "failed to execute alignment process for locus {}",
-                    locus
-                ));
+                .unwrap_or_else(|_| {
+                    panic!("failed to execute alignment process for locus {}", locus)
+                });
 
             //update the header
             //length of chromosome 6 is 170805979, for ref: https://www.ncbi.nlm.nih.gov/grc/human/data
-            let sed: std::process::Child = Command::new("sed")
+            let mut sed: std::process::Child = Command::new("sed")
                 .arg("-e")
-                .arg(&regex_first)
+                .arg(regex_first)
                 .arg("-e")
-                .arg(&regex_second)
-                .stdin(Stdio::from(awk.stdout.unwrap()))
+                .arg(regex_second)
+                .stdin(Stdio::from(awk.stdout.take().unwrap()))
                 .stdout(Stdio::piped())
                 .spawn()
                 .unwrap();
 
-            //convert SAM to BAM
-            let mut corrected_file_path_file = std::fs::File::create(&corrected_file_path)?;
             let convert_bam = Command::new("samtools")
                 .arg("view")
                 .arg("-O")
                 .arg("BAM")
-                .stdin(Stdio::from(sed.stdout.unwrap()))
+                .stdin(Stdio::from(sed.stdout.take().unwrap()))
                 .stdout(Stdio::piped())
                 .spawn()
                 .unwrap();
@@ -752,6 +744,8 @@ pub fn alignment(
             let convert_bam_output = convert_bam
                 .wait_with_output()
                 .expect("Failed to read stdout");
+            awk.wait().expect("failed to wait on awk process");
+            sed.wait().expect("failed to wait on sed process");
 
             corrected_file_path_file.write_all(&convert_bam_output.stdout)?;
             corrected_file_path_file.flush()?;
@@ -820,8 +814,7 @@ pub fn alignment(
         let temp_dir = tempdir()?;
 
         //create index in case of hla, don't in case of virus
-        let mut genome_input = PathBuf::new();
-        if index {
+        let genome_input = if index {
             let genome_index = temp_dir.path().join(format!(
                 "{}{}",
                 genome.file_name().unwrap().to_str().unwrap(),
@@ -833,15 +826,15 @@ pub fn alignment(
                 Command::new("minimap2")
                     .arg("-d")
                     .arg(&genome_index)
-                    .arg(genome.clone())
+                    .arg(genome)
                     .status()
                     .expect("failed to execute indexing process")
             };
             println!("indexing process finished with: {}", index);
-            genome_input = genome_index;
+            genome_index
         } else {
-            genome_input = genome.clone();
-        }
+            genome.to_path_buf()
+        };
         // dbg!(&genome_input);
 
         //then, align alleles/lineages to genome and write to temp
@@ -849,7 +842,7 @@ pub fn alignment(
 
         let align = {
             Command::new("minimap2")
-                .args(["-a", "-t", &thread_number, "--eqx", "--MD"])
+                .args(["-a", "-t", thread_number, "--eqx", "--MD"])
                 .arg(genome_input)
                 .arg(alleles.clone())
                 .output()
@@ -928,10 +921,10 @@ pub fn find_variants_from_cigar(
                             let chrom = seq.contig().to_string();
                             let pos = rpos;
                             let ref_base = reference_genome
-                                .fetch_seq_string(&seq.contig().to_string(), rpos - 1, rpos - 1)
+                                .fetch_seq_string(seq.contig(), rpos - 1, rpos - 1)
                                 .unwrap();
                             let alt_base = (seq.seq()[spos as usize] as char).to_string();
-                            if vec!["A", "G", "T", "C"].iter().any(|&x| x == alt_base) {
+                            if ["A", "G", "T", "C"].iter().any(|&x| x == alt_base) {
                                 candidate_variants
                                     .entry((chrom.clone(), pos, ref_base.clone(), alt_base.clone()))
                                     .or_insert(vec![]);
@@ -956,7 +949,7 @@ pub fn find_variants_from_cigar(
                         let chrom = seq.contig().to_string();
                         let pos = rpos;
                         let ref_base = reference_genome
-                            .fetch_seq_string(&seq.contig().to_string(), rpos - 1, rpos - 1)
+                            .fetch_seq_string(seq.contig(), rpos - 1, rpos - 1)
                             .unwrap();
                         let alt_sequence = Vec::from_iter(spos..spos + num + 1)
                             .iter()
@@ -964,7 +957,7 @@ pub fn find_variants_from_cigar(
                             .collect::<String>();
                         if alt_sequence
                             .chars()
-                            .all(|x| vec!["A", "G", "T", "C"].contains(&x.to_string().as_str()))
+                            .all(|x| ["A", "G", "T", "C"].contains(&x.to_string().as_str()))
                         {
                             candidate_variants
                                 .entry((chrom.clone(), pos, ref_base.clone(), alt_sequence.clone()))
@@ -989,11 +982,7 @@ pub fn find_variants_from_cigar(
                         let chrom = seq.contig().to_string();
                         let pos = rpos;
                         let ref_sequence = reference_genome
-                            .fetch_seq_string(
-                                &seq.contig().to_string(),
-                                rpos - 1,
-                                rpos + (num as usize) - 1,
-                            )
+                            .fetch_seq_string(seq.contig(), rpos - 1, rpos + (num as usize) - 1)
                             .unwrap();
                         let alt_base = (seq.seq()[spos as usize] as char).to_string();
                         candidate_variants
@@ -1443,9 +1432,9 @@ pub fn find_variants_from_cigar(
         match query {
             Ok(answer) => {
                 let queried_series = genotypes_array.column(index).to_vec();
-                let existing_series = answer.get(0).unwrap();
+                let existing_series = answer.first().unwrap();
                 let new_series =
-                    handle_duplicated_variants(&queried_series, &existing_series).unwrap();
+                    handle_duplicated_variants(&queried_series, existing_series).unwrap();
                 genotype_df.with_column(Series::new(haplotype_name.as_str(), new_series))?
             }
             Err(_) => genotype_df.with_column(Series::new(
@@ -1458,9 +1447,9 @@ pub fn find_variants_from_cigar(
         match query {
             Ok(answer) => {
                 let queried_series = loci_array.column(index).to_vec();
-                let existing_series = answer.get(0).unwrap();
+                let existing_series = answer.first().unwrap();
                 let new_series =
-                    handle_duplicated_variants(&queried_series, &existing_series).unwrap();
+                    handle_duplicated_variants(&queried_series, existing_series).unwrap();
                 loci_df.with_column(Series::new(haplotype_name.as_str(), new_series))?
             }
             Err(_) => loci_df.with_column(Series::new(
@@ -1500,10 +1489,10 @@ pub fn convert_candidate_variants_to_array(
 
     Ok(genotypes_array)
 }
-fn handle_duplicated_variants(series1: &Vec<i32>, series2: &Series) -> Result<Vec<i32>> {
+fn handle_duplicated_variants(series1: &[i32], series2: &Series) -> Result<Vec<i32>> {
     Ok(series1
         .iter()
-        .zip(series2.i32().unwrap().into_iter())
+        .zip(series2.i32().unwrap())
         .map(|(num1, num2)| {
             if *num1 == 1 && num2 == Some(1) {
                 1
