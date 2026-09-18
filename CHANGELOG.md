@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.5](https://github.com/orthanq/orthanq/compare/v1.22.4...v1.22.5) (2026-09-18)
+
+
+### Bug Fixes
+
+* fix linting ([#132](https://github.com/orthanq/orthanq/issues/132)) ([df35930](https://github.com/orthanq/orthanq/commit/df359305660ec877c7b6c0ce9cf2494f81f2b8ec))
+
 ## [1.22.4](https://github.com/orthanq/orthanq/compare/v1.22.3...v1.22.4) (2026-09-16)
 
 
