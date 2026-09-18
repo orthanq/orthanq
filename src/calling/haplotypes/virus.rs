@@ -117,16 +117,17 @@ impl Caller {
         let json: &str = include_str!("../../../templates/final_prediction.json");
         let blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
 
-        for file_name in ["lp_solution.json".to_string(),
-            "best_solution.json".to_string()] {
+        for file_name in [
+            "lp_solution.json".to_string(),
+            "best_solution.json".to_string(),
+        ] {
             let blueprint: serde_json::Value = serde_json::from_str(json).unwrap();
             let file = fs::File::create(self.output_folder.join(file_name)).unwrap();
             serde_json::to_writer(file, &blueprint)?;
         }
 
         //write empty viral solutions
-        let file =
-            fs::File::create(self.output_folder.join("viral_solutions.json")).unwrap();
+        let file = fs::File::create(self.output_folder.join("viral_solutions.json")).unwrap();
         serde_json::to_writer(file, &blueprint)?;
 
         //write blank tsv

@@ -263,9 +263,7 @@ impl Caller {
 
             //then write the record to file
             let record = bio::io::fasta::Record::with_attrs(clade, Some(""), &clade_seq);
-            writer
-                .write_record(&record)
-                .expect("Error writing record.");
+            writer.write_record(&record).expect("Error writing record.");
         });
         Ok(())
     }

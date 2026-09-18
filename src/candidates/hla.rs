@@ -135,9 +135,7 @@ impl Caller {
             variant_table["Index"].clone(),
             variant_table["ID"].clone(),
         ])?;
-        for column_name in
-            variant_table.get_column_names().iter().skip(2)
-        {
+        for column_name in variant_table.get_column_names().iter().skip(2) {
             let protein_level = &allele_digit_table[&column_name.to_string()];
             if new_df.get_column_names().contains(&protein_level.as_str()) {
                 let existing_column = &new_df[protein_level.as_str()];
@@ -362,63 +360,67 @@ fn get_unconfirmed_alleles(xml_path: &PathBuf) -> Result<Vec<String>> {
         match reader.read_event_into(&mut buf) {
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
             Ok(Event::Eof) => break,
-            Ok(Event::Start(e)) => if e.name().as_ref() == b"allele" {
-                let mut id_value: Option<String> = None;
-                let mut name_value: Option<String> = None;
+            Ok(Event::Start(e)) => {
+                if e.name().as_ref() == b"allele" {
+                    let mut id_value: Option<String> = None;
+                    let mut name_value: Option<String> = None;
 
-                for attr in e.attributes().flatten() {
-                    if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
-                        if let Ok(val) = std::str::from_utf8(&attr.value) {
-                            match key {
-                                "id" => id_value = Some(val.to_string()),
-                                "name" => name_value = Some(val.to_string()),
-                                _ => {}
+                    for attr in e.attributes().flatten() {
+                        if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
+                            if let Ok(val) = std::str::from_utf8(&attr.value) {
+                                match key {
+                                    "id" => id_value = Some(val.to_string()),
+                                    "name" => name_value = Some(val.to_string()),
+                                    _ => {}
+                                }
                             }
                         }
                     }
-                }
 
-                match (id_value, name_value) {
-                    (Some(id), Some(name)) => {
-                        alleles.push(id);
+                    match (id_value, name_value) {
+                        (Some(id), Some(name)) => {
+                            alleles.push(id);
 
-                        // Clean up the allele name by removing the "HLA-" prefix if present
-                        let cleaned_name = if name.contains('-') {
-                            name.split('-').nth(1).unwrap_or(&name).to_string()
-                        } else {
-                            name
-                        };
-                        allele_names.push(cleaned_name);
+                            // Clean up the allele name by removing the "HLA-" prefix if present
+                            let cleaned_name = if name.contains('-') {
+                                name.split('-').nth(1).unwrap_or(&name).to_string()
+                            } else {
+                                name
+                            };
+                            allele_names.push(cleaned_name);
+                        }
+                        (id_opt, name_opt) => {
+                            eprintln!(
+                                "Warning: missing attribute{}{} in <allele> element",
+                                if id_opt.is_none() { " 'id'" } else { "" },
+                                if name_opt.is_none() { " 'name'" } else { "" }
+                            );
+                        }
                     }
-                    (id_opt, name_opt) => {
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                if e.name().as_ref() == b"releaseversions" {
+                    let mut confirmed_found = false;
+
+                    for attr in e.attributes().flatten() {
+                        if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
+                            if key == "confirmed" {
+                                if let Ok(value) = std::str::from_utf8(&attr.value) {
+                                    confirmed.push(value.to_string());
+                                    confirmed_found = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if !confirmed_found {
                         eprintln!(
-                            "Warning: missing attribute{}{} in <allele> element",
-                            if id_opt.is_none() { " 'id'" } else { "" },
-                            if name_opt.is_none() { " 'name'" } else { "" }
+                            "Warning: 'confirmed' attribute not found in <releaseversions> element"
                         );
                     }
                 }
-            },
-            Ok(Event::Empty(e)) => if e.name().as_ref() == b"releaseversions" {
-                let mut confirmed_found = false;
-
-                for attr in e.attributes().flatten() {
-                    if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
-                        if key == "confirmed" {
-                            if let Ok(value) = std::str::from_utf8(&attr.value) {
-                                confirmed.push(value.to_string());
-                                confirmed_found = true;
-                            }
-                        }
-                    }
-                }
-
-                if !confirmed_found {
-                    eprintln!(
-                        "Warning: 'confirmed' attribute not found in <releaseversions> element"
-                    );
-                }
-            },
+            }
             _ => (),
         }
         // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
@@ -677,8 +679,9 @@ pub fn alignment(
                     .arg("-o")
                     .arg(&genome_path)
                     .status()
-                    .unwrap_or_else(|_| panic!("failed to execute indexing process for locus {}",
-                        locus))
+                    .unwrap_or_else(|_| {
+                        panic!("failed to execute indexing process for locus {}", locus)
+                    })
             };
             println!("indexing process finished with: {}", faidx);
 
@@ -689,8 +692,9 @@ pub fn alignment(
                     .arg(genome_path)
                     .arg(allele_path)
                     .output()
-                    .unwrap_or_else(|_| panic!("failed to execute alignment process for locus {}",
-                        locus))
+                    .unwrap_or_else(|_| {
+                        panic!("failed to execute alignment process for locus {}", locus)
+                    })
             };
             println!(
                 "alignment process finished with exit status {}!",
@@ -712,8 +716,9 @@ pub fn alignment(
                 .arg(&aligned_file)
                 .stdout(Stdio::piped())
                 .spawn()
-                .unwrap_or_else(|_| panic!("failed to execute alignment process for locus {}",
-                    locus));
+                .unwrap_or_else(|_| {
+                    panic!("failed to execute alignment process for locus {}", locus)
+                });
 
             //update the header
             //length of chromosome 6 is 170805979, for ref: https://www.ncbi.nlm.nih.gov/grc/human/data
@@ -977,11 +982,7 @@ pub fn find_variants_from_cigar(
                         let chrom = seq.contig().to_string();
                         let pos = rpos;
                         let ref_sequence = reference_genome
-                            .fetch_seq_string(
-                                seq.contig(),
-                                rpos - 1,
-                                rpos + (num as usize) - 1,
-                            )
+                            .fetch_seq_string(seq.contig(), rpos - 1, rpos + (num as usize) - 1)
                             .unwrap();
                         let alt_base = (seq.seq()[spos as usize] as char).to_string();
                         candidate_variants

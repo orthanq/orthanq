@@ -306,7 +306,6 @@ impl FastCaller {
                     .position(|h| h == "odds")
                     .expect("odds column not found");
 
-
                 let hap_start = odds_idx + 1;
 
                 // collect events
@@ -547,64 +546,68 @@ pub fn convert_to_g(path_to_xml: &PathBuf) -> Result<BTreeMap<String, String>> {
         match reader.read_event_into(&mut buf) {
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
             Ok(Event::Eof) => break,
-            Ok(Event::Start(e)) => if e.name().as_ref() == b"allele" {
-                let mut id_value: Option<String> = None;
-                let mut name_value: Option<String> = None;
+            Ok(Event::Start(e)) => {
+                if e.name().as_ref() == b"allele" {
+                    let mut id_value: Option<String> = None;
+                    let mut name_value: Option<String> = None;
 
-                for attr in e.attributes().flatten() {
-                    if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
-                        if let Ok(val) = std::str::from_utf8(&attr.value) {
-                            match key {
-                                "id" => id_value = Some(val.to_string()),
-                                "name" => name_value = Some(val.to_string()),
-                                _ => {}
+                    for attr in e.attributes().flatten() {
+                        if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
+                            if let Ok(val) = std::str::from_utf8(&attr.value) {
+                                match key {
+                                    "id" => id_value = Some(val.to_string()),
+                                    "name" => name_value = Some(val.to_string()),
+                                    _ => {}
+                                }
                             }
                         }
                     }
-                }
-                match (id_value, name_value) {
-                    (Some(_id), Some(name)) => {
-                        //clean up the allele name by removing the "HLA-" prefix if present
-                        let cleaned_name = if name.contains('-') {
-                            name.split('-').nth(1).unwrap_or(&name).to_string()
-                        } else {
-                            name
-                        };
-                        allele_names.push(cleaned_name);
+                    match (id_value, name_value) {
+                        (Some(_id), Some(name)) => {
+                            //clean up the allele name by removing the "HLA-" prefix if present
+                            let cleaned_name = if name.contains('-') {
+                                name.split('-').nth(1).unwrap_or(&name).to_string()
+                            } else {
+                                name
+                            };
+                            allele_names.push(cleaned_name);
 
-                        counter += 1;
+                            counter += 1;
+                        }
+                        (id_opt, name_opt) => {
+                            eprintln!(
+                                "Warning: missing attribute{}{} in <allele> element",
+                                if id_opt.is_none() { " 'id'" } else { "" },
+                                if name_opt.is_none() { " 'name'" } else { "" }
+                            );
+                        }
                     }
-                    (id_opt, name_opt) => {
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                if e.name().as_ref() == b"hla_g_group" {
+                    let mut status_value: Option<String> = None;
+
+                    for attr in e.attributes().flatten() {
+                        if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
+                            if key == "status" {
+                                if let Ok(val) = std::str::from_utf8(&attr.value) {
+                                    status_value = Some(val.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(status) = status_value {
+                        hla_g_groups.insert(counter, status);
+                    } else {
                         eprintln!(
-                            "Warning: missing attribute{}{} in <allele> element",
-                            if id_opt.is_none() { " 'id'" } else { "" },
-                            if name_opt.is_none() { " 'name'" } else { "" }
+                            "Warning: No 'status' attribute found for hla_g_group at index {}",
+                            counter
                         );
                     }
                 }
-            },
-            Ok(Event::Empty(e)) => if e.name().as_ref() == b"hla_g_group" {
-                let mut status_value: Option<String> = None;
-
-                for attr in e.attributes().flatten() {
-                    if let Ok(key) = std::str::from_utf8(attr.key.as_ref()) {
-                        if key == "status" {
-                            if let Ok(val) = std::str::from_utf8(&attr.value) {
-                                status_value = Some(val.to_string());
-                            }
-                        }
-                    }
-                }
-
-                if let Some(status) = status_value {
-                    hla_g_groups.insert(counter, status);
-                } else {
-                    eprintln!(
-                        "Warning: No 'status' attribute found for hla_g_group at index {}",
-                        counter
-                    );
-                }
-            },
+            }
             _ => (),
         }
         buf.clear();

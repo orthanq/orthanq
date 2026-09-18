@@ -63,7 +63,8 @@ pub fn write_to_vcf(
     let first_row_index = variant_table["Index"]
         .utf8()
         .unwrap()
-        .into_iter().next()
+        .into_iter()
+        .next()
         .unwrap()
         .unwrap()
         .split(',')

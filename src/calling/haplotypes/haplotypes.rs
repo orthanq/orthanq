@@ -495,10 +495,7 @@ impl HaplotypeVariants {
             let mut new_matrix_map = BTreeMap::new();
             for (haplotype_m, (variant_status, coverage_status)) in matrix_map {
                 if haplotypes.contains(haplotype_m) {
-                    new_matrix_map.insert(
-                        haplotype_m.clone(),
-                        (*variant_status, *coverage_status),
-                    );
+                    new_matrix_map.insert(haplotype_m.clone(), (*variant_status, *coverage_status));
                 }
             }
             new_haplotype_variants.insert(*variant, new_matrix_map);
@@ -523,10 +520,7 @@ impl HaplotypeVariants {
                     .iter()
                     .any(|prefix| hap_m_str == *prefix || hap_m_str.starts_with(&(prefix.clone())))
                 {
-                    new_matrix_map.insert(
-                        haplotype_m.clone(),
-                        (*variant_status, *coverage_status),
-                    );
+                    new_matrix_map.insert(haplotype_m.clone(), (*variant_status, *coverage_status));
                 }
             }
 
@@ -1544,7 +1538,9 @@ pub fn write_results(
     to_phred: bool,
 ) -> Result<()> {
     //firstly add variant query and probabilities to the outout table for each event
-    let _variant_calls: Vec<AlleleFreqDist> = variant_calls.values().map(|call| call.afd.clone())
+    let _variant_calls: Vec<AlleleFreqDist> = variant_calls
+        .values()
+        .map(|call| call.afd.clone())
         .collect();
     let _event_queries: Vec<BTreeMap<VariantID, (AlleleFreq, LogProb)>> = Vec::new();
 
@@ -1790,8 +1786,7 @@ pub fn collect_constraints_and_variants(
                     haplotype_dict.insert(haplotype.clone(), existing);
                 }
             }
-            let expr_to_add =
-                *call.max_prob * (fraction_sum - call.af.into_expression());
+            let expr_to_add = *call.max_prob * (fraction_sum - call.af.into_expression());
 
             constraints.push(expr_to_add.clone());
             expr += expr_to_add;
